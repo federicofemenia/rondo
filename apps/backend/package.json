@@ -3,18 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "prisma": {
-    "schema": "src/infrastructure/database/schema.prisma"
-  },
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "test": "vitest run",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "tsx src/infrastructure/database/seed.ts"
+  },
+  "prisma": {
+    "schema": "src/infrastructure/database/schema.prisma",
+    "seed": "tsx src/infrastructure/database/seed.ts"
   },
   "dependencies": {
+    "@clerk/backend": "^1.18.0",
     "@fastify/cors": "^10.0.0",
     "@prisma/client": "^5.11.0",
     "@rondo/contracts": "workspace:*",

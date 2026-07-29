@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import { buildDayOptions, timeRangeOptions } from './dateOptions';
 import PageFooter from './PageFooter';
+import { useSports } from './useSports';
 
 export type MatchDraft = {
   sport: string;
@@ -26,14 +27,6 @@ type CreateMatchPageProps = {
   onCreateMatch?: (draft: MatchDraft) => void;
 };
 
-const sportModalities: Record<string, string[]> = {
-  Fútbol: ['Fútbol 5', 'Fútbol 7', 'Fútbol 11'],
-  Pádel: ['Dobles', 'Singles'],
-  Tenis: ['Singles', 'Dobles'],
-  Básquet: ['3x3', '5x5'],
-  Vóley: ['Playa', 'Indoor'],
-};
-
 const positionOptions = ['Arquero', 'Defensor', 'Mediocampista', 'Delantero'];
 
 const clubOptions = ['Club Señor Pato'];
@@ -44,8 +37,19 @@ function toggleValue(values: string[], value: string) {
 
 function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const dayOptions = useMemo(() => buildDayOptions(), []);
-  const [sport, setSport] = useState('Fútbol');
-  const [modality, setModality] = useState(sportModalities['Fútbol']![0]!);
+  const { sports, loading: sportsLoading, error: sportsError } = useSports();
+
+  const sportModalities = useMemo(() => {
+    const record: Record<string, string[]> = {};
+    sports.forEach((sportOption) => {
+      record[sportOption.name] = sportOption.modalities.map((modality) => modality.name);
+    });
+    return record;
+  }, [sports]);
+  const sportNames = Object.keys(sportModalities);
+
+  const [sport, setSport] = useState('');
+  const [modality, setModality] = useState('');
   const [minPlayers, setMinPlayers] = useState('4');
   const [maxPlayers, setMaxPlayers] = useState('10');
   const [positions, setPositions] = useState<string[]>([]);
@@ -53,9 +57,17 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const [date, setDate] = useState(dayOptions[0]!.value);
   const [time, setTime] = useState('');
 
+  useEffect(() => {
+    if (!sport && sportNames.length > 0) {
+      const firstSport = sportNames[0]!;
+      setSport(firstSport);
+      setModality(sportModalities[firstSport]?.[0] ?? '');
+    }
+  }, [sport, sportNames, sportModalities]);
+
   const handleSportChange = (nextSport: string) => {
     setSport(nextSport);
-    setModality(sportModalities[nextSport]![0]!);
+    setModality(sportModalities[nextSport]?.[0] ?? '');
     if (nextSport !== 'Fútbol') {
       setPositions([]);
     }
@@ -99,9 +111,12 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   value={sport}
                   onChange={(event) => handleSportChange(event.target.value)}
                   slotProps={{ select: { native: true } }}
+                  disabled={sportsLoading || sportNames.length === 0}
+                  error={sportsError}
+                  helperText={sportsError ? 'No pudimos cargar los deportes. Reintentá más tarde.' : undefined}
                   fullWidth
                 >
-                  {Object.keys(sportModalities).map((option) => (
+                  {sportNames.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
@@ -114,9 +129,10 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   value={modality}
                   onChange={(event) => setModality(event.target.value)}
                   slotProps={{ select: { native: true } }}
+                  disabled={sportsLoading || !sport}
                   fullWidth
                 >
-                  {sportModalities[sport]!.map((option) => (
+                  {(sportModalities[sport] ?? []).map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
@@ -249,7 +265,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
       </Box>
 
       <PageFooter>
-        <Button type="submit" fullWidth variant="contained" size="large" sx={{ borderRadius: 999 }}>
+        <Button type="submit" fullWidth variant="contained" size="large" disabled={sportsLoading || !sport} sx={{ borderRadius: 999 }}>
           Armar partido
         </Button>
       </PageFooter>

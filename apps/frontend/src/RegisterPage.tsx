@@ -15,13 +15,13 @@ import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import PhotoCameraRoundedIcon from '@mui/icons-material/PhotoCameraRounded';
 import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
 import PageFooter from './PageFooter';
+import { useSports } from './useSports';
 
 type RegisterPageProps = {
   onRegister?: () => void;
   onNavigateToLogin?: () => void;
 };
 
-const sportOptions = ['Fútbol', 'Pádel', 'Tenis', 'Básquet', 'Vóley'];
 const sportPositionOptions: Record<string, string[]> = {
   Fútbol: ['Arquero', 'Defensor', 'Mediocampista', 'Delantero'],
   Pádel: ['Drive', 'Revés'],
@@ -33,6 +33,9 @@ function toggleValue(values: string[], value: string) {
 }
 
 function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
+  const { sports: sportCatalog, loading: sportsLoading, error: sportsError } = useSports();
+  const sportOptions = sportCatalog.map((sportOption) => sportOption.name);
+
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -183,6 +186,16 @@ function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
               <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
                 Opcional. Podés modificarlo luego desde tu perfil.
               </Typography>
+              {sportsError ? (
+                <Typography variant="body2" color="error.main">
+                  No pudimos cargar los deportes. Reintentá más tarde.
+                </Typography>
+              ) : null}
+              {sportsLoading ? (
+                <Typography variant="body2" color="text.secondary">
+                  Cargando deportes…
+                </Typography>
+              ) : null}
               <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
                 {sportOptions.map((sport) => (
                   <Chip

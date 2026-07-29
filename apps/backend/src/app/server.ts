@@ -3,8 +3,17 @@ import cors from '@fastify/cors';
 import type { HealthResponse } from '@rondo/contracts';
 import type { Env } from '../config/env.js';
 import { getHealthStatus } from '../modules/health/health.controller.js';
+import { registerUserRoutes } from '../modules/users/users.controller.js';
+import { registerSportRoutes } from '../modules/sports/sports.controller.js';
+import { createClerkAuthAdapter } from '../infrastructure/auth/clerkAuthAdapter.js';
+import type { AuthAdapter } from '../infrastructure/auth/authAdapter.js';
+import { attachAuth } from './auth.js';
 
-export async function buildServer(env: Pick<Env, 'NODE_ENV'>) {
+export interface BuildServerDeps {
+  authAdapter?: AuthAdapter;
+}
+
+export async function buildServer(env: Pick<Env, 'NODE_ENV' | 'CLERK_SECRET_KEY'>, deps: BuildServerDeps = {}) {
   const app = Fastify({
     logger: env.NODE_ENV !== 'test',
   });
@@ -20,6 +29,12 @@ export async function buildServer(env: Pick<Env, 'NODE_ENV'>) {
   }));
 
   app.get('/health/database', async () => getHealthStatus());
+
+  const authAdapter = deps.authAdapter ?? createClerkAuthAdapter(env.CLERK_SECRET_KEY ?? '');
+  attachAuth(app, authAdapter);
+
+  registerUserRoutes(app);
+  registerSportRoutes(app);
 
   return app;
 }

@@ -4,7 +4,7 @@ import CreateMatchPage from '../src/CreateMatchPage';
 import { buildDayOptions } from '../src/dateOptions';
 
 describe('CreateMatchPage', () => {
-  it('renders the deportiva and logistica blocks', () => {
+  it('renders the deportiva and logistica blocks', async () => {
     render(<CreateMatchPage />);
 
     expect(screen.getByRole('heading', { name: /armar partido/i })).toBeTruthy();
@@ -17,23 +17,25 @@ describe('CreateMatchPage', () => {
     expect(screen.getByLabelText(/^club$/i)).toBeTruthy();
     expect(screen.getByLabelText(/^día$/i)).toBeTruthy();
     expect(screen.getAllByText(/sin definir/i).length).toBeGreaterThan(0);
+
+    await screen.findByText('Delantero');
   });
 
-  it('only shows posiciones requeridas for fútbol', () => {
+  it('only shows posiciones requeridas for fútbol', async () => {
     render(<CreateMatchPage />);
 
-    expect(screen.getByText(/posiciones requeridas/i)).toBeTruthy();
+    await screen.findByText(/posiciones requeridas/i);
 
-    fireEvent.change(screen.getByLabelText(/^deporte$/i), { target: { value: 'Básquet' } });
+    fireEvent.change(screen.getByLabelText(/^deporte$/i), { target: { value: 'Pádel' } });
 
     expect(screen.queryByText(/posiciones requeridas/i)).toBeFalsy();
   });
 
-  it('submits the match draft with a required day and optional horario/cancha left empty', () => {
+  it('submits the match draft with a required day and optional horario/cancha left empty', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
-    fireEvent.click(screen.getByText('Delantero'));
+    fireEvent.click(await screen.findByText('Delantero'));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     const expectedDate = buildDayOptions()[0]!.value;

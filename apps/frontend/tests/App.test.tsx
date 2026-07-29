@@ -45,10 +45,11 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /volver/i })).toBeTruthy();
   });
 
-  it('completes the wizard, shows the match on Home, and opens its detail with pending status', () => {
+  it('completes the wizard, shows the match on Home, and opens its detail with pending status', async () => {
     loginAndReachHome();
 
     fireEvent.click(screen.getByRole('button', { name: /armar partido/i }));
+    await screen.findByText('Delantero');
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     expect(screen.getByRole('heading', { name: /candidatos compatibles/i })).toBeTruthy();

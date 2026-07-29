@@ -14,10 +14,10 @@ describe('RegisterPage', () => {
     expect(screen.queryByText(/posición preferida/i)).toBeFalsy();
   });
 
-  it('shows sport-specific position chips once a sport is selected, and both groups when two are picked', () => {
+  it('shows sport-specific position chips once a sport is selected, and both groups when two are picked', async () => {
     render(<RegisterPage />);
 
-    fireEvent.click(screen.getByText('Fútbol'));
+    fireEvent.click(await screen.findByText('Fútbol'));
 
     expect(screen.getByText(/posición preferida/i)).toBeTruthy();
     expect(screen.getByText('Delantero')).toBeTruthy();

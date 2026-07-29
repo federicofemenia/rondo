@@ -7,7 +7,157 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model HealthCheck {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
+enum ClubStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ClubMembershipRole {
+  MEMBER
+  CLUB_ADMIN
+}
+
+enum ClubMembershipStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model User {
+  id          String   @id @default(uuid())
+  clerkUserId String   @unique @map("clerk_user_id")
+  email       String   @unique
+  firstName   String?  @map("first_name")
+  lastName    String?  @map("last_name")
+  avatarUrl   String?  @map("avatar_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  memberships ClubMembership[]
+
+  @@map("users")
+}
+
+model Club {
+  id          String     @id @default(uuid())
+  code        String     @unique
+  name        String
+  description String?
+  address     String?
+  city        String?
+  province    String?
+  timezone    String
+  status      ClubStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  memberships  ClubMembership[]
+  courts       Court[]
+  openingHours OpeningHour[]
+  news         ClubNews[]
+
+  @@map("clubs")
+}
+
+model ClubMembership {
+  id         String               @id @default(uuid())
+  clubId     String               @map("club_id")
+  userId     String               @map("user_id")
+  role       ClubMembershipRole   @default(MEMBER)
+  status     ClubMembershipStatus @default(ACTIVE)
+  isFavorite Boolean              @default(false) @map("is_favorite")
+  createdAt  DateTime             @default(now()) @map("created_at")
+  updatedAt  DateTime             @updatedAt @map("updated_at")
+
+  club Club @relation(fields: [clubId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([clubId, userId])
+  @@index([userId])
+  @@map("club_memberships")
+}
+
+model Sport {
+  id           String @id @default(uuid())
+  code         String @unique
+  name         String
+  displayOrder Int    @map("display_order")
+
+  modalities SportModality[]
+
+  @@map("sports")
+}
+
+model SportModality {
+  id           String @id @default(uuid())
+  sportId      String @map("sport_id")
+  code         String @unique
+  name         String
+  playersCount Int    @map("players_count")
+  displayOrder Int    @map("display_order")
+
+  sport  Sport   @relation(fields: [sportId], references: [id])
+  courts Court[]
+
+  @@unique([sportId, name])
+  @@index([sportId])
+  @@map("sport_modalities")
+}
+
+model Court {
+  id                  String   @id @default(uuid())
+  clubId              String   @map("club_id")
+  sportModalityId     String   @map("sport_modality_id")
+  code                String
+  name                String
+  displayOrder        Int      @map("display_order")
+  slotDurationMinutes Int      @map("slot_duration_minutes")
+  pricePerHour        Decimal  @map("price_per_hour") @db.Decimal(10, 2)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  club          Club          @relation(fields: [clubId], references: [id])
+  sportModality SportModality @relation(fields: [sportModalityId], references: [id])
+
+  @@unique([clubId, code])
+  @@index([clubId])
+  @@index([sportModalityId])
+  @@map("courts")
+}
+
+model OpeningHour {
+  id        String    @id @default(uuid())
+  clubId    String    @map("club_id")
+  dayOfWeek DayOfWeek @map("day_of_week")
+  opensAt   String    @map("opens_at")
+  closesAt  String    @map("closes_at")
+
+  club Club @relation(fields: [clubId], references: [id])
+
+  @@unique([clubId, dayOfWeek])
+  @@map("opening_hours")
+}
+
+model ClubNews {
+  id        String   @id @default(uuid())
+  clubId    String   @map("club_id")
+  title     String
+  message   String
+  published Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  club Club @relation(fields: [clubId], references: [id])
+
+  @@index([clubId])
+  @@map("club_news")
 }
