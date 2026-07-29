@@ -261,7 +261,7 @@ ORM
 
 ## Estado
 
-Pendiente
+Aceptada
 
 ## Alternativas
 
@@ -271,9 +271,23 @@ Drizzle
 
 TypeORM
 
-## Estado
+## Decisión
 
-Se decidirá durante la implementación.
+Prisma
+
+## Justificación
+
+Buen soporte de tipos con TypeScript.
+
+Migraciones integradas.
+
+Curva de adopción baja para el equipo.
+
+## Consecuencias
+
+El schema vive en `apps/backend/src/infrastructure/database/schema.prisma`.
+
+Las migraciones se generan junto al schema, dentro de `infrastructure/database/`.
 
 ---
 

@@ -14,12 +14,12 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@rondo/contracts": ["packages/contracts/src/index.ts"],
-      "@rondo/domain": ["packages/domain/src/index.ts"],
-      "@rondo/shared": ["packages/shared/src/index.ts"],
-      "@rondo/ui": ["packages/ui/src/index.ts"],
-      "@rondo/config": ["packages/config/src/index.ts"],
-      "@rondo/testing": ["packages/testing/src/index.ts"]
+      "@rondo/contracts": ["packages/contracts/dist/index.d.ts"],
+      "@rondo/domain": ["packages/domain/dist/index.d.ts"],
+      "@rondo/shared": ["packages/shared/dist/index.d.ts"],
+      "@rondo/ui": ["packages/ui/dist/index.d.ts"],
+      "@rondo/config": ["packages/config/dist/index.d.ts"],
+      "@rondo/testing": ["packages/testing/dist/index.d.ts"]
     }
   },
   "include": [],

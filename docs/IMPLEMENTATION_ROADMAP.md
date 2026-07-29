@@ -159,8 +159,8 @@ No aplica directamente a un usuario final; es infraestructura inicial.
 
 - workspace monorepo
 - shared packages
-- apps/web
-- apps/api
+- apps/frontend
+- apps/backend
 
 #### Entidades
 
@@ -1104,12 +1104,12 @@ El sistema permite reservar una cancha de forma básica y asociarla a un partido
 - package.json en la raíz
 - pnpm-workspace.yaml
 - tsconfig.base.json
-- apps/web/package.json
-- apps/web/tsconfig.json
-- apps/web/src/main.tsx
-- apps/api/package.json
-- apps/api/tsconfig.json
-- apps/api/src/main.ts
+- apps/frontend/package.json
+- apps/frontend/tsconfig.json
+- apps/frontend/src/main.tsx
+- apps/backend/package.json
+- apps/backend/tsconfig.json
+- apps/backend/src/main.ts
 - packages/shared/package.json
 - packages/domain/package.json
 - packages/application/package.json
@@ -1190,10 +1190,10 @@ pnpm --filter web dev
 
 #### Archivos a crear
 
-- apps/api/src/modules/auth/**
-- apps/api/src/modules/users/**
-- apps/web/src/features/auth/**
-- apps/web/src/features/users/**
+- apps/backend/src/modules/auth/**
+- apps/backend/src/modules/users/**
+- apps/frontend/src/features/auth/**
+- apps/frontend/src/features/users/**
 
 #### Dependencias necesarias
 

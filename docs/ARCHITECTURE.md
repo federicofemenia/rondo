@@ -159,8 +159,8 @@ No contiene reglas del negocio.
 ```text
 apps/
 
-web/
-api/
+frontend/
+backend/
 
 packages/
 

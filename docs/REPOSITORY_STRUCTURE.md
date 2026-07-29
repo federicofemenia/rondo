@@ -42,8 +42,8 @@ La estructura combinará:
 ```text
 rondo/
 ├── apps/
-│   ├── web/
-│   └── api/
+│   ├── frontend/
+│   └── backend/
 │
 ├── packages/
 │   ├── contracts/
@@ -100,12 +100,12 @@ Los paquetes compartidos no deberán depender de las aplicaciones.
 
 ---
 
-# Web
+# Frontend
 
 Ruta:
 
 ```text
-apps/web/
+apps/frontend/
 ```
 
 Responsabilidad:
@@ -121,7 +121,7 @@ Responsabilidad:
 Estructura:
 
 ```text
-apps/web/
+apps/frontend/
 ├── public/
 │
 ├── src/
@@ -138,6 +138,7 @@ apps/web/
 │   ├── styles/
 │   └── main.tsx
 │
+├── tests/
 ├── index.html
 ├── vite.config.ts
 ├── tsconfig.json
@@ -146,12 +147,12 @@ apps/web/
 
 ---
 
-# Web: app
+# Frontend: app
 
 Ruta:
 
 ```text
-apps/web/src/app/
+apps/frontend/src/app/
 ```
 
 Contiene la configuración general de la aplicación.
@@ -169,12 +170,12 @@ No deberá contener lógica específica de un dominio.
 
 ---
 
-# Web: features
+# Frontend: features
 
 Ruta:
 
 ```text
-apps/web/src/features/
+apps/frontend/src/features/
 ```
 
 Cada funcionalidad se organiza por dominio.
@@ -213,12 +214,12 @@ matches/
 
 ---
 
-# Web: api
+# Frontend: api
 
 Ruta de ejemplo:
 
 ```text
-apps/web/src/features/matches/api/
+apps/frontend/src/features/matches/api/
 ```
 
 Contiene:
@@ -233,12 +234,12 @@ No deberá contener reglas de negocio.
 
 ---
 
-# Web: application
+# Frontend: application
 
 Ruta de ejemplo:
 
 ```text
-apps/web/src/features/matches/application/
+apps/frontend/src/features/matches/application/
 ```
 
 Contiene lógica de aplicación propia del frontend.
@@ -255,12 +256,12 @@ No deberá reemplazar al dominio del backend.
 
 ---
 
-# Web: components
+# Frontend: components
 
 Ruta de ejemplo:
 
 ```text
-apps/web/src/features/matches/components/
+apps/frontend/src/features/matches/components/
 ```
 
 Contiene componentes visuales específicos del dominio.
@@ -282,19 +283,19 @@ packages/ui
 o a:
 
 ```text
-apps/web/src/components
+apps/frontend/src/components
 ```
 
 según su alcance.
 
 ---
 
-# Web: pages
+# Frontend: pages
 
 Ruta:
 
 ```text
-apps/web/src/pages/
+apps/frontend/src/pages/
 ```
 
 Contiene páginas de nivel de navegación.
@@ -310,12 +311,12 @@ Las páginas no deberán contener lógica de negocio compleja.
 
 ---
 
-# Web: infrastructure
+# Frontend: infrastructure
 
 Ruta:
 
 ```text
-apps/web/src/infrastructure/
+apps/frontend/src/infrastructure/
 ```
 
 Contiene adaptadores vinculados al navegador o al dispositivo.
@@ -344,12 +345,12 @@ Aquí vivirán implementaciones como:
 
 ---
 
-# Web: providers
+# Frontend: providers
 
 Ruta:
 
 ```text
-apps/web/src/providers/
+apps/frontend/src/providers/
 ```
 
 Contiene los providers de React necesarios para exponer dependencias.
@@ -366,12 +367,12 @@ Los providers deberán depender de interfaces, no de detalles de implementación
 
 ---
 
-# API
+# Backend
 
 Ruta:
 
 ```text
-apps/api/
+apps/backend/
 ```
 
 Responsabilidad:
@@ -387,7 +388,7 @@ Responsabilidad:
 Estructura:
 
 ```text
-apps/api/
+apps/backend/
 ├── src/
 │   ├── app/
 │   ├── modules/
@@ -403,12 +404,12 @@ apps/api/
 
 ---
 
-# API: app
+# Backend: app
 
 Ruta:
 
 ```text
-apps/api/src/app/
+apps/backend/src/app/
 ```
 
 Contiene:
@@ -424,12 +425,12 @@ No deberá contener reglas de negocio.
 
 ---
 
-# API: modules
+# Backend: modules
 
 Ruta:
 
 ```text
-apps/api/src/modules/
+apps/backend/src/modules/
 ```
 
 Cada dominio tendrá su propio módulo.
@@ -466,12 +467,12 @@ matches/
 
 ---
 
-# API: domain
+# Backend: domain
 
 Ruta de ejemplo:
 
 ```text
-apps/api/src/modules/matches/domain/
+apps/backend/src/modules/matches/domain/
 ```
 
 Contiene la lógica central del negocio.
@@ -512,12 +513,12 @@ No puede depender de:
 
 ---
 
-# API: application
+# Backend: application
 
 Ruta de ejemplo:
 
 ```text
-apps/api/src/modules/matches/application/
+apps/backend/src/modules/matches/application/
 ```
 
 Contiene los casos de uso.
@@ -554,12 +555,12 @@ Ejemplos:
 
 ---
 
-# API: infrastructure
+# Backend: infrastructure
 
 Ruta de ejemplo:
 
 ```text
-apps/api/src/modules/matches/infrastructure/
+apps/backend/src/modules/matches/infrastructure/
 ```
 
 Contiene implementaciones técnicas.
@@ -584,12 +585,12 @@ Ejemplos:
 
 ---
 
-# API: presentation
+# Backend: presentation
 
 Ruta de ejemplo:
 
 ```text
-apps/api/src/modules/matches/presentation/
+apps/backend/src/modules/matches/presentation/
 ```
 
 Contiene la exposición HTTP del módulo.
@@ -622,7 +623,7 @@ No deberá contener reglas de negocio.
 Ruta:
 
 ```text
-apps/api/src/infrastructure/
+apps/backend/src/infrastructure/
 ```
 
 Contiene infraestructura transversal.
@@ -717,7 +718,7 @@ Ejemplos posibles:
 
 No deberá convertirse en una carpeta genérica donde se mezclen todos los dominios.
 
-La lógica exclusiva del backend permanecerá en `apps/api`.
+La lógica exclusiva del backend permanecerá en `apps/backend`.
 
 ---
 
@@ -1071,8 +1072,8 @@ Cada aplicación gestionará sus propias variables.
 Ejemplo:
 
 ```text
-apps/web/.env.example
-apps/api/.env.example
+apps/frontend/.env.example
+apps/backend/.env.example
 ```
 
 Nunca deberán versionarse secretos.
@@ -1083,13 +1084,18 @@ Las variables deberán validarse al iniciar la aplicación.
 
 # Tests
 
-Los tests deberán ubicarse cerca del código cuando sean unitarios.
+Los tests unitarios y de componentes no deberán mezclarse con el código fuente.
+
+Cada aplicación mantendrá una carpeta `tests/` en su raíz que refleja la estructura de `src/`.
 
 Ejemplo:
 
 ```text
-create-match.use-case.ts
-create-match.use-case.test.ts
+apps/backend/
+├── src/
+│   └── modules/matches/application/create-match.use-case.ts
+└── tests/
+    └── modules/matches/application/create-match.use-case.test.ts
 ```
 
 Los tests de integración podrán ubicarse en:
@@ -1101,7 +1107,7 @@ tests/integration/
 Los tests end-to-end deberán ubicarse en:
 
 ```text
-apps/web/e2e/
+apps/frontend/e2e/
 ```
 
 o en un paquete específico si abarcan múltiples aplicaciones.
@@ -1115,7 +1121,7 @@ Las migraciones de base de datos deberán ubicarse dentro de la aplicación API.
 Ejemplo:
 
 ```text
-apps/api/src/infrastructure/database/migrations/
+apps/backend/src/infrastructure/database/migrations/
 ```
 
 Toda modificación del esquema deberá realizarse mediante una migración.
@@ -1129,7 +1135,7 @@ Nunca se modificará producción manualmente.
 Los datos iniciales deberán ubicarse en:
 
 ```text
-apps/api/src/infrastructure/database/seeds/
+apps/backend/src/infrastructure/database/seeds/
 ```
 
 Los seeds deberán ser:

@@ -390,6 +390,27 @@ No bloqueará automáticamente la participación.
 
 ---
 
+# Posiciones requeridas
+
+Campo opcional:
+
+```ts
+requiredPositions?: string[];
+```
+
+Solo aplica a deportes cuyo catálogo en `SPORTS` define posiciones (por ejemplo fútbol).
+
+El organizador podrá indicar qué posiciones necesita cubrir.
+
+Este dato es informativo en el MVP y se utilizará para:
+
+* resaltar candidatos compatibles;
+* alimentar un futuro algoritmo de matching por posición.
+
+No restringe automáticamente quién puede unirse al partido.
+
+---
+
 # Categoría
 
 ```ts
@@ -487,13 +508,16 @@ Para crear un partido se requiere:
 * organizador autenticado;
 * título;
 * deporte;
-* fecha y hora;
 * zona horaria;
 * máximo de participantes;
 * categoría;
 * política de ingreso;
 * visibilidad;
-* ubicación o cancha.
+* club.
+
+Fecha, hora y cancha son opcionales al crear el partido.
+
+Un usuario puede armar un partido sin saber todavía cuándo ni dónde va a jugarse, y completar esos datos más adelante, incluso mediante una reserva posterior.
 
 Estado inicial recomendado:
 

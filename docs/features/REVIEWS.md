@@ -15,9 +15,9 @@ En el MVP, los usuarios podrán valorar a otros participantes únicamente despu�
 El sistema permitirá:
 
 * valorar a otros participantes;
-* usar una puntuación de 1 a 5 estrellas;
+* usar dos puntuaciones de 1 a 5 estrellas: conducta y nivel de juego;
 * agregar un comentario opcional;
-* consultar el promedio de valoraciones;
+* consultar el promedio de valoraciones por categoría;
 * consultar la cantidad de valoraciones recibidas;
 * impedir valoraciones duplicadas;
 * restringir valoraciones a participantes reales del partido.
@@ -27,7 +27,7 @@ No incluirá:
 * valoración de clubes;
 * valoración de canchas;
 * valoración de árbitros;
-* múltiples categorías;
+* categorías adicionales a conducta y nivel de juego;
 * reputación automática;
 * rankings complejos;
 * denuncias;
@@ -69,7 +69,8 @@ interface Review {
   matchId: MatchId;
   reviewerUserId: UserId;
   reviewedUserId: UserId;
-  rating: number;
+  conductRating: number;
+  skillRating: number;
   comment?: string;
   createdAt: Date;
 }
@@ -94,13 +95,24 @@ Reglas:
 
 # Puntuación
 
-Campo:
+Rondo utiliza dos puntuaciones independientes por valoración.
+
+Campos:
 
 ```ts
-rating: number;
+conductRating: number;
+skillRating: number;
 ```
 
-Valores válidos:
+## Conducta
+
+Mide el comportamiento del participante: puntualidad, actitud, respeto por el resto del grupo.
+
+## Nivel de juego
+
+Mide el desempeño deportivo del participante en ese partido.
+
+Valores válidos para ambos campos:
 
 ```text
 1, 2, 3, 4 o 5
@@ -114,7 +126,7 @@ Significado sugerido:
 * 4: buena experiencia;
 * 5: excelente experiencia.
 
-El backend debe rechazar cualquier valor fuera de ese rango.
+El backend debe rechazar cualquier valor fuera de ese rango para cualquiera de los dos campos.
 
 ---
 
@@ -320,7 +332,8 @@ Body:
 ```json
 {
   "reviewedUserId": "user_uuid",
-  "rating": 5,
+  "conductRating": 5,
+  "skillRating": 4,
   "comment": "Llegó puntual y tuvo muy buena actitud."
 }
 ```
@@ -336,7 +349,8 @@ Body:
     "matchId": "match_uuid",
     "reviewerUserId": "reviewer_uuid",
     "reviewedUserId": "reviewed_uuid",
-    "rating": 5,
+    "conductRating": 5,
+    "skillRating": 4,
     "comment": "Llegó puntual y tuvo muy buena actitud.",
     "createdAt": "2026-07-28T15:00:00Z"
   }
@@ -357,7 +371,8 @@ Debe validar:
 * participación del autor;
 * participación del usuario valorado;
 * autor y destinatario diferentes;
-* rating válido;
+* conductRating válido;
+* skillRating válido;
 * comentario válido;
 * inexistencia de valoración previa.
 
@@ -395,7 +410,8 @@ Respuesta:
   "data": [
     {
       "id": "review_uuid",
-      "rating": 5,
+      "conductRating": 5,
+      "skillRating": 4,
       "comment": "Muy buen compañero.",
       "reviewer": {
         "id": "user_uuid",
@@ -425,7 +441,8 @@ Cada usuario tendrá un resumen:
 ```ts
 interface UserRatingSummary {
   userId: UserId;
-  averageRating: number;
+  averageConductRating: number;
+  averageSkillRating: number;
   reviewsCount: number;
 }
 ```
@@ -434,7 +451,8 @@ Ejemplo:
 
 ```json
 {
-  "averageRating": 4.7,
+  "averageConductRating": 4.8,
+  "averageSkillRating": 4.5,
   "reviewsCount": 18
 }
 ```
@@ -443,10 +461,11 @@ Ejemplo:
 
 # Cálculo del promedio
 
-El promedio se calcula con todas las valoraciones activas recibidas.
+Cada promedio se calcula por separado, con todas las valoraciones activas recibidas.
 
 ```text
-sum(rating) / reviews_count
+sum(conductRating) / reviews_count
+sum(skillRating) / reviews_count
 ```
 
 Se recomienda redondear a un decimal para mostrarlo.
@@ -470,7 +489,8 @@ Para el MVP existen dos opciones.
 Guardar en `users` o en una tabla de resumen:
 
 ```text
-average_rating
+average_conduct_rating
+average_skill_rating
 reviews_count
 ```
 
@@ -503,7 +523,8 @@ id
 match_id
 reviewer_user_id
 reviewed_user_id
-rating
+conduct_rating
+skill_rating
 comment
 created_at
 ```
@@ -511,7 +532,8 @@ created_at
 Restricciones:
 
 ```text
-rating BETWEEN 1 AND 5
+conduct_rating BETWEEN 1 AND 5
+skill_rating BETWEEN 1 AND 5
 reviewer_user_id <> reviewed_user_id
 ```
 
@@ -533,7 +555,8 @@ Campos:
 
 ```text
 user_id
-average_rating
+average_conduct_rating
+average_skill_rating
 reviews_count
 updated_at
 ```
@@ -596,7 +619,8 @@ interface ReviewCreatedEvent {
   matchId: MatchId;
   reviewerUserId: UserId;
   reviewedUserId: UserId;
-  rating: number;
+  conductRating: number;
+  skillRating: number;
   createdAt: Date;
 }
 ```
@@ -696,7 +720,7 @@ interface MatchReviewEligibility {
 ```ts
 interface RatingSummaryRepository {
   getByUserId(userId: UserId): Promise<UserRatingSummary | null>;
-  updateAfterReview(userId: UserId, rating: number): Promise<void>;
+  updateAfterReview(userId: UserId, conductRating: number, skillRating: number): Promise<void>;
 }
 ```
 
@@ -789,7 +813,8 @@ Por cada participante:
 
 * foto;
 * nombre;
-* selector de estrellas;
+* selector de estrellas para conducta;
+* selector de estrellas para nivel de juego;
 * comentario opcional;
 * botón de enviar.
 
@@ -808,7 +833,8 @@ La interfaz debe mostrar:
 El perfil debe mostrar:
 
 ```text
-⭐ 4.7
+⭐ 4.8 conducta
+⭐ 4.5 juego
 18 valoraciones
 ```
 
@@ -829,8 +855,10 @@ Sin valoraciones todavía
 Deben probarse:
 
 * valoración válida;
-* rating menor a 1;
-* rating mayor a 5;
+* conductRating menor a 1;
+* conductRating mayor a 5;
+* skillRating menor a 1;
+* skillRating mayor a 5;
 * comentario demasiado largo;
 * comentario con HTML;
 * usuario no participante;
@@ -854,7 +882,7 @@ Deben probarse:
 2. Solo participantes válidos pueden valorar.
 3. Solo se puede valorar a participantes válidos.
 4. Un usuario no puede valorarse a sí mismo.
-5. La puntuación debe estar entre 1 y 5.
+5. La conducta y el nivel de juego se puntúan por separado, cada uno entre 1 y 5.
 6. El comentario es opcional.
 7. Cada combinación de partido, autor y destinatario es única.
 8. Las valoraciones son inmutables en el MVP.

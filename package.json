@@ -8,15 +8,15 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "pnpm -r --parallel --filter @rondo/api --filter @rondo/web dev",
-    "dev:api": "pnpm --filter @rondo/api dev",
-    "dev:web": "pnpm --filter @rondo/web dev",
+    "dev": "pnpm -r --parallel --filter @rondo/backend --filter @rondo/frontend dev",
+    "dev:backend": "pnpm --filter @rondo/backend dev",
+    "dev:frontend": "pnpm --filter @rondo/frontend dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm exec eslint . --ext .ts,.tsx --max-warnings=0",
     "format": "pnpm exec prettier --write .",
     "typecheck": "pnpm exec tsc -p tsconfig.base.json --noEmit",
-    "prisma:generate": "pnpm --filter @rondo/api prisma:generate"
+    "prisma:generate": "pnpm --filter @rondo/backend prisma:generate"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
