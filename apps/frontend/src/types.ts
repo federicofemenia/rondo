@@ -22,9 +22,9 @@ export type MatchEntity = {
   time: string | null;
   bookingId: string | null;
   invitedCandidates: string[];
+  declinedCandidates: string[];
   participants: string[];
   chatMessages: ChatMessage[];
-  matchFinished: boolean;
   ratings: Record<string, PlayerRating>;
   createdAt: number;
 };

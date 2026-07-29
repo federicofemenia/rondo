@@ -14,6 +14,7 @@ import type { MatchDraft } from './CreateMatchPage';
 
 type CandidatesPageProps = {
   matchDraft?: MatchDraft | null;
+  excludeNames?: string[];
   onInviteCandidate?: (name: string) => void;
   onFinish?: () => void;
 };
@@ -67,11 +68,14 @@ const candidates = [
   },
 ];
 
-function CandidatesPage({ matchDraft, onInviteCandidate, onFinish }: CandidatesPageProps) {
+function CandidatesPage({ matchDraft, excludeNames = [], onInviteCandidate, onFinish }: CandidatesPageProps) {
   const [invitedName, setInvitedName] = useState<string | null>(null);
   const [reviewsFor, setReviewsFor] = useState<(typeof candidates)[number] | null>(null);
   const selectedSport = matchDraft?.sport ?? 'Fútbol';
-  const candidatesForSport = useMemo(() => candidates.filter((candidate) => candidate.sport === selectedSport), [selectedSport]);
+  const candidatesForSport = useMemo(
+    () => candidates.filter((candidate) => candidate.sport === selectedSport && !excludeNames.includes(candidate.name)),
+    [selectedSport, excludeNames],
+  );
 
   const handleInvite = (name: string) => {
     setInvitedName(name);
@@ -94,6 +98,10 @@ function CandidatesPage({ matchDraft, onInviteCandidate, onFinish }: CandidatesP
 
         {invitedName ? (
           <Typography sx={{ mb: 4, color: 'primary.light', fontWeight: 600 }}>Invitación enviada a {invitedName}.</Typography>
+        ) : null}
+
+        {candidatesForSport.length === 0 ? (
+          <Typography color="text.secondary">No hay más candidatos disponibles para invitar.</Typography>
         ) : null}
 
         <Stack spacing={3}>
@@ -144,9 +152,11 @@ function CandidatesPage({ matchDraft, onInviteCandidate, onFinish }: CandidatesP
         </Stack>
       </Card>
 
-      <Button fullWidth variant="contained" size="large" onClick={onFinish} sx={{ borderRadius: 999 }}>
-        Finalizar
-      </Button>
+      {onFinish ? (
+        <Button fullWidth variant="contained" size="large" onClick={onFinish} sx={{ borderRadius: 999 }}>
+          Finalizar
+        </Button>
+      ) : null}
 
       <PlayerReviewsDialog
         open={reviewsFor !== null}

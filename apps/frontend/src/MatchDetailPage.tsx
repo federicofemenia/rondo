@@ -14,12 +14,14 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
+import CandidatesPage from './CandidatesPage';
 import { buildDayOptions, timeRangeOptions } from './dateOptions';
 import EntityPickerDialog from './EntityPickerDialog';
 import type { PickerItem } from './EntityPickerDialog';
 import InvitationsPage from './InvitationsPage';
 import MatchChatPage from './MatchChatPage';
 import MatchManagementPage from './MatchManagementPage';
+import { isMatchFinished, isMatchFull } from './matchStatus';
 import MatchRatingsPage from './MatchRatingsPage';
 import type { MatchEntity, PlayerRating } from './types';
 
@@ -28,8 +30,9 @@ type MatchDetailPageProps = {
   unlinkedBookings: PickerItem[];
   onBack?: () => void;
   onSendMessage?: (text: string) => void;
-  onConfirmMatch?: () => void;
-  onFinishMatch?: () => void;
+  onInviteCandidate?: (name: string) => void;
+  onRemoveParticipant?: (name: string) => void;
+  onCancelMatch?: () => void;
   onRatePlayer?: (name: string, rating: PlayerRating) => void;
   onEditDate?: (date: string) => void;
   onEditTime?: (time: string) => void;
@@ -37,7 +40,7 @@ type MatchDetailPageProps = {
   onAssociateBooking?: (bookingId: string) => void;
 };
 
-type Tab = 'datos' | 'candidatos' | 'gestion' | 'chat' | 'valoraciones';
+type Tab = 'datos' | 'candidatos' | 'invitar' | 'gestion' | 'chat' | 'valoraciones';
 
 function StatusRow({ label, done, value }: { label: string; done: boolean; value?: string }) {
   return (
@@ -62,8 +65,9 @@ function MatchDetailPage({
   unlinkedBookings,
   onBack,
   onSendMessage,
-  onConfirmMatch,
-  onFinishMatch,
+  onInviteCandidate,
+  onRemoveParticipant,
+  onCancelMatch,
   onRatePlayer,
   onEditDate,
   onEditTime,
@@ -75,6 +79,10 @@ function MatchDetailPage({
   const [associateOpen, setAssociateOpen] = useState(false);
   const [dateDraft, setDateDraft] = useState(match.date);
   const [timeDraft, setTimeDraft] = useState(match.time ?? '');
+
+  const full = isMatchFull(match);
+  const finished = isMatchFinished(match);
+  const statusLabel = finished ? 'Finalizado' : full ? 'Confirmado' : 'Buscando jugadores';
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -97,27 +105,39 @@ function MatchDetailPage({
         >
           <Tab value="datos" label="Datos" sx={{ minHeight: 0 }} />
           <Tab value="candidatos" label="Candidatos" sx={{ minHeight: 0 }} />
+          <Tab value="invitar" label="Invitar" sx={{ minHeight: 0 }} />
           <Tab value="gestion" label="Gestión" sx={{ minHeight: 0 }} />
           <Tab value="chat" label="Chat" sx={{ minHeight: 0 }} />
-          {match.matchFinished ? <Tab value="valoraciones" label="Valoraciones" sx={{ minHeight: 0 }} /> : null}
+          {finished ? <Tab value="valoraciones" label="Valoraciones" sx={{ minHeight: 0 }} /> : null}
         </Tabs>
       </Box>
 
       {tab === 'datos' ? (
         <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: 12 }}>
           <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', mb: 6 }}>
-            <Stack direction="row" spacing={3} alignItems="center" sx={{ mb: 4 }}>
-              <Avatar sx={{ width: 56, height: 56, bgcolor: 'rgba(46, 204, 113, 0.16)' }}>
-                <SportsSoccerRoundedIcon sx={{ color: 'primary.main' }} />
-              </Avatar>
-              <Box>
-                <Typography variant="h1" sx={{ fontSize: '1.5rem' }}>
-                  {match.sport}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {match.modality} • {match.clubName}
-                </Typography>
-              </Box>
+            <Stack direction="row" spacing={3} alignItems="center" justifyContent="space-between" sx={{ mb: 4 }}>
+              <Stack direction="row" spacing={3} alignItems="center">
+                <Avatar sx={{ width: 56, height: 56, bgcolor: 'rgba(46, 204, 113, 0.16)' }}>
+                  <SportsSoccerRoundedIcon sx={{ color: 'primary.main' }} />
+                </Avatar>
+                <Box>
+                  <Typography variant="h1" sx={{ fontSize: '1.5rem' }}>
+                    {match.sport}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {match.modality} • {match.clubName}
+                  </Typography>
+                </Box>
+              </Stack>
+              <Chip
+                label={statusLabel}
+                size="small"
+                sx={{
+                  fontWeight: 700,
+                  bgcolor: finished ? 'background.default' : full ? 'rgba(46, 204, 113, 0.16)' : 'rgba(245, 197, 66, 0.16)',
+                  color: finished ? 'text.secondary' : full ? 'primary.light' : 'warning.main',
+                }}
+              />
             </Stack>
             <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
               <Chip label={match.date} sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }} />
@@ -201,15 +221,25 @@ function MatchDetailPage({
         </Box>
       ) : null}
 
-      {tab === 'candidatos' ? <InvitationsPage invitedCandidates={match.invitedCandidates} /> : null}
+      {tab === 'candidatos' ? (
+        <InvitationsPage
+          invitedCandidates={match.invitedCandidates}
+          participants={match.participants}
+          declinedCandidates={match.declinedCandidates}
+        />
+      ) : null}
+
+      {tab === 'invitar' ? (
+        <CandidatesPage matchDraft={match} excludeNames={match.invitedCandidates} onInviteCandidate={onInviteCandidate} />
+      ) : null}
 
       {tab === 'gestion' ? (
-        <MatchManagementPage participants={match.participants} onConfirm={onConfirmMatch} onFinish={onFinishMatch} />
+        <MatchManagementPage participants={match.participants} onRemoveParticipant={onRemoveParticipant} onCancelMatch={onCancelMatch} />
       ) : null}
 
       {tab === 'chat' ? <MatchChatPage initialMessages={match.chatMessages} onSendMessage={onSendMessage} /> : null}
 
-      {tab === 'valoraciones' && match.matchFinished ? (
+      {tab === 'valoraciones' && finished ? (
         <MatchRatingsPage participants={match.participants} ratings={match.ratings} onRatePlayer={onRatePlayer} />
       ) : null}
 

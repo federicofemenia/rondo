@@ -112,9 +112,9 @@ function App() {
         time: matchDraft.time,
         bookingId: null,
         invitedCandidates,
-        participants: invitedCandidates,
+        declinedCandidates: [],
+        participants: [],
         chatMessages: [],
-        matchFinished: false,
         ratings: {},
         createdAt: Date.now(),
       };
@@ -181,8 +181,27 @@ function App() {
     );
   };
 
-  const handleFinishMatch = (matchId: string) => {
-    setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, matchFinished: true } : match)));
+  const handleInviteMoreCandidates = (matchId: string, name: string) => {
+    setMatches((current) =>
+      current.map((match) =>
+        match.id === matchId
+          ? { ...match, invitedCandidates: match.invitedCandidates.includes(name) ? match.invitedCandidates : [...match.invitedCandidates, name] }
+          : match,
+      ),
+    );
+  };
+
+  const handleRemoveParticipant = (matchId: string, name: string) => {
+    setMatches((current) =>
+      current.map((match) =>
+        match.id === matchId ? { ...match, participants: match.participants.filter((participant) => participant !== name) } : match,
+      ),
+    );
+  };
+
+  const handleCancelMatch = (matchId: string) => {
+    setMatches((current) => current.filter((match) => match.id !== matchId));
+    setCurrentView('home');
   };
 
   const handleRatePlayer = (matchId: string, name: string, rating: PlayerRating) => {
@@ -240,7 +259,9 @@ function App() {
         unlinkedBookings={unlinkedBookings}
         onBack={() => setCurrentView('home')}
         onSendMessage={(text) => handleSendMessage(match.id, text)}
-        onFinishMatch={() => handleFinishMatch(match.id)}
+        onInviteCandidate={(name) => handleInviteMoreCandidates(match.id, name)}
+        onRemoveParticipant={(name) => handleRemoveParticipant(match.id, name)}
+        onCancelMatch={() => handleCancelMatch(match.id)}
         onRatePlayer={(name, rating) => handleRatePlayer(match.id, name, rating)}
         onEditDate={(date) => handleEditMatchDate(match.id, date)}
         onEditTime={(time) => handleEditMatchTime(match.id, time)}
@@ -301,7 +322,10 @@ function App() {
       if (!match.courtName) {
         pendingActions.push({ id: `${match.id}-court`, label: `Tu partido de ${match.sport} todavía no tiene cancha.`, onClick: () => openMatchDetail(match.id) });
       }
-      if (match.invitedCandidates.length > 0) {
+      const pendingCandidatesCount = match.invitedCandidates.filter(
+        (name) => !match.participants.includes(name) && !match.declinedCandidates.includes(name),
+      ).length;
+      if (pendingCandidatesCount > 0) {
         pendingActions.push({
           id: `${match.id}-invites`,
           label: `Tenés invitaciones pendientes en tu partido de ${match.sport}.`,
