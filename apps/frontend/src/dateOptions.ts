@@ -18,4 +18,13 @@ export function buildDayOptions(count = 10): DayOption[] {
   return options;
 }
 
-export const timeRangeOptions = ['13:00 - 14:00', '14:00 - 15:00', '15:00 - 16:00', '16:00 - 17:00', '17:00 - 18:00'];
+export type TimeRangeOption = {
+  value: string;
+  label: string;
+};
+
+export const timeRangeOptions: TimeRangeOption[] = [
+  { value: '10:00 - 13:00', label: 'Mañana (10:00 - 13:00)' },
+  { value: '13:00 - 19:00', label: 'Tarde (13:00 - 19:00)' },
+  { value: '20:00 - 24:00', label: 'Noche (20:00 - 24:00)' },
+];

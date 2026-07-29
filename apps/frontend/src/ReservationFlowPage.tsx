@@ -18,6 +18,7 @@ import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import RemoveRoundedIcon from '@mui/icons-material/RemoveRounded';
 import SportsTennisRoundedIcon from '@mui/icons-material/SportsTennisRounded';
+import PageFooter from './PageFooter';
 
 export type ConfirmedBooking = {
   courtName: string;
@@ -125,7 +126,7 @@ function ReservationFlowPage({ onBack, onConfirm, contextLabel }: ReservationFlo
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', flexDirection: 'column' }}>
-      <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pt: 5, pb: 4, width: '100%' }}>
+      <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pt: 5, pb: '120px', width: '100%' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 4 }}>
           <IconButton aria-label="Volver" onClick={onBack} sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
             <ArrowBackRoundedIcon />
@@ -294,8 +295,8 @@ function ReservationFlowPage({ onBack, onConfirm, contextLabel }: ReservationFlo
       <Box sx={{ flexGrow: 1 }} />
 
       {selectedSlot && selectedCourt ? (
-        <Box sx={{ position: 'sticky', bottom: 0, bgcolor: 'background.paper', borderTop: '1px solid', borderColor: 'divider', px: 4, py: 3 }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ maxWidth: 480, mx: 'auto' }}>
+        <PageFooter>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
             <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
               <CalendarMonthRoundedIcon sx={{ color: 'primary.main', flexShrink: 0 }} />
               <Box sx={{ minWidth: 0 }}>
@@ -314,7 +315,7 @@ function ReservationFlowPage({ onBack, onConfirm, contextLabel }: ReservationFlo
               Continuar
             </Button>
           </Stack>
-        </Box>
+        </PageFooter>
       ) : null}
     </Box>
   );

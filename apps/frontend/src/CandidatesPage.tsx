@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -8,6 +9,9 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
+import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
+import { calculateAge } from './age';
+import PageFooter from './PageFooter';
 import PlayerReviewsDialog from './PlayerReviewsDialog';
 import type { CandidateReview } from './PlayerReviewsDialog';
 import type { MatchDraft } from './CreateMatchPage';
@@ -33,6 +37,8 @@ const candidates = [
     sport: 'Fútbol',
     availability: 'Sábado • 18:00',
     position: 'Delantero',
+    birthDate: '1996-03-14',
+    photoUrl: null as string | null,
     conduct: 4.8,
     skill: 4.5,
     reviews: [
@@ -47,6 +53,8 @@ const candidates = [
     sport: 'Fútbol',
     availability: 'Domingo • 17:00',
     position: 'Mediocampista',
+    birthDate: '1999-08-02',
+    photoUrl: null as string | null,
     conduct: 4.6,
     skill: 4.2,
     reviews: [
@@ -60,6 +68,8 @@ const candidates = [
     sport: 'Básquet',
     availability: 'Viernes • 20:00',
     position: 'Defensor',
+    birthDate: '1993-11-20',
+    photoUrl: null as string | null,
     conduct: 4.9,
     skill: 4.7,
     reviews: [
@@ -83,7 +93,7 @@ function CandidatesPage({ matchDraft, excludeNames = [], onInviteCandidate, onFi
   };
 
   return (
-    <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: 12 }}>
+    <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: onFinish ? '120px' : 12 }}>
       <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', mb: 6 }}>
         <Typography variant="h1" sx={{ mb: 2 }}>
           Candidatos compatibles
@@ -105,22 +115,33 @@ function CandidatesPage({ matchDraft, excludeNames = [], onInviteCandidate, onFi
         ) : null}
 
         <Stack spacing={3}>
-          {candidatesForSport.map((candidate) => (
+          {candidatesForSport.map((candidate) => {
+            const age = calculateAge(candidate.birthDate);
+            return (
             <Card key={candidate.id} variant="outlined" sx={{ p: 4, bgcolor: 'background.default', borderColor: 'divider' }}>
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="h3" component="h2">
-                    {candidate.name}
-                  </Typography>
-                  <Tooltip title={candidate.position}>
-                    <Chip label={positions[candidate.position] ?? candidate.position} size="small" sx={{ bgcolor: 'background.paper', color: 'text.secondary', fontWeight: 700 }} />
-                  </Tooltip>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Avatar
+                    src={candidate.photoUrl ?? undefined}
+                    sx={{ width: 40, height: 40, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}
+                  >
+                    {!candidate.photoUrl ? <PersonRoundedIcon sx={{ color: 'text.secondary', fontSize: '1.2rem' }} /> : null}
+                  </Avatar>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="h3" component="h2">
+                      {candidate.name}
+                    </Typography>
+                    <Tooltip title={candidate.position}>
+                      <Chip label={positions[candidate.position] ?? candidate.position} size="small" sx={{ bgcolor: 'background.paper', color: 'text.secondary', fontWeight: 700 }} />
+                    </Tooltip>
+                  </Stack>
                 </Stack>
                 <Chip label="Disponible" size="small" sx={{ bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main', fontWeight: 700 }} />
               </Stack>
 
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {candidate.sport} • {candidate.availability}
+                {candidate.sport}
+                {age !== null ? ` • ${age} años` : ''} • {candidate.availability}
               </Typography>
 
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 3, color: 'text.secondary' }}>
@@ -148,14 +169,17 @@ function CandidatesPage({ matchDraft, excludeNames = [], onInviteCandidate, onFi
                 Invitar
               </Button>
             </Card>
-          ))}
+            );
+          })}
         </Stack>
       </Card>
 
       {onFinish ? (
-        <Button fullWidth variant="contained" size="large" onClick={onFinish} sx={{ borderRadius: 999 }}>
-          Finalizar
-        </Button>
+        <PageFooter>
+          <Button fullWidth variant="contained" size="large" onClick={onFinish} sx={{ borderRadius: 999 }}>
+            Finalizar
+          </Button>
+        </PageFooter>
       ) : null}
 
       <PlayerReviewsDialog

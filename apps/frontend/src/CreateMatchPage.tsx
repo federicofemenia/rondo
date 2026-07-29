@@ -8,6 +8,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import { buildDayOptions, timeRangeOptions } from './dateOptions';
+import PageFooter from './PageFooter';
 
 export type MatchDraft = {
   sport: string;
@@ -76,18 +77,18 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   };
 
   return (
-    <Box component="main" sx={{ minHeight: '100vh', px: 2, pb: 12 }}>
-      <Card variant="outlined" sx={{ maxWidth: 480, mx: 'auto', p: 6, borderColor: 'divider' }}>
-        <Box sx={{ mb: 6 }}>
-          <Typography variant="h1" sx={{ mb: 1 }}>
-            Armar partido
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Elegí el día del partido. El horario y la cancha podés definirlos más adelante.
-          </Typography>
-        </Box>
+    <Box component="form" onSubmit={handleSubmit} sx={{ minHeight: '100vh' }}>
+      <Box sx={{ px: 2, pb: '120px' }}>
+        <Card variant="outlined" sx={{ maxWidth: 480, mx: 'auto', p: 6, borderColor: 'divider' }}>
+          <Box sx={{ mb: 6 }}>
+            <Typography variant="h1" sx={{ mb: 1 }}>
+              Armar partido
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Elegí el día del partido. El horario y la cancha podés definirlos más adelante.
+            </Typography>
+          </Box>
 
-        <Box component="form" onSubmit={handleSubmit}>
           <Stack spacing={5}>
             <Box>
               <Typography sx={{ fontWeight: 700, mb: 3 }}>Información deportiva</Typography>
@@ -231,25 +232,27 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   value={time}
                   onChange={(event) => setTime(event.target.value)}
                   slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                  helperText="Franjas disponibles entre las 13 y las 18 hs."
+                  helperText="Elegí una franja: mañana, tarde o noche."
                   fullWidth
                 >
                   <option value="">Sin definir</option>
                   {timeRangeOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </TextField>
               </Stack>
             </Box>
-
-            <Button type="submit" variant="contained" size="large" sx={{ borderRadius: 999 }}>
-              Armar partido
-            </Button>
           </Stack>
-        </Box>
-      </Card>
+        </Card>
+      </Box>
+
+      <PageFooter>
+        <Button type="submit" fullWidth variant="contained" size="large" sx={{ borderRadius: 999 }}>
+          Armar partido
+        </Button>
+      </PageFooter>
     </Box>
   );
 }

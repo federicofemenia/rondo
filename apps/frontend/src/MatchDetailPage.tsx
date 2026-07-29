@@ -186,13 +186,16 @@ function MatchDetailPage({
                 value={timeDraft}
                 onChange={(event) => setTimeDraft(event.target.value)}
                 slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                helperText="Franjas disponibles entre las 13 y las 18 hs."
+                helperText="Elegí una franja: mañana, tarde o noche."
                 fullWidth
               >
                 <option value="">Sin definir</option>
+                {timeDraft && !timeRangeOptions.some((option) => option.value === timeDraft) ? (
+                  <option value={timeDraft}>{timeDraft}</option>
+                ) : null}
                 {timeRangeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </TextField>

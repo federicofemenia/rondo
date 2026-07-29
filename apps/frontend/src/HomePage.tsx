@@ -6,12 +6,8 @@ import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
-import Badge from '@mui/material/Badge';
 import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
-import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded';
-import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import PercentRoundedIcon from '@mui/icons-material/PercentRounded';
@@ -88,21 +84,9 @@ function HomePage({
           sx={{ mt: 3, bgcolor: 'rgba(245, 197, 66, 0.16)', color: 'warning.main', fontWeight: 700 }}
         />
       ) : null}
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ pt: 3, mb: 5 }}>
-        <Typography variant="h2" component="h1">
-          Hola, {playerName} 👋
-        </Typography>
-        <Stack direction="row" spacing={1}>
-          <IconButton aria-label="Notificaciones" sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
-            <Badge color="warning" variant="dot">
-              <NotificationsNoneRoundedIcon />
-            </Badge>
-          </IconButton>
-          <IconButton aria-label="Chat" sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
-            <ChatBubbleOutlineRoundedIcon />
-          </IconButton>
-        </Stack>
-      </Stack>
+      <Typography variant="h2" component="h1" sx={{ pt: 3, mb: 5 }}>
+        Hola, {playerName} 👋
+      </Typography>
 
       <Button
         variant="outlined"
