@@ -32,6 +32,20 @@ enum DayOfWeek {
   SUNDAY
 }
 
+enum MatchStatus {
+  ORGANIZING
+  FULL
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum StatusChangedByType {
+  USER
+  SYSTEM
+}
+
 model User {
   id          String   @id @default(uuid())
   clerkUserId String   @unique @map("clerk_user_id")
@@ -42,7 +56,12 @@ model User {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  memberships ClubMembership[]
+  memberships         ClubMembership[]
+  organizedMatches    Match[]            @relation("MatchOrganizer")
+  matchStatusChanges  Match[]            @relation("MatchStatusChangedBy")
+  matchParticipations MatchParticipant[]
+  ratingsGiven        PlayerRating[]     @relation("RatingAuthor")
+  ratingsReceived     PlayerRating[]     @relation("RatingTarget")
 
   @@map("users")
 }
@@ -64,6 +83,7 @@ model Club {
   courts       Court[]
   openingHours OpeningHour[]
   news         ClubNews[]
+  matches      Match[]
 
   @@map("clubs")
 }
@@ -105,8 +125,9 @@ model SportModality {
   playersCount Int    @map("players_count")
   displayOrder Int    @map("display_order")
 
-  sport  Sport   @relation(fields: [sportId], references: [id])
-  courts Court[]
+  sport   Sport   @relation(fields: [sportId], references: [id])
+  courts  Court[]
+  matches Match[]
 
   @@unique([sportId, name])
   @@index([sportId])
@@ -128,6 +149,7 @@ model Court {
 
   club          Club          @relation(fields: [clubId], references: [id])
   sportModality SportModality @relation(fields: [sportModalityId], references: [id])
+  matches       Match[]
 
   @@unique([clubId, code])
   @@index([clubId])
@@ -160,4 +182,78 @@ model ClubNews {
 
   @@index([clubId])
   @@map("club_news")
+}
+
+model Match {
+  id              String  @id @default(uuid())
+  clubId          String? @map("club_id")
+  sportModalityId String  @map("sport_modality_id")
+  courtId         String? @map("court_id")
+  organizerUserId String  @map("organizer_user_id")
+
+  minPlayers Int @map("min_players")
+  maxPlayers Int @map("max_players")
+
+  startsAt DateTime @map("starts_at")
+  endsAt   DateTime @map("ends_at")
+
+  status                MatchStatus         @default(ORGANIZING)
+  statusChangedAt       DateTime            @map("status_changed_at")
+  statusChangedByType   StatusChangedByType @map("status_changed_by_type")
+  statusChangedByUserId String?             @map("status_changed_by_user_id")
+  cancellationReason    String?             @map("cancellation_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  club                Club?              @relation(fields: [clubId], references: [id])
+  sportModality       SportModality      @relation(fields: [sportModalityId], references: [id])
+  court               Court?             @relation(fields: [courtId], references: [id])
+  organizer           User               @relation("MatchOrganizer", fields: [organizerUserId], references: [id])
+  statusChangedByUser User?              @relation("MatchStatusChangedBy", fields: [statusChangedByUserId], references: [id])
+  participants        MatchParticipant[]
+  ratings             PlayerRating[]
+
+  @@index([clubId])
+  @@index([sportModalityId])
+  @@index([organizerUserId])
+  @@index([status])
+  @@index([endsAt])
+  @@map("matches")
+}
+
+model MatchParticipant {
+  id          String   @id @default(uuid())
+  matchId     String   @map("match_id")
+  userId      String   @map("user_id")
+  confirmedAt DateTime @default(now()) @map("confirmed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  match Match @relation(fields: [matchId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([matchId, userId])
+  @@index([userId])
+  @@map("match_participants")
+}
+
+model PlayerRating {
+  id            String   @id @default(uuid())
+  matchId       String   @map("match_id")
+  authorUserId  String   @map("author_user_id")
+  targetUserId  String   @map("target_user_id")
+  gameplayScore Int      @map("gameplay_score")
+  conductScore  Int      @map("conduct_score")
+  comment       String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  match  Match @relation(fields: [matchId], references: [id])
+  author User  @relation("RatingAuthor", fields: [authorUserId], references: [id])
+  target User  @relation("RatingTarget", fields: [targetUserId], references: [id])
+
+  @@unique([matchId, authorUserId, targetUserId])
+  @@index([matchId])
+  @@index([targetUserId])
+  @@map("player_ratings")
 }

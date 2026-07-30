@@ -18,6 +18,7 @@ import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 export type PendingAction = {
   id: string;
   label: string;
+  description?: string;
   onClick: () => void;
 };
 
@@ -27,6 +28,8 @@ export type UpcomingEventItem = {
   title: string;
   subtitle: string;
   meta: string;
+  chipLabel: string;
+  chipColor: { bgcolor: string; color: string };
   onClick: () => void;
 };
 
@@ -137,9 +140,16 @@ function HomePage({
               <Card key={action.id} variant="outlined" sx={{ borderColor: 'divider', bgcolor: 'background.paper' }}>
                 <CardActionArea onClick={action.onClick} sx={{ p: 3, display: 'flex', gap: 3, alignItems: 'center' }}>
                   <WarningAmberRoundedIcon sx={{ color: 'warning.main', flexShrink: 0 }} />
-                  <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>
-                    {action.label}
-                  </Typography>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {action.label}
+                    </Typography>
+                    {action.description ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {action.description}
+                      </Typography>
+                    ) : null}
+                  </Box>
                   <ChevronRightRoundedIcon sx={{ color: 'text.secondary' }} />
                 </CardActionArea>
               </Card>
@@ -163,6 +173,18 @@ function HomePage({
                     )}
                   </Avatar>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Chip
+                      label={event.chipLabel}
+                      size="small"
+                      sx={{
+                        mb: 1,
+                        height: 20,
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        bgcolor: event.chipColor.bgcolor,
+                        color: event.chipColor.color,
+                      }}
+                    />
                     <Typography variant="body1" sx={{ fontWeight: 700 }}>
                       {event.title}
                     </Typography>

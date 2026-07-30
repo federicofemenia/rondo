@@ -133,7 +133,11 @@ importers:
 
   packages/config: {}
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
 
   packages/domain: {}
 

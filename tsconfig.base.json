@@ -12,15 +12,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
-    "paths": {
-      "@rondo/contracts": ["packages/contracts/dist/index.d.ts"],
-      "@rondo/domain": ["packages/domain/dist/index.d.ts"],
-      "@rondo/shared": ["packages/shared/dist/index.d.ts"],
-      "@rondo/ui": ["packages/ui/dist/index.d.ts"],
-      "@rondo/config": ["packages/config/dist/index.d.ts"],
-      "@rondo/testing": ["packages/testing/dist/index.d.ts"]
-    }
+    "baseUrl": "."
   },
   "include": [],
   "exclude": ["node_modules", "dist", ".turbo"]

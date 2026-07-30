@@ -20,10 +20,14 @@ import HomePage from './HomePage';
 import type { PendingAction, UpcomingEventItem } from './HomePage';
 import LoginPage from './LoginPage';
 import MatchDetailPage from './MatchDetailPage';
+import type { Tab as MatchDetailTab } from './MatchDetailPage';
+import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS, isRatingsOpen, isVisibleOnHome, resolveMatchStatus } from './matchStatus';
 import RegisterPage from './RegisterPage';
 import ReservationFlowPage from './ReservationFlowPage';
 import type { ConfirmedBooking } from './ReservationFlowPage';
 import type { BookingEntity, MatchEntity, PlayerRating } from './types';
+
+const BOOKING_CHIP_COLOR = { bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main' };
 
 type View =
   | 'login'
@@ -60,6 +64,7 @@ function App() {
   const [invitedCandidates, setInvitedCandidates] = useState<string[]>([]);
 
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [initialMatchTab, setInitialMatchTab] = useState<MatchDetailTab | undefined>(undefined);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [reservationMatchContext, setReservationMatchContext] = useState<string | null>(null);
 
@@ -88,8 +93,9 @@ function App() {
     setCurrentView('reservation');
   };
 
-  const openMatchDetail = (matchId: string) => {
+  const openMatchDetail = (matchId: string, tab?: MatchDetailTab) => {
     setSelectedMatchId(matchId);
+    setInitialMatchTab(tab);
     setCurrentView('match-detail');
   };
 
@@ -127,6 +133,10 @@ function App() {
         chatMessages: [],
         ratings: {},
         createdAt: Date.now(),
+        cancelledAt: null,
+        cancelledByType: null,
+        cancelledByName: null,
+        cancellationReason: null,
       };
       setMatches((current) => [...current, newMatch]);
     }
@@ -224,7 +234,19 @@ function App() {
   };
 
   const handleCancelMatch = (matchId: string) => {
-    setMatches((current) => current.filter((match) => match.id !== matchId));
+    setMatches((current) =>
+      current.map((match) =>
+        match.id === matchId
+          ? {
+              ...match,
+              cancelledAt: new Date().toISOString(),
+              cancelledByType: 'USER',
+              cancelledByName: 'Federico',
+              cancellationReason: null,
+            }
+          : match,
+      ),
+    );
     setCurrentView('home');
   };
 
@@ -296,6 +318,7 @@ function App() {
         <MatchDetailPage
           match={match}
           unlinkedBookings={unlinkedBookings}
+          initialTab={initialMatchTab}
           onBack={() => setCurrentView('home')}
           onSendMessage={(text) => handleSendMessage(match.id, text)}
           onInviteCandidate={(name) => handleInviteMoreCandidates(match.id, name)}
@@ -356,24 +379,41 @@ function App() {
     if (!isWizardStep(currentView)) {
       const pendingActions: PendingAction[] = [];
       matches.forEach((match) => {
-        if (!match.clubName) {
+        const matchStatus = resolveMatchStatus(match);
+        const isActive = matchStatus === 'ORGANIZING' || matchStatus === 'FULL';
+
+        if (isActive && !match.clubName) {
           pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene club.`, onClick: () => openMatchDetail(match.id) });
         }
-        if (!match.time) {
+        if (isActive && !match.time) {
           pendingActions.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario.`, onClick: () => openMatchDetail(match.id) });
         }
-        if (!match.courtName) {
+        if (isActive && !match.courtName) {
           pendingActions.push({ id: `${match.id}-court`, label: `Tu partido de ${match.sport} todavía no tiene cancha.`, onClick: () => openMatchDetail(match.id) });
         }
-        const pendingCandidatesCount = match.invitedCandidates.filter(
-          (name) => !match.participants.includes(name) && !match.declinedCandidates.includes(name),
-        ).length;
-        if (pendingCandidatesCount > 0) {
-          pendingActions.push({
-            id: `${match.id}-invites`,
-            label: `Tenés invitaciones pendientes en tu partido de ${match.sport}.`,
-            onClick: () => openMatchDetail(match.id),
-          });
+        if (isActive) {
+          const pendingCandidatesCount = match.invitedCandidates.filter(
+            (name) => !match.participants.includes(name) && !match.declinedCandidates.includes(name),
+          ).length;
+          if (pendingCandidatesCount > 0) {
+            pendingActions.push({
+              id: `${match.id}-invites`,
+              label: `Tenés invitaciones pendientes en tu partido de ${match.sport}.`,
+              onClick: () => openMatchDetail(match.id),
+            });
+          }
+        }
+
+        if (matchStatus === 'COMPLETED' && isRatingsOpen(match)) {
+          const pendingRatingsCount = match.participants.filter((name) => !match.ratings[name]).length;
+          if (pendingRatingsCount > 0) {
+            pendingActions.push({
+              id: `${match.id}-ratings`,
+              label: 'Valorá a los jugadores',
+              description: `${match.sport} · ${match.modality} · Te faltan valorar ${pendingRatingsCount} participante${pendingRatingsCount === 1 ? '' : 's'}`,
+              onClick: () => openMatchDetail(match.id, 'valoraciones'),
+            });
+          }
         }
       });
       bookings.forEach((booking) => {
@@ -382,17 +422,22 @@ function App() {
         }
       });
 
-      const upcomingEvents: UpcomingEventItem[] = [...matches, ...bookings]
+      const visibleMatches = matches.filter((match) => isVisibleOnHome(match));
+
+      const upcomingEvents: UpcomingEventItem[] = [...visibleMatches, ...bookings]
         .slice()
         .sort((a, b) => a.createdAt - b.createdAt)
         .map((entity) => {
           if ('sport' in entity) {
+            const matchStatus = resolveMatchStatus(entity);
             return {
               id: entity.id,
               kind: 'match' as const,
               title: `${entity.sport} • ${entity.modality}`,
               subtitle: entity.time ? `${entity.date} • ${entity.time}` : `${entity.date} • Horario a definir`,
               meta: `${entity.participants.length}/${entity.maxPlayers}`,
+              chipLabel: MATCH_STATUS_LABELS[matchStatus],
+              chipColor: MATCH_STATUS_CHIP_STYLES[matchStatus],
               onClick: () => openMatchDetail(entity.id),
             };
           }
@@ -402,6 +447,8 @@ function App() {
             title: `${entity.courtName} • ${entity.clubName}`,
             subtitle: `${entity.dateLabel} • ${entity.time}`,
             meta: entity.matchId ? 'Con partido' : 'Sin partido',
+            chipLabel: 'Reserva',
+            chipColor: BOOKING_CHIP_COLOR,
             onClick: () => openBookingDetail(entity.id),
           };
         });

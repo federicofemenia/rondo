@@ -1,8 +1,6 @@
-export type PlayerRating = {
-  conduct: number;
-  skill: number;
-  comment?: string;
-};
+import type { RateParticipantInputDto, StatusChangedByTypeDto } from '@rondo/contracts';
+
+export type PlayerRating = RateParticipantInputDto;
 
 export type ChatMessage = {
   author: string;
@@ -27,6 +25,10 @@ export type MatchEntity = {
   chatMessages: ChatMessage[];
   ratings: Record<string, PlayerRating>;
   createdAt: number;
+  cancelledAt: string | null;
+  cancelledByType: StatusChangedByTypeDto | null;
+  cancelledByName: string | null;
+  cancellationReason: string | null;
 };
 
 export type BookingEntity = {

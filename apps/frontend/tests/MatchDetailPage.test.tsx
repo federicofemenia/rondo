@@ -21,6 +21,10 @@ const baseMatch: MatchEntity = {
   chatMessages: [],
   ratings: {},
   createdAt: 1,
+  cancelledAt: null,
+  cancelledByType: null,
+  cancelledByName: null,
+  cancellationReason: null,
 };
 
 describe('MatchDetailPage', () => {
@@ -32,7 +36,7 @@ describe('MatchDetailPage', () => {
     expect(screen.getByText(/jugadores 4 - 10/i)).toBeTruthy();
     expect(screen.getByText(/estado del evento/i)).toBeTruthy();
     expect(screen.getByText(/día confirmado/i)).toBeTruthy();
-    expect(screen.getByText(/buscando jugadores/i)).toBeTruthy();
+    expect(screen.getByText(/^organizando$/i)).toBeTruthy();
   });
 
   it('shows reservation actions when the match has no court yet', () => {
@@ -55,10 +59,10 @@ describe('MatchDetailPage', () => {
     expect(onEditClub).toHaveBeenCalledWith('Club Señor Pato');
   });
 
-  it('shows Confirmado once the match reaches its player cap', () => {
+  it('shows Completo once the match reaches its player cap', () => {
     render(<MatchDetailPage match={{ ...baseMatch, maxPlayers: '1', participants: ['Mauro'] }} unlinkedBookings={[]} />);
 
-    expect(screen.getByText(/^confirmado$/i)).toBeTruthy();
+    expect(screen.getByText(/^completo$/i)).toBeTruthy();
   });
 
   it('candidatos tab shows every invited candidate as a read-only status, no accept/decline buttons', () => {
@@ -118,13 +122,55 @@ describe('MatchDetailPage', () => {
     expect(onCancelMatch).toHaveBeenCalled();
   });
 
-  it('only shows the valoraciones tab once the match schedule is in the past', () => {
-    const { rerender } = render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
+  it('the valoraciones tab is always present, next to Gestión, Candidatos and Chat', () => {
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
-    expect(screen.queryByRole('tab', { name: /valoraciones/i })).toBeFalsy();
-
-    rerender(<MatchDetailPage match={{ ...baseMatch, date: '2020-01-01', time: '13:00 - 14:00' }} unlinkedBookings={[]} />);
-
+    expect(screen.getByRole('tab', { name: /^invitar$/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^candidatos$/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /gestión/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^chat$/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /valoraciones/i })).toBeTruthy();
+  });
+
+  it('shows the informational message on the valoraciones tab before the match finishes', () => {
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /valoraciones/i }));
+    expect(screen.getByText(/las valoraciones se habilitarán cuando finalice el partido/i)).toBeTruthy();
+  });
+
+  it('shows a cancelled match banner, hides organizing tabs, and blocks ratings', () => {
+    render(
+      <MatchDetailPage
+        match={{
+          ...baseMatch,
+          cancelledAt: '2026-07-30T18:30:00.000Z',
+          cancelledByType: 'USER',
+          cancelledByName: 'Federico',
+        }}
+        unlinkedBookings={[]}
+      />,
+    );
+
+    expect(screen.getByText(/partido cancelado/i)).toBeTruthy();
+    expect(screen.getByText(/cancelado por federico/i)).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /^invitar$/i })).toBeFalsy();
+    expect(screen.queryByRole('tab', { name: /^candidatos$/i })).toBeFalsy();
+    expect(screen.queryByRole('tab', { name: /gestión/i })).toBeFalsy();
+    expect(screen.queryByRole('tab', { name: /^chat$/i })).toBeFalsy();
+
+    fireEvent.click(screen.getByRole('tab', { name: /valoraciones/i }));
+    expect(screen.getByText(/este partido fue cancelado y no admite valoraciones/i)).toBeTruthy();
+  });
+
+  it('shows an automatic-system message when the match was cancelled without a user', () => {
+    render(
+      <MatchDetailPage
+        match={{ ...baseMatch, cancelledAt: '2026-07-30T18:30:00.000Z', cancelledByType: 'SYSTEM', cancelledByName: null }}
+        unlinkedBookings={[]}
+      />,
+    );
+
+    expect(screen.getByText(/actualizado automáticamente por el sistema/i)).toBeTruthy();
   });
 });
