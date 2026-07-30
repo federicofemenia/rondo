@@ -14,7 +14,7 @@ describe('CreateMatchPage', () => {
     expect(screen.getByLabelText(/modalidad/i)).toBeTruthy();
     expect(screen.getByLabelText(/jugadores mínimo/i)).toBeTruthy();
     expect(screen.getByLabelText(/jugadores máximo/i)).toBeTruthy();
-    expect(screen.getByLabelText(/^club$/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^club \(opcional\)$/i)).toBeTruthy();
     expect(screen.getByLabelText(/^día$/i)).toBeTruthy();
     expect(screen.getAllByText(/sin definir/i).length).toBeGreaterThan(0);
 
@@ -46,10 +46,28 @@ describe('CreateMatchPage', () => {
       minPlayers: '4',
       maxPlayers: '10',
       positions: ['Delantero'],
-      clubName: 'Club Señor Pato',
+      clubName: null,
       courtName: null,
       date: expectedDate,
       time: null,
     });
+  });
+
+  it('includes the club when one is selected, and the estimated time range when the switch is enabled', async () => {
+    const onCreateMatch = vi.fn();
+    render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
+
+    await screen.findByText('Delantero');
+
+    fireEvent.change(screen.getByLabelText(/^club \(opcional\)$/i), { target: { value: 'Club Señor Pato' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /horario estimado/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
+
+    expect(onCreateMatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clubName: 'Club Señor Pato',
+        time: '13:00 - 19:00',
+      }),
+    );
   });
 });

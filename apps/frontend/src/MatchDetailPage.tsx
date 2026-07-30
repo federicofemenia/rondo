@@ -15,7 +15,8 @@ import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import CandidatesPage from './CandidatesPage';
-import { buildDayOptions, timeRangeOptions } from './dateOptions';
+import { clubOptions } from './clubOptions';
+import { buildDayOptions } from './dateOptions';
 import EntityPickerDialog from './EntityPickerDialog';
 import type { PickerItem } from './EntityPickerDialog';
 import InvitationsPage from './InvitationsPage';
@@ -23,6 +24,7 @@ import MatchChatPage from './MatchChatPage';
 import MatchManagementPage from './MatchManagementPage';
 import { isMatchFinished, isMatchFull } from './matchStatus';
 import MatchRatingsPage from './MatchRatingsPage';
+import TimeRangeInput from './TimeRangeInput';
 import type { MatchEntity, PlayerRating } from './types';
 
 type MatchDetailPageProps = {
@@ -34,13 +36,14 @@ type MatchDetailPageProps = {
   onRemoveParticipant?: (name: string) => void;
   onCancelMatch?: () => void;
   onRatePlayer?: (name: string, rating: PlayerRating) => void;
+  onEditClub?: (clubName: string | null) => void;
   onEditDate?: (date: string) => void;
-  onEditTime?: (time: string) => void;
+  onEditTime?: (time: string | null) => void;
   onRequestBooking?: () => void;
   onAssociateBooking?: (bookingId: string) => void;
 };
 
-type Tab = 'datos' | 'candidatos' | 'invitar' | 'gestion' | 'chat' | 'valoraciones';
+type Tab = 'datos' | 'invitar' | 'candidatos' | 'gestion' | 'chat' | 'valoraciones';
 
 function StatusRow({ label, done, value }: { label: string; done: boolean; value?: string }) {
   return (
@@ -69,6 +72,7 @@ function MatchDetailPage({
   onRemoveParticipant,
   onCancelMatch,
   onRatePlayer,
+  onEditClub,
   onEditDate,
   onEditTime,
   onRequestBooking,
@@ -77,8 +81,9 @@ function MatchDetailPage({
   const dayOptions = useMemo(() => buildDayOptions(), []);
   const [tab, setTab] = useState<Tab>('datos');
   const [associateOpen, setAssociateOpen] = useState(false);
+  const [clubDraft, setClubDraft] = useState(match.clubName ?? '');
   const [dateDraft, setDateDraft] = useState(match.date);
-  const [timeDraft, setTimeDraft] = useState(match.time ?? '');
+  const [timeDraft, setTimeDraft] = useState<string | null>(match.time);
 
   const full = isMatchFull(match);
   const finished = isMatchFinished(match);
@@ -104,8 +109,8 @@ function MatchDetailPage({
           sx={{ minHeight: 0, mb: 4 }}
         >
           <Tab value="datos" label="Datos" sx={{ minHeight: 0 }} />
-          <Tab value="candidatos" label="Candidatos" sx={{ minHeight: 0 }} />
           <Tab value="invitar" label="Invitar" sx={{ minHeight: 0 }} />
+          <Tab value="candidatos" label="Candidatos" sx={{ minHeight: 0 }} />
           <Tab value="gestion" label="Gestión" sx={{ minHeight: 0 }} />
           <Tab value="chat" label="Chat" sx={{ minHeight: 0 }} />
           {finished ? <Tab value="valoraciones" label="Valoraciones" sx={{ minHeight: 0 }} /> : null}
@@ -125,7 +130,7 @@ function MatchDetailPage({
                     {match.sport}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {match.modality} • {match.clubName}
+                    {match.clubName ? `${match.modality} • ${match.clubName}` : `${match.modality} • Club a definir`}
                   </Typography>
                 </Box>
               </Stack>
@@ -158,13 +163,29 @@ function MatchDetailPage({
           <Card variant="outlined" sx={{ p: 6, borderColor: 'divider' }}>
             <Typography sx={{ fontWeight: 700, mb: 2 }}>Estado del evento</Typography>
             <Box sx={{ '& > div:not(:last-of-type)': { borderBottom: '1px solid', borderColor: 'divider' } }}>
-              <StatusRow label="Club seleccionado" done value={match.clubName} />
+              <StatusRow label={match.clubName ? 'Club seleccionado' : 'Club pendiente'} done={Boolean(match.clubName)} value={match.clubName ?? undefined} />
               <StatusRow label="Día confirmado" done value={match.date} />
               <StatusRow label={match.time ? 'Horario confirmado' : 'Horario pendiente'} done={Boolean(match.time)} value={match.time ?? undefined} />
               <StatusRow label={match.courtName ? 'Cancha confirmada' : 'Cancha pendiente'} done={Boolean(match.courtName)} value={match.courtName ?? undefined} />
             </Box>
 
             <Stack spacing={3} sx={{ mt: 4 }}>
+              <TextField
+                select
+                label="Editar club"
+                value={clubDraft}
+                onChange={(event) => setClubDraft(event.target.value)}
+                slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                helperText="Solo se listan los clubes de los que sos miembro."
+                fullWidth
+              >
+                <option value="">Sin definir</option>
+                {clubOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </TextField>
               <TextField
                 select
                 label="Editar día"
@@ -180,33 +201,16 @@ function MatchDetailPage({
                   </option>
                 ))}
               </TextField>
-              <TextField
-                select
-                label="Editar horario"
-                value={timeDraft}
-                onChange={(event) => setTimeDraft(event.target.value)}
-                slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                helperText="Elegí una franja: mañana, tarde o noche."
-                fullWidth
-              >
-                <option value="">Sin definir</option>
-                {timeDraft && !timeRangeOptions.some((option) => option.value === timeDraft) ? (
-                  <option value={timeDraft}>{timeDraft}</option>
-                ) : null}
-                {timeRangeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </TextField>
+              <TimeRangeInput value={timeDraft} onChange={setTimeDraft} label="Editar horario" />
               <Button
                 variant="outlined"
                 onClick={() => {
+                  onEditClub?.(clubDraft || null);
                   onEditDate?.(dateDraft);
                   onEditTime?.(timeDraft);
                 }}
               >
-                Guardar día y horario
+                Guardar cambios
               </Button>
 
               {!match.courtName ? (
@@ -224,16 +228,16 @@ function MatchDetailPage({
         </Box>
       ) : null}
 
+      {tab === 'invitar' ? (
+        <CandidatesPage matchDraft={match} excludeNames={match.invitedCandidates} onInviteCandidate={onInviteCandidate} />
+      ) : null}
+
       {tab === 'candidatos' ? (
         <InvitationsPage
           invitedCandidates={match.invitedCandidates}
           participants={match.participants}
           declinedCandidates={match.declinedCandidates}
         />
-      ) : null}
-
-      {tab === 'invitar' ? (
-        <CandidatesPage matchDraft={match} excludeNames={match.invitedCandidates} onInviteCandidate={onInviteCandidate} />
       ) : null}
 
       {tab === 'gestion' ? (

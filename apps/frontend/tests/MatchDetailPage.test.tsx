@@ -43,6 +43,18 @@ describe('MatchDetailPage', () => {
     expect(screen.getByRole('button', { name: /asociar una reserva existente/i })).toBeTruthy();
   });
 
+  it('lets the organizer set a pending club directly from the estado del evento card', () => {
+    const onEditClub = vi.fn();
+    render(<MatchDetailPage match={{ ...baseMatch, clubName: null }} unlinkedBookings={[]} onEditClub={onEditClub} />);
+
+    expect(screen.getByText(/club pendiente/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/editar club/i), { target: { value: 'Club Señor Pato' } });
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    expect(onEditClub).toHaveBeenCalledWith('Club Señor Pato');
+  });
+
   it('shows Confirmado once the match reaches its player cap', () => {
     render(<MatchDetailPage match={{ ...baseMatch, maxPlayers: '1', participants: ['Mauro'] }} unlinkedBookings={[]} />);
 

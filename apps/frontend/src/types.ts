@@ -16,7 +16,7 @@ export type MatchEntity = {
   minPlayers: string;
   maxPlayers: string;
   positions: string[];
-  clubName: string;
+  clubName: string | null;
   courtName: string | null;
   date: string;
   time: string | null;

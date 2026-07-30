@@ -7,8 +7,10 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import { buildDayOptions, timeRangeOptions } from './dateOptions';
+import { clubOptions } from './clubOptions';
+import { buildDayOptions } from './dateOptions';
 import PageFooter from './PageFooter';
+import TimeRangeInput from './TimeRangeInput';
 import { useSports } from './useSports';
 
 export type MatchDraft = {
@@ -17,7 +19,7 @@ export type MatchDraft = {
   minPlayers: string;
   maxPlayers: string;
   positions: string[];
-  clubName: string;
+  clubName: string | null;
   courtName: string | null;
   date: string;
   time: string | null;
@@ -28,8 +30,6 @@ type CreateMatchPageProps = {
 };
 
 const positionOptions = ['Arquero', 'Defensor', 'Mediocampista', 'Delantero'];
-
-const clubOptions = ['Club Señor Pato'];
 
 function toggleValue(values: string[], value: string) {
   return values.includes(value) ? values.filter((current) => current !== value) : [...values, value];
@@ -53,9 +53,9 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const [minPlayers, setMinPlayers] = useState('4');
   const [maxPlayers, setMaxPlayers] = useState('10');
   const [positions, setPositions] = useState<string[]>([]);
-  const [clubName, setClubName] = useState(clubOptions[0]!);
+  const [clubName, setClubName] = useState('');
   const [date, setDate] = useState(dayOptions[0]!.value);
-  const [time, setTime] = useState('');
+  const [time, setTime] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sport && sportNames.length > 0) {
@@ -81,10 +81,10 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
       minPlayers,
       maxPlayers,
       positions,
-      clubName,
+      clubName: clubName || null,
       courtName: null,
       date,
-      time: time || null,
+      time,
     });
   };
 
@@ -97,7 +97,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
               Armar partido
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Elegí el día del partido. El horario y la cancha podés definirlos más adelante.
+              Elegí el día del partido. El club, el horario y la cancha podés definirlos más adelante.
             </Typography>
           </Box>
 
@@ -191,13 +191,14 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
               <Stack spacing={4}>
                 <TextField
                   select
-                  label="Club"
+                  label="Club (opcional)"
                   value={clubName}
                   onChange={(event) => setClubName(event.target.value)}
-                  slotProps={{ select: { native: true } }}
-                  helperText="Solo se listan los clubes de los que sos miembro."
+                  slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                  helperText="Podés armar el partido sin definir club todavía. Solo se listan los clubes de los que sos miembro."
                   fullWidth
                 >
+                  <option value="">Sin definir</option>
                   {clubOptions.map((option) => (
                     <option key={option} value={option}>
                       {option}
@@ -242,22 +243,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   ))}
                 </TextField>
 
-                <TextField
-                  select
-                  label="Horario (opcional)"
-                  value={time}
-                  onChange={(event) => setTime(event.target.value)}
-                  slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                  helperText="Elegí una franja: mañana, tarde o noche."
-                  fullWidth
-                >
-                  <option value="">Sin definir</option>
-                  {timeRangeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </TextField>
+                <TimeRangeInput value={time} onChange={setTime} label="Horario estimado (opcional)" />
               </Stack>
             </Box>
           </Stack>

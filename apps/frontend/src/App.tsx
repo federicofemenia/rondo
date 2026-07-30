@@ -159,7 +159,14 @@ function App() {
       setMatches((current) =>
         current.map((match) =>
           match.id === linkedMatchId
-            ? { ...match, bookingId, courtName: `${confirmed.courtName} · ${confirmed.courtSubtitle}`, date: confirmed.dateLabel, time: confirmed.time }
+            ? {
+                ...match,
+                bookingId,
+                clubName: match.clubName ?? newBooking.clubName,
+                courtName: `${confirmed.courtName} · ${confirmed.courtSubtitle}`,
+                date: confirmed.dateLabel,
+                time: confirmed.time,
+              }
             : match,
         ),
       );
@@ -179,7 +186,14 @@ function App() {
     setMatches((current) =>
       current.map((match) =>
         match.id === matchId
-          ? { ...match, bookingId, courtName: `${booking.courtName} · ${booking.courtSubtitle}`, date: booking.dateLabel, time: booking.time }
+          ? {
+              ...match,
+              bookingId,
+              clubName: match.clubName ?? booking.clubName,
+              courtName: `${booking.courtName} · ${booking.courtSubtitle}`,
+              date: booking.dateLabel,
+              time: booking.time,
+            }
           : match,
       ),
     );
@@ -220,12 +234,16 @@ function App() {
     );
   };
 
+  const handleEditMatchClub = (matchId: string, clubName: string | null) => {
+    setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, clubName } : match)));
+  };
+
   const handleEditMatchDate = (matchId: string, date: string) => {
     setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, date } : match)));
   };
 
-  const handleEditMatchTime = (matchId: string, time: string) => {
-    setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, time: time || null } : match)));
+  const handleEditMatchTime = (matchId: string, time: string | null) => {
+    setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, time } : match)));
   };
 
   const openEditProfile = () => setCurrentView('edit-profile');
@@ -284,6 +302,7 @@ function App() {
           onRemoveParticipant={(name) => handleRemoveParticipant(match.id, name)}
           onCancelMatch={() => handleCancelMatch(match.id)}
           onRatePlayer={(name, rating) => handleRatePlayer(match.id, name, rating)}
+          onEditClub={(clubName) => handleEditMatchClub(match.id, clubName)}
           onEditDate={(date) => handleEditMatchDate(match.id, date)}
           onEditTime={(time) => handleEditMatchTime(match.id, time)}
           onRequestBooking={() => handleRequestBookingForMatch(match.id)}
@@ -304,7 +323,7 @@ function App() {
         .map((match) => ({
           id: match.id,
           title: `${match.sport} • ${match.modality}`,
-          subtitle: match.date ? `${match.clubName} • ${match.date}` : match.clubName,
+          subtitle: match.clubName ? `${match.clubName} • ${match.date}` : match.date,
         }));
 
       return (
@@ -337,6 +356,9 @@ function App() {
     if (!isWizardStep(currentView)) {
       const pendingActions: PendingAction[] = [];
       matches.forEach((match) => {
+        if (!match.clubName) {
+          pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene club.`, onClick: () => openMatchDetail(match.id) });
+        }
         if (!match.time) {
           pendingActions.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario.`, onClick: () => openMatchDetail(match.id) });
         }
@@ -448,7 +470,7 @@ function App() {
                 <Box>
                   <Typography sx={{ fontWeight: 700 }}>{matchDraft.sport}</Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {matchDraft.modality} • {matchDraft.clubName}
+                    {matchDraft.clubName ? `${matchDraft.modality} • ${matchDraft.clubName}` : matchDraft.modality}
                   </Typography>
                 </Box>
               </Stack>

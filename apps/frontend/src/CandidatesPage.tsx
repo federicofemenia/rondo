@@ -103,7 +103,9 @@ function CandidatesPage({ matchDraft, excludeNames = [], onInviteCandidate, onFi
           {matchDraft?.modality ? (
             <Chip label={matchDraft.modality} sx={{ bgcolor: 'background.default', color: 'info.main', fontWeight: 700 }} />
           ) : null}
-          <Chip label={matchDraft?.clubName ?? 'Club Señor Pato'} sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }} />
+          {matchDraft?.clubName ? (
+            <Chip label={matchDraft.clubName} sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }} />
+          ) : null}
         </Stack>
 
         {invitedName ? (
