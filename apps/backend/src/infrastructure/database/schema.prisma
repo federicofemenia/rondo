@@ -191,11 +191,12 @@ model Match {
   courtId         String? @map("court_id")
   organizerUserId String  @map("organizer_user_id")
 
-  minPlayers Int @map("min_players")
-  maxPlayers Int @map("max_players")
+  minPlayers Int      @map("min_players")
+  maxPlayers Int      @map("max_players")
+  positions  String[] @default([])
 
-  startsAt DateTime @map("starts_at")
-  endsAt   DateTime @map("ends_at")
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
 
   status                MatchStatus         @default(ORGANIZING)
   statusChangedAt       DateTime            @map("status_changed_at")

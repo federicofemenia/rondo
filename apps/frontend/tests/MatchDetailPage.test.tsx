@@ -1,25 +1,32 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import MatchDetailPage from '../src/MatchDetailPage';
 import type { MatchEntity } from '../src/types';
 
 const baseMatch: MatchEntity = {
   id: 'match-1',
+  status: 'ORGANIZING',
   sport: 'Fútbol',
   modality: 'Fútbol 5',
+  sportModalityId: 'modality-football-5',
   minPlayers: '4',
   maxPlayers: '10',
   positions: [],
+  participantsCount: 1,
+  clubId: 'club-1',
   clubName: 'Club Señor Pato',
   courtName: 'Cancha 2 · Vidrio',
   date: '2026-08-05',
   time: '19:00',
+  startsAt: '2026-08-05T19:00:00.000Z',
+  endsAt: '2026-08-05T21:00:00.000Z',
+  organizerUserId: 'user-organizer',
+  isOrganizer: true,
   bookingId: 'booking-1',
   invitedCandidates: [],
   declinedCandidates: [],
   participants: ['Mauro'],
   chatMessages: [],
-  ratings: {},
   createdAt: 1,
   cancelledAt: null,
   cancelledByType: null,
@@ -59,8 +66,8 @@ describe('MatchDetailPage', () => {
     expect(onEditClub).toHaveBeenCalledWith('Club Señor Pato');
   });
 
-  it('shows Completo once the match reaches its player cap', () => {
-    render(<MatchDetailPage match={{ ...baseMatch, maxPlayers: '1', participants: ['Mauro'] }} unlinkedBookings={[]} />);
+  it('shows Completo once the backend reports the match as FULL', () => {
+    render(<MatchDetailPage match={{ ...baseMatch, status: 'FULL', maxPlayers: '1', participants: ['Mauro'] }} unlinkedBookings={[]} />);
 
     expect(screen.getByText(/^completo$/i)).toBeTruthy();
   });
@@ -132,18 +139,19 @@ describe('MatchDetailPage', () => {
     expect(screen.getByRole('tab', { name: /valoraciones/i })).toBeTruthy();
   });
 
-  it('shows the informational message on the valoraciones tab before the match finishes', () => {
+  it('shows the informational message on the valoraciones tab before the match finishes', async () => {
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
     fireEvent.click(screen.getByRole('tab', { name: /valoraciones/i }));
-    expect(screen.getByText(/las valoraciones se habilitarán cuando finalice el partido/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/las valoraciones se habilitarán cuando finalice el partido/i)).toBeTruthy());
   });
 
-  it('shows a cancelled match banner, hides organizing tabs, and blocks ratings', () => {
+  it('shows a cancelled match banner, hides organizing tabs, and blocks ratings', async () => {
     render(
       <MatchDetailPage
         match={{
           ...baseMatch,
+          status: 'CANCELLED',
           cancelledAt: '2026-07-30T18:30:00.000Z',
           cancelledByType: 'USER',
           cancelledByName: 'Federico',
@@ -160,13 +168,13 @@ describe('MatchDetailPage', () => {
     expect(screen.queryByRole('tab', { name: /^chat$/i })).toBeFalsy();
 
     fireEvent.click(screen.getByRole('tab', { name: /valoraciones/i }));
-    expect(screen.getByText(/este partido fue cancelado y no admite valoraciones/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/este partido fue cancelado y no admite valoraciones/i)).toBeTruthy());
   });
 
   it('shows an automatic-system message when the match was cancelled without a user', () => {
     render(
       <MatchDetailPage
-        match={{ ...baseMatch, cancelledAt: '2026-07-30T18:30:00.000Z', cancelledByType: 'SYSTEM', cancelledByName: null }}
+        match={{ ...baseMatch, status: 'CANCELLED', cancelledAt: '2026-07-30T18:30:00.000Z', cancelledByType: 'SYSTEM', cancelledByName: null }}
         unlinkedBookings={[]}
       />,
     );

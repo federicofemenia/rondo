@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSignIn } from '@clerk/react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
@@ -19,14 +20,105 @@ type LoginPageProps = {
 };
 
 function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
+  const { signIn } = useSignIn();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const [step, setStep] = useState<'password' | 'client-trust'>('password');
+  const [trustCode, setTrustCode] = useState('');
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    onLogin?.();
+    if (!signIn) {
+      return;
+    }
+    setErrorMessage(null);
+    setSubmitting(true);
+    try {
+      const { error } = await signIn.password({ identifier: email, password });
+      if (error) {
+        setErrorMessage(error.longMessage ?? error.message);
+        return;
+      }
+      if (signIn.status === 'complete') {
+        await signIn.finalize();
+        onLogin?.();
+        return;
+      }
+      if (signIn.status === 'needs_client_trust') {
+        const { error: sendCodeError } = await signIn.mfa.sendEmailCode();
+        if (sendCodeError) {
+          setErrorMessage(sendCodeError.longMessage ?? sendCodeError.message);
+          return;
+        }
+        setStep('client-trust');
+        return;
+      }
+      setErrorMessage('Tu cuenta necesita un paso de verificación adicional. Contactá a soporte.');
+    } catch {
+      setErrorMessage('No pudimos iniciar sesión. Reintentá.');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const handleVerifyClientTrust = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!signIn) {
+      return;
+    }
+    setErrorMessage(null);
+    setSubmitting(true);
+    try {
+      const { error } = await signIn.mfa.verifyEmailCode({ code: trustCode });
+      if (error) {
+        setErrorMessage(error.longMessage ?? error.message);
+        return;
+      }
+      if (signIn.status === 'complete') {
+        await signIn.finalize();
+        onLogin?.();
+        return;
+      }
+      setErrorMessage('El código no es válido o expiró. Reintentá.');
+    } catch {
+      setErrorMessage('No pudimos verificar el código. Reintentá.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (step === 'client-trust') {
+    return (
+      <Box component="form" onSubmit={handleVerifyClientTrust} sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <Box sx={{ maxWidth: 400, mx: 'auto', px: 4, py: 8, pb: '120px', width: '100%' }}>
+          <Typography variant="h1" sx={{ mb: 1 }}>
+            Confirmá que sos vos
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 6 }}>
+            Es la primera vez que iniciás sesión desde este dispositivo. Te enviamos un código a {email}.
+          </Typography>
+
+          <TextField label="Código de verificación" value={trustCode} onChange={(event) => setTrustCode(event.target.value)} fullWidth autoFocus />
+
+          {errorMessage ? (
+            <Typography variant="body2" color="error.main" sx={{ mt: 3, textAlign: 'center' }}>
+              {errorMessage}
+            </Typography>
+          ) : null}
+        </Box>
+
+        <PageFooter>
+          <Button type="submit" fullWidth variant="contained" size="large" disabled={submitting || !trustCode} sx={{ borderRadius: 999, py: 1.75 }}>
+            {submitting ? 'Verificando…' : 'Verificar'}
+          </Button>
+        </PageFooter>
+      </Box>
+    );
+  }
 
   return (
     <Box
@@ -88,6 +180,12 @@ function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
           </Box>
         </Stack>
 
+        {errorMessage ? (
+          <Typography variant="body2" color="error.main" sx={{ mt: 3, textAlign: 'center' }}>
+            {errorMessage}
+          </Typography>
+        ) : null}
+
         <Stack alignItems="center" spacing={1} sx={{ mt: 6 }}>
           <Typography variant="body2" color="text.secondary">
             ¿No tenés cuenta?{' '}
@@ -106,8 +204,8 @@ function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
       </Box>
 
       <PageFooter>
-        <Button type="submit" fullWidth variant="contained" size="large" sx={{ borderRadius: 999, py: 1.75 }}>
-          Iniciar sesión
+        <Button type="submit" fullWidth variant="contained" size="large" disabled={submitting || !signIn} sx={{ borderRadius: 999, py: 1.75 }}>
+          {submitting ? 'Iniciando sesión…' : 'Iniciar sesión'}
         </Button>
       </PageFooter>
     </Box>

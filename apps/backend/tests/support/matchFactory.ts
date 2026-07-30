@@ -8,8 +8,8 @@ type CreateTestMatchInput = {
   participantUserIds?: string[];
   minPlayers?: number;
   maxPlayers?: number;
-  startsAt?: Date;
-  endsAt?: Date;
+  startsAt?: Date | null;
+  endsAt?: Date | null;
   status?: MatchStatus;
   statusChangedAt?: Date;
   statusChangedByType?: StatusChangedByType;
@@ -29,8 +29,8 @@ export async function createTestMatch(input: CreateTestMatchInput = {}): Promise
       organizerUserId: input.organizerUserId ?? SEED_IDS.users.juan,
       minPlayers: input.minPlayers ?? 2,
       maxPlayers: input.maxPlayers ?? 10,
-      startsAt: input.startsAt ?? new Date(now.getTime() - 60 * 60 * 1000),
-      endsAt: input.endsAt ?? new Date(now.getTime() + 60 * 60 * 1000),
+      startsAt: input.startsAt !== undefined ? input.startsAt : new Date(now.getTime() - 60 * 60 * 1000),
+      endsAt: input.endsAt !== undefined ? input.endsAt : new Date(now.getTime() + 60 * 60 * 1000),
       status: input.status ?? 'ORGANIZING',
       statusChangedAt: input.statusChangedAt ?? now,
       statusChangedByType: input.statusChangedByType ?? 'SYSTEM',

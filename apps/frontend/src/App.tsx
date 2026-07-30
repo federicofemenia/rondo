@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
-import type { HealthResponse } from '@rondo/contracts';
+import type { HealthResponse, MatchSummaryDto, PendingTaskDto, UserDto } from '@rondo/contracts';
 import { appConfig } from '@rondo/config';
+import { useAuth, useClerk } from '@clerk/react';
+import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import IconButton from '@mui/material/IconButton';
+import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import HelpOutlineRoundedIcon from '@mui/icons-material/HelpOutlineRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
+import { ApiError, useApi } from './apiClient';
 import AppHeader from './AppHeader';
 import BookingDetailPage from './BookingDetailPage';
 import CandidatesPage from './CandidatesPage';
@@ -19,13 +23,15 @@ import EditProfilePage from './EditProfilePage';
 import HomePage from './HomePage';
 import type { PendingAction, UpcomingEventItem } from './HomePage';
 import LoginPage from './LoginPage';
+import { matchSummaryToEntity } from './matchMapping';
 import MatchDetailPage from './MatchDetailPage';
 import type { Tab as MatchDetailTab } from './MatchDetailPage';
-import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS, isRatingsOpen, isVisibleOnHome, resolveMatchStatus } from './matchStatus';
+import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import RegisterPage from './RegisterPage';
 import ReservationFlowPage from './ReservationFlowPage';
 import type { ConfirmedBooking } from './ReservationFlowPage';
-import type { BookingEntity, MatchEntity, PlayerRating } from './types';
+import { parseTimeRange } from './TimeRangeInput';
+import type { BookingEntity, MatchEntity } from './types';
 
 const BOOKING_CHIP_COLOR = { bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main' };
 
@@ -51,14 +57,43 @@ function isWizardStep(view: View): view is WizardStep {
   return view === 'create' || view === 'candidates';
 }
 
+function displayName(user: UserDto): string {
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  return fullName || user.email;
+}
+
+function describeError(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback;
+}
+
+/** Builds startsAt/endsAt only when both a day and an estimated time range were chosen. */
+function scheduleFromDraft(draft: MatchDraft): { startsAt: string | null; endsAt: string | null } {
+  if (!draft.time) {
+    return { startsAt: null, endsAt: null };
+  }
+  const [startHour, endHour] = parseTimeRange(draft.time);
+  const start = new Date(`${draft.date}T00:00:00`);
+  start.setHours(startHour, 0, 0, 0);
+  const end = new Date(`${draft.date}T00:00:00`);
+  end.setHours(endHour, 0, 0, 0);
+  return { startsAt: start.toISOString(), endsAt: end.toISOString() };
+}
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? appConfig.apiBaseUrl;
 
 function App() {
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { signOut } = useClerk();
+  const api = useApi();
+
   const [status, setStatus] = useState('Verificando conexión…');
   const [currentView, setCurrentView] = useState<View>('login');
+  const [playerName, setPlayerName] = useState('');
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
   const [matches, setMatches] = useState<MatchEntity[]>([]);
   const [bookings, setBookings] = useState<BookingEntity[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<PendingTaskDto[]>([]);
 
   const [matchDraft, setMatchDraft] = useState<MatchDraft | null>(null);
   const [invitedCandidates, setInvitedCandidates] = useState<string[]>([]);
@@ -81,6 +116,54 @@ function App() {
 
     void loadStatus();
   }, []);
+
+  useEffect(() => {
+    if (!authLoaded) {
+      return;
+    }
+    if (isSignedIn) {
+      setCurrentView((current) => (current === 'login' || current === 'register' ? 'home' : current));
+    } else {
+      setCurrentView('login');
+      setMatches([]);
+      setPendingTasks([]);
+      setPlayerName('');
+    }
+  }, [authLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      return;
+    }
+    let cancelled = false;
+
+    const loadAccountData = async () => {
+      try {
+        const [meResponse, matchesResponse, tasksResponse] = await Promise.all([
+          api.get<{ data: UserDto }>('/api/v1/me'),
+          api.get<{ data: MatchSummaryDto[] }>('/api/v1/me/matches'),
+          api.get<{ data: PendingTaskDto[] }>('/api/v1/me/pending-tasks'),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setPlayerName(displayName(meResponse.data));
+        setMatches(matchesResponse.data.map((dto) => matchSummaryToEntity(dto)));
+        setPendingTasks(tasksResponse.data);
+      } catch (error) {
+        if (!cancelled) {
+          setGlobalError(describeError(error, 'No pudimos cargar tu información. Reintentá más tarde.'));
+        }
+      }
+    };
+
+    void loadAccountData();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn]);
 
   const openCreateFlow = () => {
     setMatchDraft(null);
@@ -113,36 +196,29 @@ function App() {
     setInvitedCandidates((current) => (current.includes(name) ? current : [...current, name]));
   };
 
-  const handleFinishWizard = () => {
-    if (matchDraft) {
-      const newMatch: MatchEntity = {
-        id: crypto.randomUUID(),
-        sport: matchDraft.sport,
-        modality: matchDraft.modality,
-        minPlayers: matchDraft.minPlayers,
-        maxPlayers: matchDraft.maxPlayers,
-        positions: matchDraft.positions,
-        clubName: matchDraft.clubName,
-        courtName: matchDraft.courtName,
-        date: matchDraft.date,
-        time: matchDraft.time,
-        bookingId: null,
-        invitedCandidates,
-        declinedCandidates: [],
-        participants: [],
-        chatMessages: [],
-        ratings: {},
-        createdAt: Date.now(),
-        cancelledAt: null,
-        cancelledByType: null,
-        cancelledByName: null,
-        cancellationReason: null,
-      };
-      setMatches((current) => [...current, newMatch]);
+  const handleFinishWizard = async () => {
+    if (!matchDraft) {
+      setCurrentView('home');
+      return;
     }
-    setMatchDraft(null);
-    setInvitedCandidates([]);
-    setCurrentView('home');
+    try {
+      const { startsAt, endsAt } = scheduleFromDraft(matchDraft);
+      const response = await api.post<{ data: MatchSummaryDto }>('/api/v1/matches', {
+        sportModalityId: matchDraft.sportModalityId,
+        clubId: matchDraft.clubId,
+        minPlayers: Number(matchDraft.minPlayers),
+        maxPlayers: Number(matchDraft.maxPlayers),
+        positions: matchDraft.positions,
+        startsAt,
+        endsAt,
+      });
+      setMatches((current) => [...current, matchSummaryToEntity(response.data)]);
+      setMatchDraft(null);
+      setInvitedCandidates([]);
+      setCurrentView('home');
+    } catch (error) {
+      setGlobalError(describeError(error, 'No pudimos crear el partido. Reintentá.'));
+    }
   };
 
   const handleRequestBookingForMatch = (matchId: string) => {
@@ -233,27 +309,14 @@ function App() {
     );
   };
 
-  const handleCancelMatch = (matchId: string) => {
-    setMatches((current) =>
-      current.map((match) =>
-        match.id === matchId
-          ? {
-              ...match,
-              cancelledAt: new Date().toISOString(),
-              cancelledByType: 'USER',
-              cancelledByName: 'Federico',
-              cancellationReason: null,
-            }
-          : match,
-      ),
-    );
+  const handleCancelMatch = async (matchId: string) => {
     setCurrentView('home');
-  };
-
-  const handleRatePlayer = (matchId: string, name: string, rating: PlayerRating) => {
-    setMatches((current) =>
-      current.map((match) => (match.id === matchId ? { ...match, ratings: { ...match.ratings, [name]: rating } } : match)),
-    );
+    try {
+      const response = await api.post<{ data: MatchSummaryDto }>(`/api/v1/matches/${matchId}/cancellation`, {});
+      setMatches((current) => current.map((match) => (match.id === matchId ? matchSummaryToEntity(response.data, match) : match)));
+    } catch (error) {
+      setGlobalError(describeError(error, 'No pudimos cancelar el partido. Reintentá.'));
+    }
   };
 
   const handleEditMatchClub = (matchId: string, clubName: string | null) => {
@@ -270,7 +333,10 @@ function App() {
 
   const openEditProfile = () => setCurrentView('edit-profile');
 
-  const handleLogout = () => setCurrentView('login');
+  const handleLogout = async () => {
+    setCurrentView('login');
+    await signOut();
+  };
 
   const goToPreviousStep = () => {
     if (!isWizardStep(currentView)) {
@@ -288,6 +354,10 @@ function App() {
   const showAppHeader = currentView !== 'login' && currentView !== 'register';
 
   const renderView = () => {
+    if (!authLoaded) {
+      return null;
+    }
+
     if (currentView === 'login') {
       return <LoginPage onLogin={() => setCurrentView('home')} onNavigateToRegister={() => setCurrentView('register')} />;
     }
@@ -323,8 +393,7 @@ function App() {
           onSendMessage={(text) => handleSendMessage(match.id, text)}
           onInviteCandidate={(name) => handleInviteMoreCandidates(match.id, name)}
           onRemoveParticipant={(name) => handleRemoveParticipant(match.id, name)}
-          onCancelMatch={() => handleCancelMatch(match.id)}
-          onRatePlayer={(name, rating) => handleRatePlayer(match.id, name, rating)}
+          onCancelMatch={() => void handleCancelMatch(match.id)}
           onEditClub={(clubName) => handleEditMatchClub(match.id, clubName)}
           onEditDate={(date) => handleEditMatchDate(match.id, date)}
           onEditTime={(time) => handleEditMatchTime(match.id, time)}
@@ -379,8 +448,7 @@ function App() {
     if (!isWizardStep(currentView)) {
       const pendingActions: PendingAction[] = [];
       matches.forEach((match) => {
-        const matchStatus = resolveMatchStatus(match);
-        const isActive = matchStatus === 'ORGANIZING' || matchStatus === 'FULL';
+        const isActive = match.status === 'ORGANIZING' || match.status === 'FULL';
 
         if (isActive && !match.clubName) {
           pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene club.`, onClick: () => openMatchDetail(match.id) });
@@ -403,41 +471,36 @@ function App() {
             });
           }
         }
-
-        if (matchStatus === 'COMPLETED' && isRatingsOpen(match)) {
-          const pendingRatingsCount = match.participants.filter((name) => !match.ratings[name]).length;
-          if (pendingRatingsCount > 0) {
-            pendingActions.push({
-              id: `${match.id}-ratings`,
-              label: 'Valorá a los jugadores',
-              description: `${match.sport} · ${match.modality} · Te faltan valorar ${pendingRatingsCount} participante${pendingRatingsCount === 1 ? '' : 's'}`,
-              onClick: () => openMatchDetail(match.id, 'valoraciones'),
-            });
-          }
-        }
       });
+
+      pendingTasks.forEach((task) => {
+        pendingActions.push({
+          id: `${task.matchId}-${task.type}`,
+          label: task.title,
+          description: task.description,
+          onClick: () => openMatchDetail(task.matchId, task.targetTab === 'ratings' ? 'valoraciones' : undefined),
+        });
+      });
+
       bookings.forEach((booking) => {
         if (!booking.matchId) {
           pendingActions.push({ id: `${booking.id}-no-match`, label: 'Tenés una reserva sin partido asociado.', onClick: () => openBookingDetail(booking.id) });
         }
       });
 
-      const visibleMatches = matches.filter((match) => isVisibleOnHome(match));
-
-      const upcomingEvents: UpcomingEventItem[] = [...visibleMatches, ...bookings]
+      const upcomingEvents: UpcomingEventItem[] = [...matches, ...bookings]
         .slice()
         .sort((a, b) => a.createdAt - b.createdAt)
         .map((entity) => {
           if ('sport' in entity) {
-            const matchStatus = resolveMatchStatus(entity);
             return {
               id: entity.id,
               kind: 'match' as const,
               title: `${entity.sport} • ${entity.modality}`,
-              subtitle: entity.time ? `${entity.date} • ${entity.time}` : `${entity.date} • Horario a definir`,
-              meta: `${entity.participants.length}/${entity.maxPlayers}`,
-              chipLabel: MATCH_STATUS_LABELS[matchStatus],
-              chipColor: MATCH_STATUS_CHIP_STYLES[matchStatus],
+              subtitle: entity.date ? (entity.time ? `${entity.date} • ${entity.time}` : `${entity.date} • Horario a definir`) : 'Día y horario a definir',
+              meta: `${entity.participantsCount}/${entity.maxPlayers}`,
+              chipLabel: MATCH_STATUS_LABELS[entity.status],
+              chipColor: MATCH_STATUS_CHIP_STYLES[entity.status],
               onClick: () => openMatchDetail(entity.id),
             };
           }
@@ -457,6 +520,7 @@ function App() {
         <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
           <HomePage
             connectionStatus={status}
+            playerName={playerName || undefined}
             pendingActions={pendingActions}
             upcomingEvents={upcomingEvents}
             onReserveCourt={openReservationFlow}
@@ -471,7 +535,7 @@ function App() {
     const renderWizardStep = () => {
       switch (currentView) {
         case 'candidates':
-          return <CandidatesPage matchDraft={matchDraft} onInviteCandidate={handleInviteCandidate} onFinish={handleFinishWizard} />;
+          return <CandidatesPage matchDraft={matchDraft} onInviteCandidate={handleInviteCandidate} onFinish={() => void handleFinishWizard()} />;
         case 'create':
         default:
           return <CreateMatchPage onCreateMatch={handleCreateMatch} />;
@@ -532,8 +596,13 @@ function App() {
 
   return (
     <>
-      {showAppHeader ? <AppHeader onEditProfile={openEditProfile} onLogout={handleLogout} /> : null}
+      {showAppHeader ? <AppHeader onEditProfile={openEditProfile} onLogout={() => void handleLogout()} /> : null}
       {renderView()}
+      <Snackbar open={globalError !== null} autoHideDuration={5000} onClose={() => setGlobalError(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity="error" onClose={() => setGlobalError(null)} sx={{ width: '100%' }}>
+          {globalError}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent } from 'react';
+import { useSignUp } from '@clerk/react';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -33,6 +34,7 @@ function toggleValue(values: string[], value: string) {
 }
 
 function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
+  const { signUp } = useSignUp();
   const { sports: sportCatalog, loading: sportsLoading, error: sportsError } = useSports();
   const sportOptions = sportCatalog.map((sportOption) => sportOption.name);
 
@@ -48,6 +50,11 @@ function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
   const [positionsBySport, setPositionsBySport] = useState<Record<string, string[]>>({});
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  const [step, setStep] = useState<'form' | 'verify-email'>('form');
+  const [emailCode, setEmailCode] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const togglePositionForSport = (sport: string, position: string) => {
     setPositionsBySport((current) => ({
@@ -68,10 +75,105 @@ function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    onRegister?.();
+    if (!signUp) {
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMessage('Las contraseñas no coinciden.');
+      return;
+    }
+    setErrorMessage(null);
+    setSubmitting(true);
+    try {
+      const { error } = await signUp.password({ emailAddress: email, password, firstName, lastName });
+      if (error) {
+        setErrorMessage(error.longMessage ?? error.message);
+        return;
+      }
+      if (signUp.status === 'complete') {
+        await signUp.finalize();
+        onRegister?.();
+        return;
+      }
+      if (signUp.status === 'missing_requirements' && signUp.unverifiedFields.includes('email_address')) {
+        const { error: sendCodeError } = await signUp.verifications.sendEmailCode();
+        if (sendCodeError) {
+          setErrorMessage(sendCodeError.longMessage ?? sendCodeError.message);
+          return;
+        }
+        setStep('verify-email');
+        return;
+      }
+      setErrorMessage('No pudimos completar el registro. Reintentá.');
+    } catch {
+      setErrorMessage('No pudimos completar el registro. Reintentá.');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const handleVerifyEmailCode = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!signUp) {
+      return;
+    }
+    setErrorMessage(null);
+    setSubmitting(true);
+    try {
+      const { error } = await signUp.verifications.verifyEmailCode({ code: emailCode });
+      if (error) {
+        setErrorMessage(error.longMessage ?? error.message);
+        return;
+      }
+      if (signUp.status === 'complete') {
+        await signUp.finalize();
+        onRegister?.();
+        return;
+      }
+      setErrorMessage('El código no es válido o expiró. Reintentá.');
+    } catch {
+      setErrorMessage('No pudimos verificar el código. Reintentá.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (step === 'verify-email') {
+    return (
+      <Box component="form" onSubmit={handleVerifyEmailCode} sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <Box sx={{ maxWidth: 400, mx: 'auto', px: 4, py: 8, pb: '120px', width: '100%' }}>
+          <Typography variant="h1" sx={{ mb: 1 }}>
+            Confirmá tu email
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 6 }}>
+            Te enviamos un código a {email}. Ingresalo para activar tu cuenta.
+          </Typography>
+
+          <TextField
+            label="Código de verificación"
+            value={emailCode}
+            onChange={(event) => setEmailCode(event.target.value)}
+            fullWidth
+            autoFocus
+          />
+
+          {errorMessage ? (
+            <Typography variant="body2" color="error.main" sx={{ mt: 3, textAlign: 'center' }}>
+              {errorMessage}
+            </Typography>
+          ) : null}
+        </Box>
+
+        <PageFooter>
+          <Button type="submit" fullWidth variant="contained" size="large" disabled={submitting || !emailCode} sx={{ borderRadius: 999, py: 1.75 }}>
+            {submitting ? 'Verificando…' : 'Verificar'}
+          </Button>
+        </PageFooter>
+      </Box>
+    );
+  }
 
   return (
     <Box component="form" onSubmit={handleSubmit} sx={{ minHeight: '100vh' }}>
@@ -264,6 +366,12 @@ function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
           </Stack>
         </Box>
 
+        {errorMessage ? (
+          <Typography variant="body2" color="error.main" sx={{ mt: 4, textAlign: 'center' }}>
+            {errorMessage}
+          </Typography>
+        ) : null}
+
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 6 }}>
           ¿Ya tenés cuenta?{' '}
           <Box component="span" onClick={onNavigateToLogin} sx={{ color: 'primary.light', fontWeight: 700, cursor: 'pointer' }}>
@@ -273,8 +381,8 @@ function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
       </Box>
 
       <PageFooter>
-        <Button type="submit" fullWidth variant="contained" size="large" disabled={!acceptedTerms} sx={{ borderRadius: 999, py: 1.75 }}>
-          Crear cuenta
+        <Button type="submit" fullWidth variant="contained" size="large" disabled={!acceptedTerms || submitting || !signUp} sx={{ borderRadius: 999, py: 1.75 }}>
+          {submitting ? 'Creando cuenta…' : 'Crear cuenta'}
         </Button>
       </PageFooter>
     </Box>

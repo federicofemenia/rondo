@@ -8,17 +8,17 @@ import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
-import type { MatchStatusDto } from '@rondo/contracts';
+import type { MatchStatusDto, RatingsParticipantDto } from '@rondo/contracts';
 import RatePlayerDialog from './RatePlayerDialog';
 import type { PlayerRating } from './types';
 
 type MatchRatingsPageProps = {
   status: MatchStatusDto;
-  ratingsOpen: boolean;
-  participants?: string[];
-  ratings?: Record<string, PlayerRating>;
-  currentUserName?: string;
-  onRatePlayer?: (name: string, rating: PlayerRating) => void;
+  closed?: boolean;
+  loading?: boolean;
+  loadError?: boolean;
+  participants?: RatingsParticipantDto[];
+  onRatePlayer?: (targetUserId: string, rating: PlayerRating) => Promise<void> | void;
 };
 
 function InfoMessage({ children }: { children: ReactNode }) {
@@ -29,15 +29,9 @@ function InfoMessage({ children }: { children: ReactNode }) {
   );
 }
 
-function MatchRatingsPage({
-  status,
-  ratingsOpen,
-  participants = [],
-  ratings = {},
-  currentUserName = 'Federico',
-  onRatePlayer,
-}: MatchRatingsPageProps) {
-  const [activePlayer, setActivePlayer] = useState<string | null>(null);
+function MatchRatingsPage({ status, closed = false, loading = false, loadError = false, participants = [], onRatePlayer }: MatchRatingsPageProps) {
+  const [activePlayerId, setActivePlayerId] = useState<string | null>(null);
+  const activeParticipant = participants.find((participant) => participant.userId === activePlayerId) ?? null;
 
   if (status === 'CANCELLED') {
     return (
@@ -63,15 +57,29 @@ function MatchRatingsPage({
     );
   }
 
-  if (!ratingsOpen) {
+  if (loading) {
+    return (
+      <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: 12 }}>
+        <InfoMessage>Cargando valoraciones…</InfoMessage>
+      </Box>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: 12 }}>
+        <InfoMessage>No pudimos cargar las valoraciones. Reintentá más tarde.</InfoMessage>
+      </Box>
+    );
+  }
+
+  if (closed) {
     return (
       <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: 12 }}>
         <InfoMessage>El período para valorar este partido finalizó.</InfoMessage>
       </Box>
     );
   }
-
-  const rows = [...participants.map((name) => ({ name, isSelf: false })), { name: currentUserName, isSelf: true }];
 
   return (
     <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: 12 }}>
@@ -84,52 +92,69 @@ function MatchRatingsPage({
         </Typography>
 
         <Stack spacing={2}>
-          {rows.map((row) => {
-            const rated = Boolean(ratings[row.name]);
-            return (
-              <Stack
-                key={row.name}
-                direction="row"
-                alignItems="center"
-                spacing={3}
-                sx={{ p: 3, borderRadius: '12px', border: '1px solid', borderColor: 'divider' }}
+          {participants.map((participant) => (
+            <Stack
+              key={participant.userId}
+              direction="row"
+              alignItems="center"
+              spacing={3}
+              sx={{ p: 3, borderRadius: '12px', border: '1px solid', borderColor: 'divider' }}
+            >
+              <Avatar
+                src={participant.avatarUrl ?? undefined}
+                sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}
               >
-                <Avatar sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
-                  <PersonRoundedIcon sx={{ color: 'text.secondary' }} />
-                </Avatar>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: 700 }}>{row.name}</Typography>
-                  <Chip
-                    label={row.isSelf ? 'Vos' : rated ? 'Valoración enviada' : 'Pendiente'}
-                    size="small"
-                    sx={{
-                      mt: 0.5,
-                      fontWeight: 700,
-                      bgcolor: row.isSelf ? 'background.default' : rated ? 'rgba(46, 204, 113, 0.16)' : 'rgba(245, 197, 66, 0.16)',
-                      color: row.isSelf ? 'text.secondary' : rated ? 'primary.light' : 'warning.main',
-                    }}
-                  />
-                </Box>
-                {!row.isSelf ? (
-                  <Button variant={rated ? 'outlined' : 'contained'} size="small" onClick={() => setActivePlayer(row.name)}>
-                    {rated ? 'Editar' : 'Valorar'}
-                  </Button>
-                ) : null}
-              </Stack>
-            );
-          })}
+                {!participant.avatarUrl ? <PersonRoundedIcon sx={{ color: 'text.secondary' }} /> : null}
+              </Avatar>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700 }}>{participant.displayName}</Typography>
+                <Chip
+                  label={participant.status === 'SELF' ? 'Vos' : participant.status === 'COMPLETED' ? 'Valoración enviada' : 'Pendiente'}
+                  size="small"
+                  sx={{
+                    mt: 0.5,
+                    fontWeight: 700,
+                    bgcolor:
+                      participant.status === 'SELF'
+                        ? 'background.default'
+                        : participant.status === 'COMPLETED'
+                          ? 'rgba(46, 204, 113, 0.16)'
+                          : 'rgba(245, 197, 66, 0.16)',
+                    color: participant.status === 'SELF' ? 'text.secondary' : participant.status === 'COMPLETED' ? 'primary.light' : 'warning.main',
+                  }}
+                />
+              </Box>
+              {participant.status !== 'SELF' ? (
+                <Button
+                  variant={participant.status === 'COMPLETED' ? 'outlined' : 'contained'}
+                  size="small"
+                  onClick={() => setActivePlayerId(participant.userId)}
+                >
+                  {participant.status === 'COMPLETED' ? 'Editar' : 'Valorar'}
+                </Button>
+              ) : null}
+            </Stack>
+          ))}
         </Stack>
       </Card>
 
       <RatePlayerDialog
-        key={activePlayer ?? 'none'}
-        open={activePlayer !== null}
-        playerName={activePlayer ?? ''}
-        initialRating={activePlayer ? (ratings[activePlayer] ?? null) : null}
-        onClose={() => setActivePlayer(null)}
-        onSubmit={(rating) => {
-          if (activePlayer) {
-            onRatePlayer?.(activePlayer, rating);
+        key={activePlayerId ?? 'none'}
+        open={activeParticipant !== null}
+        playerName={activeParticipant?.displayName ?? ''}
+        initialRating={
+          activeParticipant?.rating
+            ? {
+                gameplayScore: activeParticipant.rating.gameplayScore,
+                conductScore: activeParticipant.rating.conductScore,
+                comment: activeParticipant.rating.comment ?? undefined,
+              }
+            : null
+        }
+        onClose={() => setActivePlayerId(null)}
+        onSubmit={async (rating) => {
+          if (activePlayerId) {
+            await onRatePlayer?.(activePlayerId, rating);
           }
         }}
       />

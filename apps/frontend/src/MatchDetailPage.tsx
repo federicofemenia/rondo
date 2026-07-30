@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -14,6 +14,8 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
+import type { MatchRatingsResponseDto } from '@rondo/contracts';
+import { useApi } from './apiClient';
 import CandidatesPage from './CandidatesPage';
 import { clubOptions } from './clubOptions';
 import { buildDayOptions } from './dateOptions';
@@ -22,7 +24,7 @@ import type { PickerItem } from './EntityPickerDialog';
 import InvitationsPage from './InvitationsPage';
 import MatchChatPage from './MatchChatPage';
 import MatchManagementPage from './MatchManagementPage';
-import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS, isRatingsOpen, resolveMatchStatus } from './matchStatus';
+import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import MatchRatingsPage from './MatchRatingsPage';
 import TimeRangeInput from './TimeRangeInput';
 import type { MatchEntity, PlayerRating } from './types';
@@ -36,7 +38,6 @@ type MatchDetailPageProps = {
   onInviteCandidate?: (name: string) => void;
   onRemoveParticipant?: (name: string) => void;
   onCancelMatch?: () => void;
-  onRatePlayer?: (name: string, rating: PlayerRating) => void;
   onEditClub?: (clubName: string | null) => void;
   onEditDate?: (date: string) => void;
   onEditTime?: (time: string | null) => void;
@@ -80,13 +81,13 @@ function MatchDetailPage({
   onInviteCandidate,
   onRemoveParticipant,
   onCancelMatch,
-  onRatePlayer,
   onEditClub,
   onEditDate,
   onEditTime,
   onRequestBooking,
   onAssociateBooking,
 }: MatchDetailPageProps) {
+  const api = useApi();
   const dayOptions = useMemo(() => buildDayOptions(), []);
   const [tab, setTab] = useState<Tab>(initialTab ?? 'datos');
   const [associateOpen, setAssociateOpen] = useState(false);
@@ -94,14 +95,67 @@ function MatchDetailPage({
   const [dateDraft, setDateDraft] = useState(match.date);
   const [timeDraft, setTimeDraft] = useState<string | null>(match.time);
 
-  const status = resolveMatchStatus(match);
-  const ratingsOpen = isRatingsOpen(match);
+  const [ratingsData, setRatingsData] = useState<MatchRatingsResponseDto | null>(null);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
+  const [ratingsLoadError, setRatingsLoadError] = useState(false);
+
+  const status = match.status;
   const cancelled = status === 'CANCELLED';
   const canEditSchedule = status === 'ORGANIZING' || status === 'FULL';
   const visibleTabs: Tab[] = cancelled
     ? ['datos', 'valoraciones']
     : ['datos', 'invitar', 'candidatos', 'gestion', 'chat', 'valoraciones'];
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
+
+  useEffect(() => {
+    if (tab !== 'valoraciones') {
+      return;
+    }
+    let cancelledRequest = false;
+    setRatingsLoading(true);
+    setRatingsLoadError(false);
+    api
+      .get<{ data: MatchRatingsResponseDto }>(`/api/v1/matches/${match.id}/ratings`)
+      .then((response) => {
+        if (!cancelledRequest) {
+          setRatingsData(response.data);
+        }
+      })
+      .catch(() => {
+        if (!cancelledRequest) {
+          setRatingsLoadError(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelledRequest) {
+          setRatingsLoading(false);
+        }
+      });
+    return () => {
+      cancelledRequest = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, match.id]);
+
+  const handleRatePlayer = async (targetUserId: string, rating: PlayerRating) => {
+    const response = await api.put<{ data: MatchRatingsResponseDto['participants'][number]['rating'] }>(
+      `/api/v1/matches/${match.id}/ratings/${targetUserId}`,
+      rating,
+    );
+    setRatingsData((current) =>
+      current
+        ? {
+            ...current,
+            pendingCount: current.participants.find((participant) => participant.userId === targetUserId)?.status === 'PENDING'
+              ? Math.max(0, current.pendingCount - 1)
+              : current.pendingCount,
+            participants: current.participants.map((participant) =>
+              participant.userId === targetUserId ? { ...participant, status: 'COMPLETED', rating: response.data } : participant,
+            ),
+          }
+        : current,
+    );
+  };
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -173,13 +227,13 @@ function MatchDetailPage({
               />
             </Stack>
             <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-              <Chip label={match.date} sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }} />
+              <Chip label={match.date || 'Día a definir'} sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }} />
               <Chip
                 label={`Jugadores ${match.minPlayers} - ${match.maxPlayers}`}
                 sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }}
               />
               <Chip
-                label={`${match.participants.length} / ${match.maxPlayers} confirmados`}
+                label={`${match.participantsCount} / ${match.maxPlayers} confirmados`}
                 sx={{ bgcolor: 'rgba(46, 204, 113, 0.16)', color: 'primary.light', fontWeight: 700 }}
               />
               {match.positions.map((position) => (
@@ -192,7 +246,7 @@ function MatchDetailPage({
             <Typography sx={{ fontWeight: 700, mb: 2 }}>Estado del evento</Typography>
             <Box sx={{ '& > div:not(:last-of-type)': { borderBottom: '1px solid', borderColor: 'divider' } }}>
               <StatusRow label={match.clubName ? 'Club seleccionado' : 'Club pendiente'} done={Boolean(match.clubName)} value={match.clubName ?? undefined} />
-              <StatusRow label="Día confirmado" done value={match.date} />
+              <StatusRow label={match.date ? 'Día confirmado' : 'Día pendiente'} done={Boolean(match.date)} value={match.date || undefined} />
               <StatusRow label={match.time ? 'Horario confirmado' : 'Horario pendiente'} done={Boolean(match.time)} value={match.time ?? undefined} />
               <StatusRow label={match.courtName ? 'Cancha confirmada' : 'Cancha pendiente'} done={Boolean(match.courtName)} value={match.courtName ?? undefined} />
             </Box>
@@ -277,7 +331,14 @@ function MatchDetailPage({
       {tab === 'chat' && visibleTabs.includes('chat') ? <MatchChatPage initialMessages={match.chatMessages} onSendMessage={onSendMessage} /> : null}
 
       {tab === 'valoraciones' ? (
-        <MatchRatingsPage status={status} ratingsOpen={ratingsOpen} participants={match.participants} ratings={match.ratings} onRatePlayer={onRatePlayer} />
+        <MatchRatingsPage
+          status={status}
+          closed={ratingsData?.closed ?? false}
+          loading={ratingsLoading}
+          loadError={ratingsLoadError}
+          participants={ratingsData?.participants}
+          onRatePlayer={handleRatePlayer}
+        />
       ) : null}
 
       <EntityPickerDialog

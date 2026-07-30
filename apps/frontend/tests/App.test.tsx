@@ -2,9 +2,10 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import App from '../src/App';
 
-function loginAndReachHome() {
+async function loginAndReachHome() {
   render(<App />);
   fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+  await screen.findByRole('heading', { name: /hola, federico/i });
 }
 
 describe('App', () => {
@@ -25,8 +26,8 @@ describe('App', () => {
     expect(screen.getByAltText(/rondo/i)).toBeTruthy();
   });
 
-  it('renders the home dashboard with the primary quick actions and empty state after logging in', () => {
-    loginAndReachHome();
+  it('renders the home dashboard with the primary quick actions and empty state after logging in', async () => {
+    await loginAndReachHome();
 
     expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /club señor pato/i })).toBeTruthy();
@@ -35,8 +36,8 @@ describe('App', () => {
     expect(screen.getByText(/todavía no tenés partidos ni reservas/i)).toBeTruthy();
   });
 
-  it('opens the 2-step armar partido flow from the home screen', () => {
-    loginAndReachHome();
+  it('opens the 2-step armar partido flow from the home screen', async () => {
+    await loginAndReachHome();
 
     fireEvent.click(screen.getByRole('button', { name: /armar partido/i }));
 
@@ -46,7 +47,7 @@ describe('App', () => {
   });
 
   it('completes the wizard, shows the match on Home, and opens its detail with pending status', async () => {
-    loginAndReachHome();
+    await loginAndReachHome();
 
     fireEvent.click(screen.getByRole('button', { name: /armar partido/i }));
     await screen.findByText('Delantero');
@@ -55,7 +56,7 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: /candidatos compatibles/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /finalizar/i }));
 
-    expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy();
+    await screen.findByRole('heading', { name: /hola, federico/i });
     expect(screen.queryByText(/tenés una reserva sin partido asociado/i)).toBeFalsy();
     expect(screen.getByText(/todavía no tiene cancha/i)).toBeTruthy();
 
@@ -66,8 +67,8 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /realizar una reserva/i })).toBeTruthy();
   });
 
-  it('creates a standalone booking and lands on its detail page with sin partido asociado', () => {
-    loginAndReachHome();
+  it('creates a standalone booking and lands on its detail page with sin partido asociado', async () => {
+    await loginAndReachHome();
 
     fireEvent.click(screen.getByRole('button', { name: /reservar cancha/i }));
     expect(screen.getByText(/elegí día y horario/i)).toBeTruthy();

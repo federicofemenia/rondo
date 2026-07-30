@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { cancelMatch, findMatchWithRelations, listUserMatches, toMatchSummaryDto } from './matches.service.js';
+import { createMatchInputSchema } from '@rondo/contracts';
+import { cancelMatch, createMatch, findMatchWithRelations, listUserMatches, toMatchSummaryDto } from './matches.service.js';
 import { MatchServiceError } from './errors.js';
 
 function sendServiceError(reply: FastifyReply, error: unknown): FastifyReply {
@@ -17,6 +18,26 @@ export function registerMatchRoutes(app: FastifyInstance): void {
 
     const matches = await listUserMatches(request.currentUser.id);
     return { data: matches.map((match) => toMatchSummaryDto(match, request.currentUser!.id)) };
+  });
+
+  app.post<{ Body: unknown }>('/api/v1/matches', { preHandler: app.requireAuth }, async (request, reply) => {
+    if (!request.currentUser) {
+      return reply;
+    }
+
+    const parsed = createMatchInputSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: { code: 'INVALID_INPUT', message: 'Datos de partido inválidos.', details: parsed.error.issues },
+      });
+    }
+
+    try {
+      const match = await createMatch(request.currentUser.id, parsed.data);
+      return reply.code(201).send({ data: toMatchSummaryDto(match, request.currentUser.id) });
+    } catch (error) {
+      return sendServiceError(reply, error);
+    }
   });
 
   app.get<{ Params: { matchId: string } }>('/api/v1/matches/:matchId', { preHandler: app.requireAuth }, async (request, reply) => {

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import type { MatchSummaryDto } from '@rondo/contracts';
+import type { CreateMatchInputDto, MatchSummaryDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
 import { applyMatchLifecycle, isVisibleOnHome } from './matchLifecycle.js';
 import { MatchServiceError } from './errors.js';
@@ -55,17 +55,20 @@ export function toMatchSummaryDto(match: MatchWithRelations, currentUserId: stri
     status: match.status,
     clubId: match.clubId,
     clubName: match.club?.name ?? null,
+    sportModalityId: match.sportModalityId,
     sportName: match.sportModality.sport.name,
     modalityName: match.sportModality.name,
     courtName: match.court?.name ?? null,
     minPlayers: match.minPlayers,
     maxPlayers: match.maxPlayers,
+    positions: match.positions,
     participantsCount: match._count.participants,
-    startsAt: match.startsAt.toISOString(),
-    endsAt: match.endsAt.toISOString(),
+    startsAt: match.startsAt ? match.startsAt.toISOString() : null,
+    endsAt: match.endsAt ? match.endsAt.toISOString() : null,
     organizerUserId: match.organizerUserId,
     organizerDisplayName: displayName(match.organizer),
     isOrganizer: match.organizerUserId === currentUserId,
+    createdAt: match.createdAt.toISOString(),
     statusChangedAt: match.statusChangedAt.toISOString(),
     statusChangedByType: match.statusChangedByType,
     statusChangedByUser: match.statusChangedByUser
@@ -73,6 +76,40 @@ export function toMatchSummaryDto(match: MatchWithRelations, currentUserId: stri
       : null,
     cancellationReason: match.cancellationReason,
   };
+}
+
+export async function createMatch(organizerUserId: string, input: CreateMatchInputDto, now: Date = new Date()): Promise<MatchWithRelations> {
+  const sportModality = await prisma.sportModality.findUnique({ where: { id: input.sportModalityId } });
+  if (!sportModality) {
+    throw new MatchServiceError(422, 'SPORT_MODALITY_NOT_FOUND', 'La modalidad deportiva indicada no existe.');
+  }
+
+  if (input.clubId) {
+    const club = await prisma.club.findUnique({ where: { id: input.clubId } });
+    if (!club) {
+      throw new MatchServiceError(422, 'CLUB_NOT_FOUND', 'El club indicado no existe.');
+    }
+  }
+
+  const created = await prisma.match.create({
+    data: {
+      clubId: input.clubId ?? null,
+      sportModalityId: input.sportModalityId,
+      organizerUserId,
+      minPlayers: input.minPlayers,
+      maxPlayers: input.maxPlayers,
+      positions: input.positions ?? [],
+      startsAt: input.startsAt ? new Date(input.startsAt) : null,
+      endsAt: input.endsAt ? new Date(input.endsAt) : null,
+      status: 'ORGANIZING',
+      statusChangedAt: now,
+      statusChangedByType: 'USER',
+      statusChangedByUserId: organizerUserId,
+      participants: { create: { userId: organizerUserId } },
+    },
+  });
+
+  return requireMatchWithRelations(created.id, now);
 }
 
 export async function cancelMatch(matchId: string, actingUserId: string, reason: string | undefined, now: Date = new Date()): Promise<MatchWithRelations> {

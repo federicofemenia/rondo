@@ -1,4 +1,4 @@
-import type { RateParticipantInputDto, StatusChangedByTypeDto } from '@rondo/contracts';
+import type { MatchStatusDto, RateParticipantInputDto, StatusChangedByTypeDto } from '@rondo/contracts';
 
 export type PlayerRating = RateParticipantInputDto;
 
@@ -9,21 +9,28 @@ export type ChatMessage = {
 
 export type MatchEntity = {
   id: string;
+  status: MatchStatusDto;
   sport: string;
   modality: string;
+  sportModalityId: string;
   minPlayers: string;
   maxPlayers: string;
   positions: string[];
+  participantsCount: number;
+  clubId: string | null;
   clubName: string | null;
   courtName: string | null;
   date: string;
   time: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  organizerUserId: string;
+  isOrganizer: boolean;
   bookingId: string | null;
   invitedCandidates: string[];
   declinedCandidates: string[];
   participants: string[];
   chatMessages: ChatMessage[];
-  ratings: Record<string, PlayerRating>;
   createdAt: number;
   cancelledAt: string | null;
   cancelledByType: StatusChangedByTypeDto | null;

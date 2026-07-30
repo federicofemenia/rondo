@@ -72,6 +72,25 @@ describe('GET /api/v1/matches/:matchId/ratings enablement', () => {
     expect(response.json().data.enabled).toBe(false);
     await app.close();
   });
+
+  it('returns a null closeAt (and does not crash) for an unscheduled ORGANIZING match', async () => {
+    const match = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      participantUserIds: [SEED_IDS.users.juan],
+      status: 'ORGANIZING',
+      startsAt: null,
+      endsAt: null,
+    });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/ratings`, headers: { authorization: 'Bearer juan' } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.enabled).toBe(false);
+    expect(response.json().data.closeAt).toBeNull();
+    await app.close();
+  });
 });
 
 describe('PUT /api/v1/matches/:matchId/ratings/:targetUserId validation', () => {

@@ -7,18 +7,20 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import { clubOptions } from './clubOptions';
 import { buildDayOptions } from './dateOptions';
 import PageFooter from './PageFooter';
 import TimeRangeInput from './TimeRangeInput';
+import { useMyClubs } from './useMyClubs';
 import { useSports } from './useSports';
 
 export type MatchDraft = {
   sport: string;
   modality: string;
+  sportModalityId: string;
   minPlayers: string;
   maxPlayers: string;
   positions: string[];
+  clubId: string | null;
   clubName: string | null;
   courtName: string | null;
   date: string;
@@ -38,11 +40,12 @@ function toggleValue(values: string[], value: string) {
 function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const dayOptions = useMemo(() => buildDayOptions(), []);
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
+  const { clubs, loading: clubsLoading } = useMyClubs();
 
   const sportModalities = useMemo(() => {
-    const record: Record<string, string[]> = {};
+    const record: Record<string, { id: string; name: string }[]> = {};
     sports.forEach((sportOption) => {
-      record[sportOption.name] = sportOption.modalities.map((modality) => modality.name);
+      record[sportOption.name] = sportOption.modalities.map((modality) => ({ id: modality.id, name: modality.name }));
     });
     return record;
   }, [sports]);
@@ -53,7 +56,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const [minPlayers, setMinPlayers] = useState('4');
   const [maxPlayers, setMaxPlayers] = useState('10');
   const [positions, setPositions] = useState<string[]>([]);
-  const [clubName, setClubName] = useState('');
+  const [clubId, setClubId] = useState('');
   const [date, setDate] = useState(dayOptions[0]!.value);
   const [time, setTime] = useState<string | null>(null);
 
@@ -61,13 +64,13 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
     if (!sport && sportNames.length > 0) {
       const firstSport = sportNames[0]!;
       setSport(firstSport);
-      setModality(sportModalities[firstSport]?.[0] ?? '');
+      setModality(sportModalities[firstSport]?.[0]?.name ?? '');
     }
   }, [sport, sportNames, sportModalities]);
 
   const handleSportChange = (nextSport: string) => {
     setSport(nextSport);
-    setModality(sportModalities[nextSport]?.[0] ?? '');
+    setModality(sportModalities[nextSport]?.[0]?.name ?? '');
     if (nextSport !== 'Fútbol') {
       setPositions([]);
     }
@@ -75,13 +78,20 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const sportModalityId = sportModalities[sport]?.find((option) => option.name === modality)?.id;
+    if (!sportModalityId) {
+      return;
+    }
+    const selectedClub = clubs.find((club) => club.id === clubId);
     onCreateMatch?.({
       sport,
       modality,
+      sportModalityId,
       minPlayers,
       maxPlayers,
       positions,
-      clubName: clubName || null,
+      clubId: clubId || null,
+      clubName: selectedClub?.name ?? null,
       courtName: null,
       date,
       time,
@@ -133,8 +143,8 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   fullWidth
                 >
                   {(sportModalities[sport] ?? []).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                    <option key={option.id} value={option.name}>
+                      {option.name}
                     </option>
                   ))}
                 </TextField>
@@ -192,16 +202,17 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                 <TextField
                   select
                   label="Club (opcional)"
-                  value={clubName}
-                  onChange={(event) => setClubName(event.target.value)}
+                  value={clubId}
+                  onChange={(event) => setClubId(event.target.value)}
                   slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                  disabled={clubsLoading}
                   helperText="Podés armar el partido sin definir club todavía. Solo se listan los clubes de los que sos miembro."
                   fullWidth
                 >
                   <option value="">Sin definir</option>
-                  {clubOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                  {clubs.map((club) => (
+                    <option key={club.id} value={club.id}>
+                      {club.name}
                     </option>
                   ))}
                 </TextField>

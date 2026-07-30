@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import RegisterPage from '../src/RegisterPage';
+import { signUpMock } from './setup';
 
 describe('RegisterPage', () => {
   it('renders the registration form including preferred sports', () => {
@@ -41,14 +42,37 @@ describe('RegisterPage', () => {
     expect(screen.getByRole('button', { name: /crear cuenta/i })).toHaveProperty('disabled', false);
   });
 
-  it('calls onRegister when the form is submitted', () => {
+  it('calls onRegister once Clerk completes the sign-up in one step', async () => {
     const onRegister = vi.fn();
     render(<RegisterPage onRegister={onRegister} />);
 
+    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'nuevo@rondo.dev' } });
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
 
-    expect(onRegister).toHaveBeenCalled();
+    await waitFor(() => expect(onRegister).toHaveBeenCalled());
+    expect(signUpMock.finalize).toHaveBeenCalled();
+  });
+
+  it('asks for an email verification code when Clerk requires it, then completes sign-up', async () => {
+    signUpMock.status = 'missing_requirements';
+    signUpMock.unverifiedFields = ['email_address'];
+    const onRegister = vi.fn();
+    render(<RegisterPage onRegister={onRegister} />);
+
+    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'nuevo@rondo.dev' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
+
+    await screen.findByText(/confirmá tu email/i);
+    expect(signUpMock.verifications.sendEmailCode).toHaveBeenCalled();
+
+    signUpMock.status = 'complete';
+    fireEvent.change(screen.getByLabelText(/código de verificación/i), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /^verificar$/i }));
+
+    await waitFor(() => expect(onRegister).toHaveBeenCalled());
+    expect(signUpMock.verifications.verifyEmailCode).toHaveBeenCalledWith({ code: '123456' });
   });
 
   it('calls onNavigateToLogin when the login link is clicked', () => {

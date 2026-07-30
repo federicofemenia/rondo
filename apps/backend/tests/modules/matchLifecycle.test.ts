@@ -10,8 +10,8 @@ import {
 
 type FakeMatch = {
   status: MatchStatus;
-  startsAt: Date;
-  endsAt: Date;
+  startsAt: Date | null;
+  endsAt: Date | null;
   statusChangedAt: Date;
 };
 
@@ -73,6 +73,13 @@ describe('resolveMatchStatus', () => {
 
     expect(resolveMatchStatus(match, farFuture)).toBe(status);
   });
+
+  it.each<MatchStatus>(['ORGANIZING', 'FULL'])('never auto-transitions %s while startsAt/endsAt are undefined', (status) => {
+    const farFuture = new Date('2099-01-01T00:00:00Z');
+    const match = fakeMatch({ status, startsAt: null, endsAt: null });
+
+    expect(resolveMatchStatus(match, farFuture)).toBe(status);
+  });
 });
 
 describe('isVisibleOnHome', () => {
@@ -122,13 +129,19 @@ describe('ratings window', () => {
     const endsAt = new Date('2026-01-01T00:00:00.000Z');
     const match = fakeMatch({ status: 'COMPLETED', endsAt });
 
-    expect(ratingsCloseAt(match).toISOString()).toBe('2026-01-08T00:00:00.000Z');
+    expect(ratingsCloseAt(match)!.toISOString()).toBe('2026-01-08T00:00:00.000Z');
     expect(isRatingsOpen(match, new Date('2026-01-07T23:59:59Z'))).toBe(true);
     expect(isRatingsOpen(match, new Date('2026-01-08T00:00:01Z'))).toBe(false);
   });
 
   it('is never open for a cancelled or expired match regardless of dates', () => {
     const match = fakeMatch({ status: 'CANCELLED', endsAt: new Date('2000-01-01T00:00:00Z') });
+    expect(isRatingsOpen(match, new Date())).toBe(false);
+  });
+
+  it('returns a null close date and stays closed when endsAt is undefined', () => {
+    const match = fakeMatch({ status: 'ORGANIZING', startsAt: null, endsAt: null });
+    expect(ratingsCloseAt(match)).toBeNull();
     expect(isRatingsOpen(match, new Date())).toBe(false);
   });
 });

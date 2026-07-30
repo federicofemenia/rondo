@@ -56,7 +56,9 @@ export async function getMatchRatings(matchId: string, currentUserId: string, no
     matchId,
     enabled,
     closed: enabled && !open,
-    closeAt: ratingsCloseAt(match).toISOString(),
+    // ratingsCloseAt requires endsAt, which is only guaranteed once the match is
+    // COMPLETED (the only status reachable through the timed endsAt transition).
+    closeAt: enabled ? ratingsCloseAt(match)!.toISOString() : null,
     pendingCount,
     participants,
   };

@@ -11,9 +11,16 @@ type LifecycleMatch = Pick<Match, 'status' | 'startsAt' | 'endsAt'>;
 /**
  * Pure time-based transition table. Participant-count-driven transitions
  * (ORGANIZING <-> FULL) are applied wherever participants change, not here.
+ * A match without a defined schedule (startsAt/endsAt still null) never
+ * transitions automatically: it stays ORGANIZING/FULL until a schedule is
+ * set or it is cancelled.
  */
 export function resolveMatchStatus(match: LifecycleMatch, now: Date): MatchStatus {
   if (TERMINAL_STATUSES.includes(match.status)) {
+    return match.status;
+  }
+
+  if (!match.startsAt || !match.endsAt) {
     return match.status;
   }
 
@@ -62,7 +69,10 @@ export async function applyMatchLifecycle<T extends Match>(match: T, now: Date =
   return { ...match, ...updated };
 }
 
-export function ratingsCloseAt(match: Pick<Match, 'endsAt'>): Date {
+export function ratingsCloseAt(match: Pick<Match, 'endsAt'>): Date | null {
+  if (!match.endsAt) {
+    return null;
+  }
   return new Date(match.endsAt.getTime() + RATINGS_WINDOW_MS);
 }
 
@@ -71,7 +81,8 @@ export function isRatingsEnabled(match: Pick<Match, 'status'>): boolean {
 }
 
 export function isRatingsOpen(match: Pick<Match, 'status' | 'endsAt'>, now: Date = new Date()): boolean {
-  return isRatingsEnabled(match) && now.getTime() < ratingsCloseAt(match).getTime();
+  const closeAt = ratingsCloseAt(match);
+  return isRatingsEnabled(match) && closeAt !== null && now.getTime() < closeAt.getTime();
 }
 
 export function isVisibleOnHome(match: Pick<Match, 'status' | 'endsAt' | 'statusChangedAt'>, now: Date = new Date()): boolean {
@@ -86,7 +97,7 @@ export function isVisibleOnHome(match: Pick<Match, 'status' | 'endsAt' | 'status
       return nowMs - match.statusChangedAt.getTime() < HOME_VISIBILITY_WINDOW_MS;
     case 'COMPLETED':
     case 'EXPIRED':
-      return nowMs - match.endsAt.getTime() < HOME_VISIBILITY_WINDOW_MS;
+      return match.endsAt ? nowMs - match.endsAt.getTime() < HOME_VISIBILITY_WINDOW_MS : true;
     default:
       return true;
   }

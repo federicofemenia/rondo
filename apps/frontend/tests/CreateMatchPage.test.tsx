@@ -43,9 +43,11 @@ describe('CreateMatchPage', () => {
     expect(onCreateMatch).toHaveBeenCalledWith({
       sport: 'Fútbol',
       modality: 'Fútbol 5',
+      sportModalityId: 'modality-football-5',
       minPlayers: '4',
       maxPlayers: '10',
       positions: ['Delantero'],
+      clubId: null,
       clubName: null,
       courtName: null,
       date: expectedDate,
@@ -58,13 +60,15 @@ describe('CreateMatchPage', () => {
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
     await screen.findByText('Delantero');
+    const clubSelect = await screen.findByLabelText(/^club \(opcional\)$/i);
 
-    fireEvent.change(screen.getByLabelText(/^club \(opcional\)$/i), { target: { value: 'Club Señor Pato' } });
+    fireEvent.change(clubSelect, { target: { value: 'club-1' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /horario estimado/i }));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     expect(onCreateMatch).toHaveBeenCalledWith(
       expect.objectContaining({
+        clubId: 'club-1',
         clubName: 'Club Señor Pato',
         time: '13:00 - 19:00',
       }),
