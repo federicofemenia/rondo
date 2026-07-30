@@ -1,5 +1,4 @@
 import type { MatchSummaryDto } from '@rondo/contracts';
-import { formatTimeRange } from './TimeRangeInput';
 import type { MatchEntity } from './types';
 
 /**
@@ -9,9 +8,6 @@ import type { MatchEntity } from './types';
  * flows are still frontend-only mocks in this slice.
  */
 export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntity): MatchEntity {
-  const start = dto.startsAt ? new Date(dto.startsAt) : null;
-  const end = dto.endsAt ? new Date(dto.endsAt) : null;
-
   return {
     id: dto.id,
     status: dto.status,
@@ -25,8 +21,9 @@ export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntit
     clubId: dto.clubId,
     clubName: dto.clubName,
     courtName: dto.courtName,
-    date: start ? dto.startsAt!.slice(0, 10) : '',
-    time: start && end ? formatTimeRange([start.getHours(), end.getHours()]) : null,
+    scheduledDate: dto.scheduledDate,
+    availabilityStartMinutes: dto.availabilityStartMinutes,
+    availabilityEndMinutes: dto.availabilityEndMinutes,
     startsAt: dto.startsAt,
     endsAt: dto.endsAt,
     organizerUserId: dto.organizerUserId,

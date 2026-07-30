@@ -14,10 +14,16 @@ import { calculateAge } from './age';
 import PageFooter from './PageFooter';
 import PlayerReviewsDialog from './PlayerReviewsDialog';
 import type { CandidateReview } from './PlayerReviewsDialog';
-import type { MatchDraft } from './CreateMatchPage';
+
+export type CandidateMatchSummary = {
+  sport: string;
+  modality: string;
+  clubName: string | null;
+  positions: string[];
+};
 
 type CandidatesPageProps = {
-  matchDraft?: MatchDraft | null;
+  matchDraft?: CandidateMatchSummary | null;
   excludeNames?: string[];
   onInviteCandidate?: (name: string) => void;
   onFinish?: () => void;

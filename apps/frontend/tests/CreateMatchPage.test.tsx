@@ -31,7 +31,7 @@ describe('CreateMatchPage', () => {
     expect(screen.queryByText(/posiciones requeridas/i)).toBeFalsy();
   });
 
-  it('submits the match draft with a required day and optional horario/cancha left empty', async () => {
+  it('submits the match draft with a required day and franja, and no exact time by default', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
@@ -51,11 +51,13 @@ describe('CreateMatchPage', () => {
       clubName: null,
       courtName: null,
       date: expectedDate,
-      time: null,
+      availabilityStartMinutes: 13 * 60,
+      availabilityEndMinutes: 19 * 60,
+      startTimeMinutes: null,
     });
   });
 
-  it('includes the club when one is selected, and the estimated time range when the switch is enabled', async () => {
+  it('includes the club when one is selected, and the exact start time when it is enabled', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
@@ -63,15 +65,27 @@ describe('CreateMatchPage', () => {
     const clubSelect = await screen.findByLabelText(/^club \(opcional\)$/i);
 
     fireEvent.change(clubSelect, { target: { value: 'club-1' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /horario estimado/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /horario exacto \(opcional\)/i }));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     expect(onCreateMatch).toHaveBeenCalledWith(
       expect.objectContaining({
         clubId: 'club-1',
         clubName: 'Club Señor Pato',
-        time: '13:00 - 19:00',
+        availabilityStartMinutes: 13 * 60,
+        availabilityEndMinutes: 19 * 60,
+        startTimeMinutes: 13 * 60,
       }),
     );
+  });
+
+  it('requires a franja horaria: the slider always has a value and cannot be turned off', async () => {
+    render(<CreateMatchPage />);
+
+    await screen.findByText('Delantero');
+
+    expect(screen.getByText(/franja horaria disponible/i)).toBeTruthy();
+    expect(screen.getByText('13:00 - 19:00')).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: /franja horaria disponible/i })).toBeFalsy();
   });
 });

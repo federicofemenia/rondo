@@ -30,6 +30,7 @@ describe('unique constraints', () => {
           code: 'football-5',
           name: 'Otra modalidad',
           playersCount: 1,
+          durationMinutes: 60,
           displayOrder: 99,
         },
       }),

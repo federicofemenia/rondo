@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { createMatchInputSchema } from '@rondo/contracts';
-import { cancelMatch, createMatch, findMatchWithRelations, listUserMatches, toMatchSummaryDto } from './matches.service.js';
+import { createMatchInputSchema, updateMatchScheduleInputSchema } from '@rondo/contracts';
+import { cancelMatch, createMatch, findMatchWithRelations, listUserMatches, toMatchSummaryDto, updateMatchSchedule } from './matches.service.js';
 import { MatchServiceError } from './errors.js';
 
 function sendServiceError(reply: FastifyReply, error: unknown): FastifyReply {
@@ -63,6 +63,30 @@ export function registerMatchRoutes(app: FastifyInstance): void {
 
       try {
         const match = await cancelMatch(request.params.matchId, request.currentUser.id, request.body?.reason);
+        return { data: toMatchSummaryDto(match, request.currentUser.id) };
+      } catch (error) {
+        return sendServiceError(reply, error);
+      }
+    },
+  );
+
+  app.patch<{ Params: { matchId: string }; Body: unknown }>(
+    '/api/v1/matches/:matchId/schedule',
+    { preHandler: app.requireAuth },
+    async (request, reply) => {
+      if (!request.currentUser) {
+        return reply;
+      }
+
+      const parsed = updateMatchScheduleInputSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: { code: 'INVALID_INPUT', message: 'Datos de horario inválidos.', details: parsed.error.issues },
+        });
+      }
+
+      try {
+        const match = await updateMatchSchedule(request.params.matchId, request.currentUser.id, parsed.data);
         return { data: toMatchSummaryDto(match, request.currentUser.id) };
       } catch (error) {
         return sendServiceError(reply, error);

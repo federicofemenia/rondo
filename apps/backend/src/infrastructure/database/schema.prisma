@@ -118,12 +118,13 @@ model Sport {
 }
 
 model SportModality {
-  id           String @id @default(uuid())
-  sportId      String @map("sport_id")
-  code         String @unique
-  name         String
-  playersCount Int    @map("players_count")
-  displayOrder Int    @map("display_order")
+  id              String @id @default(uuid())
+  sportId         String @map("sport_id")
+  code            String @unique
+  name            String
+  playersCount    Int    @map("players_count")
+  durationMinutes Int    @map("duration_minutes")
+  displayOrder    Int    @map("display_order")
 
   sport   Sport   @relation(fields: [sportId], references: [id])
   courts  Court[]
@@ -195,8 +196,11 @@ model Match {
   maxPlayers Int      @map("max_players")
   positions  String[] @default([])
 
-  startsAt DateTime? @map("starts_at")
-  endsAt   DateTime? @map("ends_at")
+  scheduledDate            DateTime  @map("scheduled_date") @db.Date
+  availabilityStartMinutes Int       @map("availability_start_minutes")
+  availabilityEndMinutes   Int       @map("availability_end_minutes")
+  startsAt                 DateTime? @map("starts_at")
+  endsAt                   DateTime? @map("ends_at")
 
   status                MatchStatus         @default(ORGANIZING)
   statusChangedAt       DateTime            @map("status_changed_at")
@@ -220,6 +224,7 @@ model Match {
   @@index([organizerUserId])
   @@index([status])
   @@index([endsAt])
+  @@index([scheduledDate])
   @@map("matches")
 }
 

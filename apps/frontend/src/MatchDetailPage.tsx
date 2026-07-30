@@ -21,11 +21,14 @@ import { clubOptions } from './clubOptions';
 import { buildDayOptions } from './dateOptions';
 import EntityPickerDialog from './EntityPickerDialog';
 import type { PickerItem } from './EntityPickerDialog';
+import ExactStartTimeInput from './ExactStartTimeInput';
 import InvitationsPage from './InvitationsPage';
 import MatchChatPage from './MatchChatPage';
 import MatchManagementPage from './MatchManagementPage';
 import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import MatchRatingsPage from './MatchRatingsPage';
+import { buildIsoDateTime, describeSchedule, isoTimeToMinutes } from './scheduleFormat';
+import type { ScheduleUpdateInput } from './scheduleFormat';
 import TimeRangeInput from './TimeRangeInput';
 import type { MatchEntity, PlayerRating } from './types';
 
@@ -39,8 +42,7 @@ type MatchDetailPageProps = {
   onRemoveParticipant?: (name: string) => void;
   onCancelMatch?: () => void;
   onEditClub?: (clubName: string | null) => void;
-  onEditDate?: (date: string) => void;
-  onEditTime?: (time: string | null) => void;
+  onEditSchedule?: (input: ScheduleUpdateInput) => Promise<void>;
   onRequestBooking?: () => void;
   onAssociateBooking?: (bookingId: string) => void;
 };
@@ -82,8 +84,7 @@ function MatchDetailPage({
   onRemoveParticipant,
   onCancelMatch,
   onEditClub,
-  onEditDate,
-  onEditTime,
+  onEditSchedule,
   onRequestBooking,
   onAssociateBooking,
 }: MatchDetailPageProps) {
@@ -92,8 +93,16 @@ function MatchDetailPage({
   const [tab, setTab] = useState<Tab>(initialTab ?? 'datos');
   const [associateOpen, setAssociateOpen] = useState(false);
   const [clubDraft, setClubDraft] = useState(match.clubName ?? '');
-  const [dateDraft, setDateDraft] = useState(match.date);
-  const [timeDraft, setTimeDraft] = useState<string | null>(match.time);
+  const [dateDraft, setDateDraft] = useState(match.scheduledDate);
+  const [availabilityRangeDraft, setAvailabilityRangeDraft] = useState<[number, number]>([
+    match.availabilityStartMinutes / 60,
+    match.availabilityEndMinutes / 60,
+  ]);
+  const [exactStartMinutesDraft, setExactStartMinutesDraft] = useState<number | null>(
+    match.startsAt ? isoTimeToMinutes(match.startsAt) : null,
+  );
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   const [ratingsData, setRatingsData] = useState<MatchRatingsResponseDto | null>(null);
   const [ratingsLoading, setRatingsLoading] = useState(false);
@@ -101,11 +110,36 @@ function MatchDetailPage({
 
   const status = match.status;
   const cancelled = status === 'CANCELLED';
-  const canEditSchedule = status === 'ORGANIZING' || status === 'FULL';
+  const canEditSchedule = status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'EXPIRED';
   const visibleTabs: Tab[] = cancelled
     ? ['datos', 'valoraciones']
     : ['datos', 'invitar', 'candidatos', 'gestion', 'chat', 'valoraciones'];
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
+  const schedule = describeSchedule(match);
+
+  const handleAvailabilityRangeDraftChange = (range: [number, number]) => {
+    setAvailabilityRangeDraft(range);
+    const [startMinutes, endMinutes] = [range[0] * 60, range[1] * 60];
+    setExactStartMinutesDraft((current) => (current !== null && (current < startMinutes || current >= endMinutes) ? null : current));
+  };
+
+  const handleSaveSchedule = async () => {
+    setScheduleSaving(true);
+    setScheduleError(null);
+    try {
+      onEditClub?.(clubDraft || null);
+      await onEditSchedule?.({
+        scheduledDate: dateDraft,
+        availabilityStartMinutes: availabilityRangeDraft[0] * 60,
+        availabilityEndMinutes: availabilityRangeDraft[1] * 60,
+        startsAt: exactStartMinutesDraft !== null ? buildIsoDateTime(dateDraft, exactStartMinutesDraft) : null,
+      });
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : 'No pudimos guardar el horario. Reintentá.');
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (tab !== 'valoraciones') {
@@ -227,7 +261,11 @@ function MatchDetailPage({
               />
             </Stack>
             <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-              <Chip label={match.date || 'Día a definir'} sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }} />
+              <Chip label={schedule.dateLabel} sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }} />
+              <Chip
+                label={schedule.isConfirmed ? schedule.timeLabel : `Franja ${schedule.windowLabel}`}
+                sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }}
+              />
               <Chip
                 label={`Jugadores ${match.minPlayers} - ${match.maxPlayers}`}
                 sx={{ bgcolor: 'background.default', color: 'text.primary', fontWeight: 700 }}
@@ -246,8 +284,12 @@ function MatchDetailPage({
             <Typography sx={{ fontWeight: 700, mb: 2 }}>Estado del evento</Typography>
             <Box sx={{ '& > div:not(:last-of-type)': { borderBottom: '1px solid', borderColor: 'divider' } }}>
               <StatusRow label={match.clubName ? 'Club seleccionado' : 'Club pendiente'} done={Boolean(match.clubName)} value={match.clubName ?? undefined} />
-              <StatusRow label={match.date ? 'Día confirmado' : 'Día pendiente'} done={Boolean(match.date)} value={match.date || undefined} />
-              <StatusRow label={match.time ? 'Horario confirmado' : 'Horario pendiente'} done={Boolean(match.time)} value={match.time ?? undefined} />
+              <StatusRow label="Día confirmado" done value={schedule.dateLabel} />
+              <StatusRow
+                label={schedule.isConfirmed ? 'Horario confirmado' : 'Horario pendiente de confirmación'}
+                done={schedule.isConfirmed}
+                value={schedule.isConfirmed ? schedule.timeLabel : `Franja elegida: ${schedule.windowLabel}`}
+              />
               <StatusRow label={match.courtName ? 'Cancha confirmada' : 'Cancha pendiente'} done={Boolean(match.courtName)} value={match.courtName ?? undefined} />
             </Box>
 
@@ -284,16 +326,21 @@ function MatchDetailPage({
                     </option>
                   ))}
                 </TextField>
-                <TimeRangeInput value={timeDraft} onChange={setTimeDraft} label="Editar horario" />
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    onEditClub?.(clubDraft || null);
-                    onEditDate?.(dateDraft);
-                    onEditTime?.(timeDraft);
-                  }}
-                >
-                  Guardar cambios
+                <TimeRangeInput value={availabilityRangeDraft} onChange={handleAvailabilityRangeDraftChange} label="Editar franja horaria disponible" />
+                <ExactStartTimeInput
+                  availabilityStartMinutes={availabilityRangeDraft[0] * 60}
+                  availabilityEndMinutes={availabilityRangeDraft[1] * 60}
+                  value={exactStartMinutesDraft}
+                  onChange={setExactStartMinutesDraft}
+                  label="Editar horario exacto (opcional)"
+                />
+                {scheduleError ? (
+                  <Typography variant="body2" color="error.main">
+                    {scheduleError}
+                  </Typography>
+                ) : null}
+                <Button variant="outlined" onClick={() => void handleSaveSchedule()} disabled={scheduleSaving}>
+                  {scheduleSaving ? 'Guardando…' : 'Guardar cambios'}
                 </Button>
 
                 {!match.courtName ? (

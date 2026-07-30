@@ -70,6 +70,9 @@ export interface MatchSummaryDto {
   maxPlayers: number;
   positions: string[];
   participantsCount: number;
+  scheduledDate: string;
+  availabilityStartMinutes: number;
+  availabilityEndMinutes: number;
   startsAt: string | null;
   endsAt: string | null;
   organizerUserId: string;
@@ -82,6 +85,65 @@ export interface MatchSummaryDto {
   cancellationReason: string | null;
 }
 
+const scheduledDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+type ScheduleFields = {
+  scheduledDate: string;
+  availabilityStartMinutes: number;
+  availabilityEndMinutes: number;
+  startsAt?: string | null;
+};
+
+/**
+ * Shared business rules for any payload that carries a match schedule
+ * (creation and the dedicated schedule-edit endpoint): the day is mandatory,
+ * the availability window must be well-formed, and an optional startsAt must
+ * fall on the same day and inside that window. Duration-aware validation
+ * (startsAt + modality duration must still fit the window) requires a DB
+ * lookup and is enforced server-side, not here.
+ */
+function validateScheduleFields(data: ScheduleFields, ctx: z.RefinementCtx): void {
+  if (data.availabilityEndMinutes <= data.availabilityStartMinutes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'availabilityEndMinutes debe ser mayor a availabilityStartMinutes.',
+      path: ['availabilityEndMinutes'],
+    });
+  }
+
+  const scheduled = new Date(`${data.scheduledDate}T00:00:00.000Z`);
+  if (Number.isNaN(scheduled.getTime())) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'scheduledDate no es una fecha válida.', path: ['scheduledDate'] });
+    return;
+  }
+
+  const today = new Date();
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  if (scheduled.getTime() < todayUtc.getTime()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'scheduledDate no puede ser una fecha pasada.', path: ['scheduledDate'] });
+  }
+
+  if (data.startsAt) {
+    const startsAt = new Date(data.startsAt);
+    const sameDay =
+      startsAt.getUTCFullYear() === scheduled.getUTCFullYear() &&
+      startsAt.getUTCMonth() === scheduled.getUTCMonth() &&
+      startsAt.getUTCDate() === scheduled.getUTCDate();
+    if (!sameDay) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'startsAt debe pertenecer al mismo día que scheduledDate.', path: ['startsAt'] });
+    }
+
+    const startMinutes = startsAt.getUTCHours() * 60 + startsAt.getUTCMinutes();
+    if (startMinutes < data.availabilityStartMinutes || startMinutes >= data.availabilityEndMinutes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'startsAt debe comenzar dentro de la franja horaria elegida.',
+        path: ['startsAt'],
+      });
+    }
+  }
+}
+
 export const createMatchInputSchema = z
   .object({
     sportModalityId: z.string().uuid(),
@@ -89,23 +151,30 @@ export const createMatchInputSchema = z
     minPlayers: z.number().int().min(1),
     maxPlayers: z.number().int().min(1),
     positions: z.array(z.string().trim().min(1)).max(10).optional(),
+    scheduledDate: z.string().regex(scheduledDatePattern, 'scheduledDate debe tener el formato YYYY-MM-DD.'),
+    availabilityStartMinutes: z.number().int().min(0).max(1439),
+    availabilityEndMinutes: z.number().int().min(1).max(1440),
     startsAt: z.string().datetime().nullable().optional(),
-    endsAt: z.string().datetime().nullable().optional(),
   })
-  .refine((data) => data.maxPlayers >= data.minPlayers, {
-    message: 'maxPlayers debe ser mayor o igual a minPlayers.',
-    path: ['maxPlayers'],
-  })
-  .refine((data) => (data.startsAt ?? null) === null === ((data.endsAt ?? null) === null), {
-    message: 'startsAt y endsAt deben estar los dos definidos o los dos vacíos.',
-    path: ['endsAt'],
-  })
-  .refine((data) => !data.startsAt || !data.endsAt || new Date(data.startsAt) < new Date(data.endsAt), {
-    message: 'startsAt debe ser anterior a endsAt.',
-    path: ['startsAt'],
+  .superRefine((data, ctx) => {
+    if (data.maxPlayers < data.minPlayers) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'maxPlayers debe ser mayor o igual a minPlayers.', path: ['maxPlayers'] });
+    }
+    validateScheduleFields(data, ctx);
   });
 
 export type CreateMatchInputDto = z.infer<typeof createMatchInputSchema>;
+
+export const updateMatchScheduleInputSchema = z
+  .object({
+    scheduledDate: z.string().regex(scheduledDatePattern, 'scheduledDate debe tener el formato YYYY-MM-DD.'),
+    availabilityStartMinutes: z.number().int().min(0).max(1439),
+    availabilityEndMinutes: z.number().int().min(1).max(1440),
+    startsAt: z.string().datetime().nullable().optional(),
+  })
+  .superRefine(validateScheduleFields);
+
+export type UpdateMatchScheduleInputDto = z.infer<typeof updateMatchScheduleInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Ratings

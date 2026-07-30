@@ -6,14 +6,20 @@ const TERMINAL_STATUSES: readonly MatchStatus[] = ['COMPLETED', 'CANCELLED', 'EX
 export const HOME_VISIBILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const RATINGS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-type LifecycleMatch = Pick<Match, 'status' | 'startsAt' | 'endsAt'>;
+type LifecycleMatch = Pick<Match, 'status' | 'scheduledDate' | 'startsAt' | 'endsAt'>;
+
+/** Midnight (UTC) of the day after `date`, i.e. the exclusive end of that calendar day. */
+export function endOfScheduledDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1, 0, 0, 0, 0));
+}
 
 /**
  * Pure time-based transition table. Participant-count-driven transitions
  * (ORGANIZING <-> FULL) are applied wherever participants change, not here.
- * A match without a defined schedule (startsAt/endsAt still null) never
- * transitions automatically: it stays ORGANIZING/FULL until a schedule is
- * set or it is cancelled.
+ * A match without a confirmed time (startsAt/endsAt still null) never starts
+ * or completes automatically: it stays ORGANIZING/FULL until either a time
+ * is set, or the scheduled day is over, at which point it expires so it
+ * cannot linger forever without a time.
  */
 export function resolveMatchStatus(match: LifecycleMatch, now: Date): MatchStatus {
   if (TERMINAL_STATUSES.includes(match.status)) {
@@ -21,7 +27,7 @@ export function resolveMatchStatus(match: LifecycleMatch, now: Date): MatchStatu
   }
 
   if (!match.startsAt || !match.endsAt) {
-    return match.status;
+    return now.getTime() >= endOfScheduledDay(match.scheduledDate).getTime() ? 'EXPIRED' : match.status;
   }
 
   const nowMs = now.getTime();
@@ -85,7 +91,10 @@ export function isRatingsOpen(match: Pick<Match, 'status' | 'endsAt'>, now: Date
   return isRatingsEnabled(match) && closeAt !== null && now.getTime() < closeAt.getTime();
 }
 
-export function isVisibleOnHome(match: Pick<Match, 'status' | 'endsAt' | 'statusChangedAt'>, now: Date = new Date()): boolean {
+export function isVisibleOnHome(
+  match: Pick<Match, 'status' | 'scheduledDate' | 'endsAt' | 'statusChangedAt'>,
+  now: Date = new Date(),
+): boolean {
   const nowMs = now.getTime();
 
   switch (match.status) {
@@ -96,8 +105,10 @@ export function isVisibleOnHome(match: Pick<Match, 'status' | 'endsAt' | 'status
     case 'CANCELLED':
       return nowMs - match.statusChangedAt.getTime() < HOME_VISIBILITY_WINDOW_MS;
     case 'COMPLETED':
-    case 'EXPIRED':
-      return match.endsAt ? nowMs - match.endsAt.getTime() < HOME_VISIBILITY_WINDOW_MS : true;
+    case 'EXPIRED': {
+      const referenceMs = match.endsAt ? match.endsAt.getTime() : endOfScheduledDay(match.scheduledDate).getTime();
+      return nowMs - referenceMs < HOME_VISIBILITY_WINDOW_MS;
+    }
     default:
       return true;
   }

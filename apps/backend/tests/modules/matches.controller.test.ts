@@ -9,6 +9,17 @@ beforeAll(async () => {
   await runSeed();
 });
 
+function dateStringDaysFromNow(days: number): string {
+  const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())).toISOString().slice(0, 10);
+}
+
+/** ISO datetime for `hour:minute` UTC on the day `days` from now (football-5 duration is 60 minutes). */
+function isoAtHour(days: number, hour: number, minute = 0): string {
+  const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, minute, 0, 0)).toISOString();
+}
+
 describe('POST /api/v1/matches', () => {
   const createdMatchIds: string[] = [];
 
@@ -16,7 +27,7 @@ describe('POST /api/v1/matches', () => {
     await Promise.all(createdMatchIds.splice(0).map(deleteTestMatch));
   });
 
-  it('creates a match with the organizer auto-confirmed as a participant', async () => {
+  it('creates a match with just a scheduled day, the organizer auto-confirmed, and no startsAt/endsAt', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'POST',
@@ -28,18 +39,35 @@ describe('POST /api/v1/matches', () => {
         minPlayers: 4,
         maxPlayers: 10,
         positions: ['Arquero', 'Defensor'],
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 14 * 60,
+        availabilityEndMinutes: 19 * 60,
       },
     });
 
     expect(response.statusCode).toBe(201);
     const body = response.json() as {
-      data: { id: string; status: string; organizerUserId: string; participantsCount: number; startsAt: string | null; endsAt: string | null; positions: string[] };
+      data: {
+        id: string;
+        status: string;
+        organizerUserId: string;
+        participantsCount: number;
+        scheduledDate: string;
+        availabilityStartMinutes: number;
+        availabilityEndMinutes: number;
+        startsAt: string | null;
+        endsAt: string | null;
+        positions: string[];
+      };
     };
     createdMatchIds.push(body.data.id);
 
     expect(body.data.status).toBe('ORGANIZING');
     expect(body.data.organizerUserId).toBe(SEED_IDS.users.juan);
     expect(body.data.participantsCount).toBe(1);
+    expect(body.data.scheduledDate).toBe(dateStringDaysFromNow(2));
+    expect(body.data.availabilityStartMinutes).toBe(14 * 60);
+    expect(body.data.availabilityEndMinutes).toBe(19 * 60);
     expect(body.data.startsAt).toBeNull();
     expect(body.data.endsAt).toBeNull();
     expect(body.data.positions).toEqual(['Arquero', 'Defensor']);
@@ -47,9 +75,8 @@ describe('POST /api/v1/matches', () => {
     await app.close();
   });
 
-  it('creates a match with a schedule when startsAt/endsAt are provided', async () => {
-    const startsAt = new Date(Date.now() + 3600_000).toISOString();
-    const endsAt = new Date(Date.now() + 7200_000).toISOString();
+  it('computes endsAt automatically from the modality duration when startsAt is provided', async () => {
+    const startsAt = isoAtHour(2, 17);
 
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
@@ -60,8 +87,10 @@ describe('POST /api/v1/matches', () => {
         sportModalityId: SEED_IDS.modalities.football5,
         minPlayers: 4,
         maxPlayers: 10,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 14 * 60,
+        availabilityEndMinutes: 19 * 60,
         startsAt,
-        endsAt,
       },
     });
 
@@ -70,8 +99,140 @@ describe('POST /api/v1/matches', () => {
     createdMatchIds.push(body.data.id);
 
     expect(body.data.startsAt).toBe(startsAt);
-    expect(body.data.endsAt).toBe(endsAt);
+    // football-5 duration is 60 minutes: 17:00 -> 18:00.
+    expect(body.data.endsAt).toBe(isoAtHour(2, 18));
 
+    await app.close();
+  });
+
+  it('accepts a startsAt that ends exactly at the edge of the availability window', async () => {
+    const startsAt = isoAtHour(2, 18);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        sportModalityId: SEED_IDS.modalities.football5,
+        minPlayers: 4,
+        maxPlayers: 10,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 14 * 60,
+        availabilityEndMinutes: 19 * 60,
+        startsAt,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { data: { id: string; endsAt: string | null } };
+    createdMatchIds.push(body.data.id);
+    expect(body.data.endsAt).toBe(isoAtHour(2, 19));
+
+    await app.close();
+  });
+
+  it('rejects a startsAt whose computed end time falls outside the availability window', async () => {
+    const startsAt = isoAtHour(2, 18, 30);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        sportModalityId: SEED_IDS.modalities.football5,
+        minPlayers: 4,
+        maxPlayers: 10,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 14 * 60,
+        availabilityEndMinutes: 19 * 60,
+        startsAt,
+      },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error.code).toBe('STARTS_AT_OUTSIDE_AVAILABILITY');
+    await app.close();
+  });
+
+  it('rejects a payload missing scheduledDate', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        sportModalityId: SEED_IDS.modalities.football5,
+        minPlayers: 4,
+        maxPlayers: 10,
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects a scheduledDate in the past', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        sportModalityId: SEED_IDS.modalities.football5,
+        minPlayers: 4,
+        maxPlayers: 10,
+        scheduledDate: dateStringDaysFromNow(-1),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects an availability window where end is not after start', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        sportModalityId: SEED_IDS.modalities.football5,
+        minPlayers: 4,
+        maxPlayers: 10,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 1200,
+        availabilityEndMinutes: 600,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects a startsAt outside the chosen day', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        sportModalityId: SEED_IDS.modalities.football5,
+        minPlayers: 4,
+        maxPlayers: 10,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 14 * 60,
+        availabilityEndMinutes: 19 * 60,
+        startsAt: isoAtHour(3, 17),
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
     await app.close();
   });
 
@@ -81,24 +242,13 @@ describe('POST /api/v1/matches', () => {
       method: 'POST',
       url: '/api/v1/matches',
       headers: { authorization: 'Bearer juan' },
-      payload: { sportModalityId: SEED_IDS.modalities.football5, minPlayers: 10, maxPlayers: 4 },
-    });
-
-    expect(response.statusCode).toBe(400);
-    await app.close();
-  });
-
-  it('rejects a payload with only one of startsAt/endsAt set', async () => {
-    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/v1/matches',
-      headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
-        minPlayers: 4,
-        maxPlayers: 10,
-        startsAt: new Date(Date.now() + 3600_000).toISOString(),
+        minPlayers: 10,
+        maxPlayers: 4,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
       },
     });
 
@@ -112,7 +262,14 @@ describe('POST /api/v1/matches', () => {
       method: 'POST',
       url: '/api/v1/matches',
       headers: { authorization: 'Bearer juan' },
-      payload: { sportModalityId: '00000000-0000-0000-0000-000000000000', minPlayers: 4, maxPlayers: 10 },
+      payload: {
+        sportModalityId: '00000000-0000-0000-0000-000000000000',
+        minPlayers: 4,
+        maxPlayers: 10,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
     });
 
     expect(response.statusCode).toBe(422);
@@ -124,10 +281,125 @@ describe('POST /api/v1/matches', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/matches',
-      payload: { sportModalityId: SEED_IDS.modalities.football5, minPlayers: 4, maxPlayers: 10 },
+      payload: {
+        sportModalityId: SEED_IDS.modalities.football5,
+        minPlayers: 4,
+        maxPlayers: 10,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
     });
 
     expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+});
+
+describe('PATCH /api/v1/matches/:matchId/schedule', () => {
+  const createdMatchIds: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(createdMatchIds.splice(0).map(deleteTestMatch));
+  });
+
+  it('lets the organizer set a time on a match that had none, recalculating endsAt', async () => {
+    const match = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      status: 'ORGANIZING',
+      scheduledDate: new Date(dateStringDaysFromNow(2)),
+      availabilityStartMinutes: 14 * 60,
+      availabilityEndMinutes: 19 * 60,
+      startsAt: null,
+      endsAt: null,
+    });
+    createdMatchIds.push(match.id);
+
+    const startsAt = isoAtHour(2, 17);
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 14 * 60,
+        availabilityEndMinutes: 19 * 60,
+        startsAt,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: { startsAt: string | null; endsAt: string | null } };
+    expect(body.data.startsAt).toBe(startsAt);
+    expect(body.data.endsAt).toBe(isoAtHour(2, 18));
+
+    await app.close();
+  });
+
+  it('lets the organizer move the day and widen the availability window', async () => {
+    const match = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      status: 'ORGANIZING',
+      startsAt: null,
+      endsAt: null,
+    });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        scheduledDate: dateStringDaysFromNow(5),
+        availabilityStartMinutes: 10 * 60,
+        availabilityEndMinutes: 22 * 60,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: { scheduledDate: string; availabilityStartMinutes: number; availabilityEndMinutes: number } };
+    expect(body.data.scheduledDate).toBe(dateStringDaysFromNow(5));
+    expect(body.data.availabilityStartMinutes).toBe(10 * 60);
+    expect(body.data.availabilityEndMinutes).toBe(22 * 60);
+
+    await app.close();
+  });
+
+  it('rejects editing when the acting user is not the organizer', async () => {
+    const match = await createTestMatch({ organizerUserId: SEED_IDS.users.juan, status: 'ORGANIZING' });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer martin' },
+      payload: { scheduledDate: dateStringDaysFromNow(2), availabilityStartMinutes: 600, availabilityEndMinutes: 1200 },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it.each(['COMPLETED', 'CANCELLED', 'EXPIRED'] as const)('rejects editing a %s match', async (status) => {
+    const match = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      status,
+      endsAt: new Date(Date.now() - 3600_000),
+    });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer juan' },
+      payload: { scheduledDate: dateStringDaysFromNow(2), availabilityStartMinutes: 600, availabilityEndMinutes: 1200 },
+    });
+
+    expect(response.statusCode).toBe(409);
     await app.close();
   });
 });

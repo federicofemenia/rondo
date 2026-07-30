@@ -8,6 +8,25 @@ function hoursFromNow(hours: number): Date {
   return new Date(Date.now() + hours * 60 * 60 * 1000);
 }
 
+function daysFromNowUtc(days: number): Date {
+  const target = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()));
+}
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+/** Derives a seed availability window that comfortably contains startsAt/endsAt. */
+function windowAround(startsAt: Date, endsAt: Date): { availabilityStartMinutes: number; availabilityEndMinutes: number } {
+  const startMinutes = startsAt.getUTCHours() * 60 + startsAt.getUTCMinutes();
+  const endMinutes = endsAt.getUTCHours() * 60 + endsAt.getUTCMinutes();
+  return {
+    availabilityStartMinutes: Math.max(0, startMinutes - 60),
+    availabilityEndMinutes: Math.min(1440, Math.max(endMinutes + 60, startMinutes + 60)),
+  };
+}
+
 export async function runSeed(): Promise<void> {
   const padel = await prisma.sport.upsert({
     where: { id: SEED_IDS.sports.padel },
@@ -23,26 +42,28 @@ export async function runSeed(): Promise<void> {
 
   const padelDoubles = await prisma.sportModality.upsert({
     where: { id: SEED_IDS.modalities.padelDoubles },
-    update: { sportId: padel.id, code: 'padel-doubles', name: 'Dobles', playersCount: 4, displayOrder: 1 },
+    update: { sportId: padel.id, code: 'padel-doubles', name: 'Dobles', playersCount: 4, durationMinutes: 90, displayOrder: 1 },
     create: {
       id: SEED_IDS.modalities.padelDoubles,
       sportId: padel.id,
       code: 'padel-doubles',
       name: 'Dobles',
       playersCount: 4,
+      durationMinutes: 90,
       displayOrder: 1,
     },
   });
 
   const football5 = await prisma.sportModality.upsert({
     where: { id: SEED_IDS.modalities.football5 },
-    update: { sportId: football.id, code: 'football-5', name: 'Fútbol 5', playersCount: 10, displayOrder: 1 },
+    update: { sportId: football.id, code: 'football-5', name: 'Fútbol 5', playersCount: 10, durationMinutes: 60, displayOrder: 1 },
     create: {
       id: SEED_IDS.modalities.football5,
       sportId: football.id,
       code: 'football-5',
       name: 'Fútbol 5',
       playersCount: 10,
+      durationMinutes: 60,
       displayOrder: 1,
     },
   });
@@ -164,8 +185,11 @@ export async function runSeed(): Promise<void> {
     organizerUserId: string;
     minPlayers: number;
     maxPlayers: number;
-    startsAt: Date;
-    endsAt: Date;
+    scheduledDate: Date;
+    availabilityStartMinutes: number;
+    availabilityEndMinutes: number;
+    startsAt: Date | null;
+    endsAt: Date | null;
     status: 'ORGANIZING' | 'FULL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED';
     statusChangedAt: Date;
     statusChangedByType: 'USER' | 'SYSTEM';
@@ -182,6 +206,9 @@ export async function runSeed(): Promise<void> {
         organizerUserId: input.organizerUserId,
         minPlayers: input.minPlayers,
         maxPlayers: input.maxPlayers,
+        scheduledDate: input.scheduledDate,
+        availabilityStartMinutes: input.availabilityStartMinutes,
+        availabilityEndMinutes: input.availabilityEndMinutes,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         status: input.status,
@@ -198,6 +225,9 @@ export async function runSeed(): Promise<void> {
         organizerUserId: input.organizerUserId,
         minPlayers: input.minPlayers,
         maxPlayers: input.maxPlayers,
+        scheduledDate: input.scheduledDate,
+        availabilityStartMinutes: input.availabilityStartMinutes,
+        availabilityEndMinutes: input.availabilityEndMinutes,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         status: input.status,
@@ -221,112 +251,197 @@ export async function runSeed(): Promise<void> {
     return match;
   }
 
+  {
+    const startsAt = hoursFromNow(48);
+    const endsAt = hoursFromNow(49);
+    await upsertMatch({
+      id: SEED_IDS.matches.organizing,
+      clubId: club.id,
+      sportModalityId: football5.id,
+      courtId: courts.find((court) => court.code === 'football-5')!.id,
+      organizerUserId: juan.id,
+      minPlayers: 2,
+      maxPlayers: 10,
+      scheduledDate: startOfUtcDay(startsAt),
+      ...windowAround(startsAt, endsAt),
+      startsAt,
+      endsAt,
+      status: 'ORGANIZING',
+      statusChangedAt: hoursFromNow(-1),
+      statusChangedByType: 'SYSTEM',
+      statusChangedByUserId: null,
+      cancellationReason: null,
+      participantUserIds: [martin.id],
+    });
+  }
+
+  {
+    const startsAt = hoursFromNow(72);
+    const endsAt = hoursFromNow(73.5);
+    await upsertMatch({
+      id: SEED_IDS.matches.full,
+      clubId: club.id,
+      sportModalityId: padelDoubles.id,
+      courtId: SEED_IDS.courts.padel1,
+      organizerUserId: juan.id,
+      minPlayers: 2,
+      maxPlayers: 4,
+      scheduledDate: startOfUtcDay(startsAt),
+      ...windowAround(startsAt, endsAt),
+      startsAt,
+      endsAt,
+      status: 'FULL',
+      statusChangedAt: hoursFromNow(-1),
+      statusChangedByType: 'SYSTEM',
+      statusChangedByUserId: null,
+      cancellationReason: null,
+      participantUserIds: [juan.id, martin.id, luciano.id, ana.id],
+    });
+  }
+
+  {
+    const startsAt = hoursFromNow(-0.5);
+    const endsAt = hoursFromNow(0.5);
+    await upsertMatch({
+      id: SEED_IDS.matches.inProgress,
+      clubId: club.id,
+      sportModalityId: football5.id,
+      courtId: SEED_IDS.courts.football5,
+      organizerUserId: martin.id,
+      minPlayers: 2,
+      maxPlayers: 10,
+      scheduledDate: startOfUtcDay(startsAt),
+      ...windowAround(startsAt, endsAt),
+      startsAt,
+      endsAt,
+      status: 'IN_PROGRESS',
+      statusChangedAt: hoursFromNow(-0.5),
+      statusChangedByType: 'SYSTEM',
+      statusChangedByUserId: null,
+      cancellationReason: null,
+      participantUserIds: [martin.id, juan.id, luciano.id],
+    });
+  }
+
+  {
+    const startsAt = hoursFromNow(-3);
+    const endsAt = hoursFromNow(-2);
+    await upsertMatch({
+      id: SEED_IDS.matches.completed,
+      clubId: club.id,
+      sportModalityId: football5.id,
+      courtId: SEED_IDS.courts.football5,
+      organizerUserId: juan.id,
+      minPlayers: 2,
+      maxPlayers: 10,
+      scheduledDate: startOfUtcDay(startsAt),
+      ...windowAround(startsAt, endsAt),
+      startsAt,
+      endsAt,
+      status: 'COMPLETED',
+      statusChangedAt: hoursFromNow(-2),
+      statusChangedByType: 'SYSTEM',
+      statusChangedByUserId: null,
+      cancellationReason: null,
+      participantUserIds: [juan.id, martin.id, luciano.id, ana.id],
+    });
+  }
+
+  {
+    const startsAt = hoursFromNow(24);
+    const endsAt = hoursFromNow(25.5);
+    await upsertMatch({
+      id: SEED_IDS.matches.cancelled,
+      clubId: club.id,
+      sportModalityId: padelDoubles.id,
+      courtId: SEED_IDS.courts.padel2,
+      organizerUserId: luciano.id,
+      minPlayers: 2,
+      maxPlayers: 4,
+      scheduledDate: startOfUtcDay(startsAt),
+      ...windowAround(startsAt, endsAt),
+      startsAt,
+      endsAt,
+      status: 'CANCELLED',
+      statusChangedAt: hoursFromNow(-2),
+      statusChangedByType: 'USER',
+      statusChangedByUserId: luciano.id,
+      cancellationReason: 'Faltan jugadores para completar el partido.',
+      participantUserIds: [luciano.id, ana.id],
+    });
+  }
+
+  {
+    const startsAt = hoursFromNow(-5);
+    const endsAt = hoursFromNow(-4);
+    await upsertMatch({
+      id: SEED_IDS.matches.expired,
+      clubId: club.id,
+      sportModalityId: football5.id,
+      courtId: SEED_IDS.courts.football5,
+      organizerUserId: ana.id,
+      minPlayers: 2,
+      maxPlayers: 10,
+      scheduledDate: startOfUtcDay(startsAt),
+      ...windowAround(startsAt, endsAt),
+      startsAt,
+      endsAt,
+      status: 'EXPIRED',
+      statusChangedAt: hoursFromNow(-4),
+      statusChangedByType: 'SYSTEM',
+      statusChangedByUserId: null,
+      cancellationReason: null,
+      participantUserIds: [ana.id],
+    });
+  }
+
+  // A match with a confirmed day but no confirmed time yet: the organizer
+  // picked a day and an availability window, but has not locked in an exact
+  // startsAt. Stays ORGANIZING indefinitely until a time is set or the day
+  // (tomorrow) ends.
   await upsertMatch({
-    id: SEED_IDS.matches.organizing,
+    id: SEED_IDS.matches.pendingSchedule,
     clubId: club.id,
     sportModalityId: football5.id,
-    courtId: courts.find((court) => court.code === 'football-5')!.id,
+    courtId: null,
     organizerUserId: juan.id,
     minPlayers: 2,
     maxPlayers: 10,
-    startsAt: hoursFromNow(48),
-    endsAt: hoursFromNow(49),
+    scheduledDate: daysFromNowUtc(1),
+    availabilityStartMinutes: 14 * 60,
+    availabilityEndMinutes: 19 * 60,
+    startsAt: null,
+    endsAt: null,
     status: 'ORGANIZING',
     statusChangedAt: hoursFromNow(-1),
+    statusChangedByType: 'USER',
+    statusChangedByUserId: juan.id,
+    cancellationReason: null,
+    participantUserIds: [],
+  });
+
+  // A match whose scheduled day already ended without the organizer ever
+  // confirming a time: the lifecycle expires it automatically so it cannot
+  // linger forever without a startsAt.
+  await upsertMatch({
+    id: SEED_IDS.matches.expiredNoSchedule,
+    clubId: club.id,
+    sportModalityId: padelDoubles.id,
+    courtId: null,
+    organizerUserId: martin.id,
+    minPlayers: 2,
+    maxPlayers: 4,
+    scheduledDate: daysFromNowUtc(-2),
+    availabilityStartMinutes: 10 * 60,
+    availabilityEndMinutes: 22 * 60,
+    startsAt: null,
+    endsAt: null,
+    status: 'EXPIRED',
+    statusChangedAt: daysFromNowUtc(-1),
     statusChangedByType: 'SYSTEM',
     statusChangedByUserId: null,
     cancellationReason: null,
     participantUserIds: [martin.id],
-  });
-
-  await upsertMatch({
-    id: SEED_IDS.matches.full,
-    clubId: club.id,
-    sportModalityId: padelDoubles.id,
-    courtId: SEED_IDS.courts.padel1,
-    organizerUserId: juan.id,
-    minPlayers: 2,
-    maxPlayers: 4,
-    startsAt: hoursFromNow(72),
-    endsAt: hoursFromNow(73.5),
-    status: 'FULL',
-    statusChangedAt: hoursFromNow(-1),
-    statusChangedByType: 'SYSTEM',
-    statusChangedByUserId: null,
-    cancellationReason: null,
-    participantUserIds: [juan.id, martin.id, luciano.id, ana.id],
-  });
-
-  await upsertMatch({
-    id: SEED_IDS.matches.inProgress,
-    clubId: club.id,
-    sportModalityId: football5.id,
-    courtId: SEED_IDS.courts.football5,
-    organizerUserId: martin.id,
-    minPlayers: 2,
-    maxPlayers: 10,
-    startsAt: hoursFromNow(-0.5),
-    endsAt: hoursFromNow(0.5),
-    status: 'IN_PROGRESS',
-    statusChangedAt: hoursFromNow(-0.5),
-    statusChangedByType: 'SYSTEM',
-    statusChangedByUserId: null,
-    cancellationReason: null,
-    participantUserIds: [martin.id, juan.id, luciano.id],
-  });
-
-  await upsertMatch({
-    id: SEED_IDS.matches.completed,
-    clubId: club.id,
-    sportModalityId: football5.id,
-    courtId: SEED_IDS.courts.football5,
-    organizerUserId: juan.id,
-    minPlayers: 2,
-    maxPlayers: 10,
-    startsAt: hoursFromNow(-3),
-    endsAt: hoursFromNow(-2),
-    status: 'COMPLETED',
-    statusChangedAt: hoursFromNow(-2),
-    statusChangedByType: 'SYSTEM',
-    statusChangedByUserId: null,
-    cancellationReason: null,
-    participantUserIds: [juan.id, martin.id, luciano.id, ana.id],
-  });
-
-  await upsertMatch({
-    id: SEED_IDS.matches.cancelled,
-    clubId: club.id,
-    sportModalityId: padelDoubles.id,
-    courtId: SEED_IDS.courts.padel2,
-    organizerUserId: luciano.id,
-    minPlayers: 2,
-    maxPlayers: 4,
-    startsAt: hoursFromNow(24),
-    endsAt: hoursFromNow(25.5),
-    status: 'CANCELLED',
-    statusChangedAt: hoursFromNow(-2),
-    statusChangedByType: 'USER',
-    statusChangedByUserId: luciano.id,
-    cancellationReason: 'Faltan jugadores para completar el partido.',
-    participantUserIds: [luciano.id, ana.id],
-  });
-
-  await upsertMatch({
-    id: SEED_IDS.matches.expired,
-    clubId: club.id,
-    sportModalityId: football5.id,
-    courtId: SEED_IDS.courts.football5,
-    organizerUserId: ana.id,
-    minPlayers: 2,
-    maxPlayers: 10,
-    startsAt: hoursFromNow(-5),
-    endsAt: hoursFromNow(-4),
-    status: 'EXPIRED',
-    statusChangedAt: hoursFromNow(-4),
-    statusChangedByType: 'SYSTEM',
-    statusChangedByUserId: null,
-    cancellationReason: null,
-    participantUserIds: [ana.id],
   });
 
   await prisma.playerRating.upsert({

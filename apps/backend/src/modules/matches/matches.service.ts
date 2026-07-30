@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import type { CreateMatchInputDto, MatchSummaryDto } from '@rondo/contracts';
+import type { CreateMatchInputDto, MatchSummaryDto, UpdateMatchScheduleInputDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
 import { applyMatchLifecycle, isVisibleOnHome } from './matchLifecycle.js';
 import { MatchServiceError } from './errors.js';
@@ -42,7 +42,7 @@ export async function listUserMatches(userId: string, now: Date = new Date()): P
   const matches = await prisma.match.findMany({
     where: { OR: [{ organizerUserId: userId }, { participants: { some: { userId } } }] },
     include: matchInclude,
-    orderBy: { startsAt: 'asc' },
+    orderBy: [{ scheduledDate: 'asc' }, { startsAt: 'asc' }],
   });
 
   const resolved = await Promise.all(matches.map((match) => applyMatchLifecycle(match, now)));
@@ -63,6 +63,9 @@ export function toMatchSummaryDto(match: MatchWithRelations, currentUserId: stri
     maxPlayers: match.maxPlayers,
     positions: match.positions,
     participantsCount: match._count.participants,
+    scheduledDate: match.scheduledDate.toISOString().slice(0, 10),
+    availabilityStartMinutes: match.availabilityStartMinutes,
+    availabilityEndMinutes: match.availabilityEndMinutes,
     startsAt: match.startsAt ? match.startsAt.toISOString() : null,
     endsAt: match.endsAt ? match.endsAt.toISOString() : null,
     organizerUserId: match.organizerUserId,
@@ -75,6 +78,59 @@ export function toMatchSummaryDto(match: MatchWithRelations, currentUserId: stri
       ? { id: match.statusChangedByUser.id, displayName: displayName(match.statusChangedByUser) }
       : null,
     cancellationReason: match.cancellationReason,
+  };
+}
+
+type ResolvedSchedule = {
+  scheduledDate: Date;
+  availabilityStartMinutes: number;
+  availabilityEndMinutes: number;
+  startsAt: Date | null;
+  endsAt: Date | null;
+};
+
+type ScheduleInput = {
+  scheduledDate: string;
+  availabilityStartMinutes: number;
+  availabilityEndMinutes: number;
+  startsAt?: string | null;
+};
+
+/**
+ * Computes the persisted schedule from a create/edit payload. The frontend
+ * never sends endsAt: when a startsAt is chosen, endsAt is derived here from
+ * the sport modality's duration, and duration-aware bounds (the confirmed
+ * time must both start and end within the chosen availability window) are
+ * enforced here because they require the modality lookup — the zod schema
+ * only validates the structural rules that do not need a DB round trip.
+ */
+function resolveSchedule(input: ScheduleInput, modalityDurationMinutes: number): ResolvedSchedule {
+  const scheduledDate = new Date(`${input.scheduledDate}T00:00:00.000Z`);
+
+  if (!input.startsAt) {
+    return {
+      scheduledDate,
+      availabilityStartMinutes: input.availabilityStartMinutes,
+      availabilityEndMinutes: input.availabilityEndMinutes,
+      startsAt: null,
+      endsAt: null,
+    };
+  }
+
+  const startsAt = new Date(input.startsAt);
+  const startMinutes = startsAt.getUTCHours() * 60 + startsAt.getUTCMinutes();
+  const endMinutes = startMinutes + modalityDurationMinutes;
+  if (endMinutes > input.availabilityEndMinutes) {
+    throw new MatchServiceError(422, 'STARTS_AT_OUTSIDE_AVAILABILITY', 'El horario elegido no entra dentro de la franja disponible.');
+  }
+
+  const endsAt = new Date(startsAt.getTime() + modalityDurationMinutes * 60_000);
+  return {
+    scheduledDate,
+    availabilityStartMinutes: input.availabilityStartMinutes,
+    availabilityEndMinutes: input.availabilityEndMinutes,
+    startsAt,
+    endsAt,
   };
 }
 
@@ -91,6 +147,8 @@ export async function createMatch(organizerUserId: string, input: CreateMatchInp
     }
   }
 
+  const schedule = resolveSchedule(input, sportModality.durationMinutes);
+
   const created = await prisma.match.create({
     data: {
       clubId: input.clubId ?? null,
@@ -99,8 +157,11 @@ export async function createMatch(organizerUserId: string, input: CreateMatchInp
       minPlayers: input.minPlayers,
       maxPlayers: input.maxPlayers,
       positions: input.positions ?? [],
-      startsAt: input.startsAt ? new Date(input.startsAt) : null,
-      endsAt: input.endsAt ? new Date(input.endsAt) : null,
+      scheduledDate: schedule.scheduledDate,
+      availabilityStartMinutes: schedule.availabilityStartMinutes,
+      availabilityEndMinutes: schedule.availabilityEndMinutes,
+      startsAt: schedule.startsAt,
+      endsAt: schedule.endsAt,
       status: 'ORGANIZING',
       statusChangedAt: now,
       statusChangedByType: 'USER',
@@ -110,6 +171,38 @@ export async function createMatch(organizerUserId: string, input: CreateMatchInp
   });
 
   return requireMatchWithRelations(created.id, now);
+}
+
+export async function updateMatchSchedule(
+  matchId: string,
+  actingUserId: string,
+  input: UpdateMatchScheduleInputDto,
+  now: Date = new Date(),
+): Promise<MatchWithRelations> {
+  const match = await requireMatchWithRelations(matchId, now);
+
+  if (TERMINAL_STATUSES.includes(match.status as (typeof TERMINAL_STATUSES)[number])) {
+    throw new MatchServiceError(409, 'MATCH_ALREADY_FINAL', 'No se puede editar el horario de un partido en un estado final.');
+  }
+
+  if (match.organizerUserId !== actingUserId) {
+    throw new MatchServiceError(403, 'NOT_ORGANIZER', 'Solo el organizador puede editar el horario del partido.');
+  }
+
+  const schedule = resolveSchedule(input, match.sportModality.durationMinutes);
+
+  await prisma.match.update({
+    where: { id: matchId },
+    data: {
+      scheduledDate: schedule.scheduledDate,
+      availabilityStartMinutes: schedule.availabilityStartMinutes,
+      availabilityEndMinutes: schedule.availabilityEndMinutes,
+      startsAt: schedule.startsAt,
+      endsAt: schedule.endsAt,
+    },
+  });
+
+  return requireMatchWithRelations(matchId, now);
 }
 
 export async function cancelMatch(matchId: string, actingUserId: string, reason: string | undefined, now: Date = new Date()): Promise<MatchWithRelations> {

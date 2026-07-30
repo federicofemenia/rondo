@@ -20,8 +20,9 @@ export type MatchEntity = {
   clubId: string | null;
   clubName: string | null;
   courtName: string | null;
-  date: string;
-  time: string | null;
+  scheduledDate: string;
+  availabilityStartMinutes: number;
+  availabilityEndMinutes: number;
   startsAt: string | null;
   endsAt: string | null;
   organizerUserId: string;

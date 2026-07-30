@@ -16,8 +16,9 @@ const baseMatch: MatchEntity = {
   clubId: 'club-1',
   clubName: 'Club Señor Pato',
   courtName: 'Cancha 2 · Vidrio',
-  date: '2026-08-05',
-  time: '19:00',
+  scheduledDate: '2026-08-05',
+  availabilityStartMinutes: 17 * 60,
+  availabilityEndMinutes: 22 * 60,
   startsAt: '2026-08-05T19:00:00.000Z',
   endsAt: '2026-08-05T21:00:00.000Z',
   organizerUserId: 'user-organizer',
@@ -180,5 +181,44 @@ describe('MatchDetailPage', () => {
     );
 
     expect(screen.getByText(/actualizado automáticamente por el sistema/i)).toBeTruthy();
+  });
+
+  it('shows the availability window and a pending message when no exact time was confirmed yet', () => {
+    render(<MatchDetailPage match={{ ...baseMatch, startsAt: null, endsAt: null }} unlinkedBookings={[]} />);
+
+    expect(screen.getByText(/horario pendiente de confirmación/i)).toBeTruthy();
+    expect(screen.getByText(/franja elegida: 17:00–22:00/i)).toBeTruthy();
+  });
+
+  it('shows the confirmed start/end time once a time was set', () => {
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
+
+    expect(screen.getByText(/horario confirmado/i)).toBeTruthy();
+    expect(screen.getAllByText('19:00 a 21:00').length).toBeGreaterThan(0);
+  });
+
+  it('editing the schedule sends the updated day, franja and exact time, and recalculates the display', async () => {
+    const onEditSchedule = vi.fn().mockResolvedValue(undefined);
+    render(<MatchDetailPage match={{ ...baseMatch, startsAt: null, endsAt: null }} unlinkedBookings={[]} onEditSchedule={onEditSchedule} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    await waitFor(() =>
+      expect(onEditSchedule).toHaveBeenCalledWith({
+        scheduledDate: '2026-08-05',
+        availabilityStartMinutes: 17 * 60,
+        availabilityEndMinutes: 22 * 60,
+        startsAt: null,
+      }),
+    );
+  });
+
+  it('shows an inline error when saving the schedule fails, without crashing', async () => {
+    const onEditSchedule = vi.fn().mockRejectedValue(new Error('El horario elegido no entra dentro de la franja disponible.'));
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} onEditSchedule={onEditSchedule} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    await waitFor(() => expect(screen.getByText(/el horario elegido no entra dentro de la franja disponible/i)).toBeTruthy());
   });
 });

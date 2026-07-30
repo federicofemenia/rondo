@@ -8,8 +8,9 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import { buildDayOptions } from './dateOptions';
+import ExactStartTimeInput from './ExactStartTimeInput';
 import PageFooter from './PageFooter';
-import TimeRangeInput from './TimeRangeInput';
+import TimeRangeInput, { DEFAULT_AVAILABILITY_RANGE } from './TimeRangeInput';
 import { useMyClubs } from './useMyClubs';
 import { useSports } from './useSports';
 
@@ -24,7 +25,9 @@ export type MatchDraft = {
   clubName: string | null;
   courtName: string | null;
   date: string;
-  time: string | null;
+  availabilityStartMinutes: number;
+  availabilityEndMinutes: number;
+  startTimeMinutes: number | null;
 };
 
 type CreateMatchPageProps = {
@@ -58,7 +61,17 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const [positions, setPositions] = useState<string[]>([]);
   const [clubId, setClubId] = useState('');
   const [date, setDate] = useState(dayOptions[0]!.value);
-  const [time, setTime] = useState<string | null>(null);
+  const [availabilityRange, setAvailabilityRange] = useState<[number, number]>(DEFAULT_AVAILABILITY_RANGE);
+  const [startTimeMinutes, setStartTimeMinutes] = useState<number | null>(null);
+
+  const availabilityStartMinutes = availabilityRange[0] * 60;
+  const availabilityEndMinutes = availabilityRange[1] * 60;
+
+  const handleAvailabilityRangeChange = (range: [number, number]) => {
+    setAvailabilityRange(range);
+    const [startMinutes, endMinutes] = [range[0] * 60, range[1] * 60];
+    setStartTimeMinutes((current) => (current !== null && (current < startMinutes || current >= endMinutes) ? null : current));
+  };
 
   useEffect(() => {
     if (!sport && sportNames.length > 0) {
@@ -94,7 +107,9 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
       clubName: selectedClub?.name ?? null,
       courtName: null,
       date,
-      time,
+      availabilityStartMinutes,
+      availabilityEndMinutes,
+      startTimeMinutes,
     });
   };
 
@@ -107,7 +122,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
               Armar partido
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Elegí el día del partido. El club, el horario y la cancha podés definirlos más adelante.
+              Elegí el día y la franja horaria del partido. El club, el horario exacto y la cancha podés definirlos más adelante.
             </Typography>
           </Box>
 
@@ -254,7 +269,14 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   ))}
                 </TextField>
 
-                <TimeRangeInput value={time} onChange={setTime} label="Horario estimado (opcional)" />
+                <TimeRangeInput value={availabilityRange} onChange={handleAvailabilityRangeChange} label="Franja horaria disponible" />
+
+                <ExactStartTimeInput
+                  availabilityStartMinutes={availabilityStartMinutes}
+                  availabilityEndMinutes={availabilityEndMinutes}
+                  value={startTimeMinutes}
+                  onChange={setStartTimeMinutes}
+                />
               </Stack>
             </Box>
           </Stack>

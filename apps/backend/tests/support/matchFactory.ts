@@ -8,6 +8,9 @@ type CreateTestMatchInput = {
   participantUserIds?: string[];
   minPlayers?: number;
   maxPlayers?: number;
+  scheduledDate?: Date;
+  availabilityStartMinutes?: number;
+  availabilityEndMinutes?: number;
   startsAt?: Date | null;
   endsAt?: Date | null;
   status?: MatchStatus;
@@ -17,8 +20,16 @@ type CreateTestMatchInput = {
   cancellationReason?: string | null;
 };
 
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
 export async function createTestMatch(input: CreateTestMatchInput = {}): Promise<Match> {
   const now = new Date();
+  const defaultStartsAt = new Date(now.getTime() - 60 * 60 * 1000);
+  const defaultEndsAt = new Date(now.getTime() + 60 * 60 * 1000);
+  const startsAt = input.startsAt !== undefined ? input.startsAt : defaultStartsAt;
+  const endsAt = input.endsAt !== undefined ? input.endsAt : defaultEndsAt;
 
   const match = await prisma.match.create({
     data: {
@@ -29,8 +40,11 @@ export async function createTestMatch(input: CreateTestMatchInput = {}): Promise
       organizerUserId: input.organizerUserId ?? SEED_IDS.users.juan,
       minPlayers: input.minPlayers ?? 2,
       maxPlayers: input.maxPlayers ?? 10,
-      startsAt: input.startsAt !== undefined ? input.startsAt : new Date(now.getTime() - 60 * 60 * 1000),
-      endsAt: input.endsAt !== undefined ? input.endsAt : new Date(now.getTime() + 60 * 60 * 1000),
+      scheduledDate: input.scheduledDate ?? startOfUtcDay(startsAt ?? now),
+      availabilityStartMinutes: input.availabilityStartMinutes ?? 0,
+      availabilityEndMinutes: input.availabilityEndMinutes ?? 1440,
+      startsAt,
+      endsAt,
       status: input.status ?? 'ORGANIZING',
       statusChangedAt: input.statusChangedAt ?? now,
       statusChangedByType: input.statusChangedByType ?? 'SYSTEM',

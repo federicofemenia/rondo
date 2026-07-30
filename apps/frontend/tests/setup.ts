@@ -133,8 +133,11 @@ beforeEach(() => {
             maxPlayers: body.maxPlayers ?? 0,
             positions: body.positions ?? [],
             participantsCount: 1,
+            scheduledDate: body.scheduledDate ?? '2026-08-08',
+            availabilityStartMinutes: body.availabilityStartMinutes ?? 600,
+            availabilityEndMinutes: body.availabilityEndMinutes ?? 1200,
             startsAt: body.startsAt ?? null,
-            endsAt: body.endsAt ?? null,
+            endsAt: body.startsAt ? new Date(new Date(body.startsAt as string).getTime() + 60 * 60_000).toISOString() : null,
             organizerUserId: 'user-test',
             organizerDisplayName: 'Federico Femenia',
             isOrganizer: true,
@@ -165,6 +168,9 @@ beforeEach(() => {
           maxPlayers: 10,
           positions: [],
           participantsCount: 1,
+          scheduledDate: '2026-08-08',
+          availabilityStartMinutes: 600,
+          availabilityEndMinutes: 1200,
           startsAt: null,
           endsAt: null,
           organizerUserId: 'user-test',
@@ -174,6 +180,40 @@ beforeEach(() => {
           statusChangedAt: now,
           statusChangedByType: 'USER',
           statusChangedByUser: { id: 'user-test', displayName: 'Federico Femenia' },
+          cancellationReason: null,
+        },
+      });
+    }
+
+    if (method === 'PATCH' && /\/api\/v1\/matches\/[^/]+\/schedule$/.test(url)) {
+      const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+      const now = new Date().toISOString();
+      return json({
+        data: {
+          id: 'match-created-1',
+          status: 'ORGANIZING',
+          clubId: null,
+          clubName: null,
+          sportModalityId: 'modality-football-5',
+          sportName: 'Fútbol',
+          modalityName: 'Fútbol 5',
+          courtName: null,
+          minPlayers: 4,
+          maxPlayers: 10,
+          positions: [],
+          participantsCount: 1,
+          scheduledDate: body.scheduledDate ?? '2026-08-08',
+          availabilityStartMinutes: body.availabilityStartMinutes ?? 600,
+          availabilityEndMinutes: body.availabilityEndMinutes ?? 1200,
+          startsAt: body.startsAt ?? null,
+          endsAt: body.startsAt ? new Date(new Date(body.startsAt as string).getTime() + 60 * 60_000).toISOString() : null,
+          organizerUserId: 'user-test',
+          organizerDisplayName: 'Federico Femenia',
+          isOrganizer: true,
+          createdAt: now,
+          statusChangedAt: now,
+          statusChangedByType: 'USER',
+          statusChangedByUser: null,
           cancellationReason: null,
         },
       });

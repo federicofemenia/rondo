@@ -30,7 +30,8 @@ import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import RegisterPage from './RegisterPage';
 import ReservationFlowPage from './ReservationFlowPage';
 import type { ConfirmedBooking } from './ReservationFlowPage';
-import { parseTimeRange } from './TimeRangeInput';
+import { buildIsoDateTime, describeSchedule } from './scheduleFormat';
+import type { ScheduleUpdateInput } from './scheduleFormat';
 import type { BookingEntity, MatchEntity } from './types';
 
 const BOOKING_CHIP_COLOR = { bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main' };
@@ -64,19 +65,6 @@ function displayName(user: UserDto): string {
 
 function describeError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
-}
-
-/** Builds startsAt/endsAt only when both a day and an estimated time range were chosen. */
-function scheduleFromDraft(draft: MatchDraft): { startsAt: string | null; endsAt: string | null } {
-  if (!draft.time) {
-    return { startsAt: null, endsAt: null };
-  }
-  const [startHour, endHour] = parseTimeRange(draft.time);
-  const start = new Date(`${draft.date}T00:00:00`);
-  start.setHours(startHour, 0, 0, 0);
-  const end = new Date(`${draft.date}T00:00:00`);
-  end.setHours(endHour, 0, 0, 0);
-  return { startsAt: start.toISOString(), endsAt: end.toISOString() };
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? appConfig.apiBaseUrl;
@@ -202,15 +190,16 @@ function App() {
       return;
     }
     try {
-      const { startsAt, endsAt } = scheduleFromDraft(matchDraft);
       const response = await api.post<{ data: MatchSummaryDto }>('/api/v1/matches', {
         sportModalityId: matchDraft.sportModalityId,
         clubId: matchDraft.clubId,
         minPlayers: Number(matchDraft.minPlayers),
         maxPlayers: Number(matchDraft.maxPlayers),
         positions: matchDraft.positions,
-        startsAt,
-        endsAt,
+        scheduledDate: matchDraft.date,
+        availabilityStartMinutes: matchDraft.availabilityStartMinutes,
+        availabilityEndMinutes: matchDraft.availabilityEndMinutes,
+        startsAt: matchDraft.startTimeMinutes !== null ? buildIsoDateTime(matchDraft.date, matchDraft.startTimeMinutes) : null,
       });
       setMatches((current) => [...current, matchSummaryToEntity(response.data)]);
       setMatchDraft(null);
@@ -250,8 +239,6 @@ function App() {
                 bookingId,
                 clubName: match.clubName ?? newBooking.clubName,
                 courtName: `${confirmed.courtName} · ${confirmed.courtSubtitle}`,
-                date: confirmed.dateLabel,
-                time: confirmed.time,
               }
             : match,
         ),
@@ -277,8 +264,6 @@ function App() {
               bookingId,
               clubName: match.clubName ?? booking.clubName,
               courtName: `${booking.courtName} · ${booking.courtSubtitle}`,
-              date: booking.dateLabel,
-              time: booking.time,
             }
           : match,
       ),
@@ -323,12 +308,9 @@ function App() {
     setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, clubName } : match)));
   };
 
-  const handleEditMatchDate = (matchId: string, date: string) => {
-    setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, date } : match)));
-  };
-
-  const handleEditMatchTime = (matchId: string, time: string | null) => {
-    setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, time } : match)));
+  const handleEditMatchSchedule = async (matchId: string, input: ScheduleUpdateInput) => {
+    const response = await api.patch<{ data: MatchSummaryDto }>(`/api/v1/matches/${matchId}/schedule`, input);
+    setMatches((current) => current.map((match) => (match.id === matchId ? matchSummaryToEntity(response.data, match) : match)));
   };
 
   const openEditProfile = () => setCurrentView('edit-profile');
@@ -395,8 +377,7 @@ function App() {
           onRemoveParticipant={(name) => handleRemoveParticipant(match.id, name)}
           onCancelMatch={() => void handleCancelMatch(match.id)}
           onEditClub={(clubName) => handleEditMatchClub(match.id, clubName)}
-          onEditDate={(date) => handleEditMatchDate(match.id, date)}
-          onEditTime={(time) => handleEditMatchTime(match.id, time)}
+          onEditSchedule={(input) => handleEditMatchSchedule(match.id, input)}
           onRequestBooking={() => handleRequestBookingForMatch(match.id)}
           onAssociateBooking={(bookingId) => linkMatchAndBooking(match.id, bookingId)}
         />
@@ -415,7 +396,7 @@ function App() {
         .map((match) => ({
           id: match.id,
           title: `${match.sport} • ${match.modality}`,
-          subtitle: match.clubName ? `${match.clubName} • ${match.date}` : match.date,
+          subtitle: match.clubName ? `${match.clubName} • ${describeSchedule(match).dateLabel}` : describeSchedule(match).dateLabel,
         }));
 
       return (
@@ -453,8 +434,8 @@ function App() {
         if (isActive && !match.clubName) {
           pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene club.`, onClick: () => openMatchDetail(match.id) });
         }
-        if (isActive && !match.time) {
-          pendingActions.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario.`, onClick: () => openMatchDetail(match.id) });
+        if (isActive && !match.startsAt) {
+          pendingActions.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario confirmado.`, onClick: () => openMatchDetail(match.id) });
         }
         if (isActive && !match.courtName) {
           pendingActions.push({ id: `${match.id}-court`, label: `Tu partido de ${match.sport} todavía no tiene cancha.`, onClick: () => openMatchDetail(match.id) });
@@ -493,11 +474,14 @@ function App() {
         .sort((a, b) => a.createdAt - b.createdAt)
         .map((entity) => {
           if ('sport' in entity) {
+            const schedule = describeSchedule(entity);
             return {
               id: entity.id,
               kind: 'match' as const,
               title: `${entity.sport} • ${entity.modality}`,
-              subtitle: entity.date ? (entity.time ? `${entity.date} • ${entity.time}` : `${entity.date} • Horario a definir`) : 'Día y horario a definir',
+              subtitle: schedule.isConfirmed
+                ? `${schedule.dateLabel} • ${schedule.timeLabel}`
+                : `${schedule.dateLabel} • Horario a confirmar (${schedule.windowLabel})`,
               meta: `${entity.participantsCount}/${entity.maxPlayers}`,
               chipLabel: MATCH_STATUS_LABELS[entity.status],
               chipColor: MATCH_STATUS_CHIP_STYLES[entity.status],

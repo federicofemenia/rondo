@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchStatus } from '@prisma/client';
 import {
+  endOfScheduledDay,
   isRatingsEnabled,
   isRatingsOpen,
   isVisibleOnHome,
@@ -10,6 +11,7 @@ import {
 
 type FakeMatch = {
   status: MatchStatus;
+  scheduledDate: Date;
   startsAt: Date | null;
   endsAt: Date | null;
   statusChangedAt: Date;
@@ -19,6 +21,7 @@ function fakeMatch(overrides: Partial<FakeMatch> = {}): FakeMatch {
   const now = new Date();
   return {
     status: 'ORGANIZING',
+    scheduledDate: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())),
     startsAt: new Date(now.getTime() - 3600_000),
     endsAt: new Date(now.getTime() + 3600_000),
     statusChangedAt: now,
@@ -74,11 +77,24 @@ describe('resolveMatchStatus', () => {
     expect(resolveMatchStatus(match, farFuture)).toBe(status);
   });
 
-  it.each<MatchStatus>(['ORGANIZING', 'FULL'])('never auto-transitions %s while startsAt/endsAt are undefined', (status) => {
-    const farFuture = new Date('2099-01-01T00:00:00Z');
-    const match = fakeMatch({ status, startsAt: null, endsAt: null });
+  it.each<MatchStatus>(['ORGANIZING', 'FULL'])('never auto-transitions %s to IN_PROGRESS/COMPLETED while startsAt/endsAt are undefined', (status) => {
+    const scheduledDate = new Date('2026-03-10T00:00:00Z');
+    const stillSameDay = new Date('2026-03-10T18:00:00Z');
+    const match = fakeMatch({ status, scheduledDate, startsAt: null, endsAt: null });
 
-    expect(resolveMatchStatus(match, farFuture)).toBe(status);
+    expect(resolveMatchStatus(match, stillSameDay)).toBe(status);
+  });
+
+  it.each<MatchStatus>(['ORGANIZING', 'FULL'])('expires %s once the scheduled day is over and no time was ever set', (status) => {
+    const scheduledDate = new Date('2026-03-10T00:00:00Z');
+    const dayOver = new Date('2026-03-11T00:00:00Z');
+    const match = fakeMatch({ status, scheduledDate, startsAt: null, endsAt: null });
+
+    expect(resolveMatchStatus(match, dayOver)).toBe('EXPIRED');
+  });
+
+  it('endOfScheduledDay returns midnight UTC of the following day', () => {
+    expect(endOfScheduledDay(new Date('2026-03-10T15:30:00Z')).toISOString()).toBe('2026-03-11T00:00:00.000Z');
   });
 });
 
