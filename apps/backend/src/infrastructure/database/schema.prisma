@@ -62,6 +62,7 @@ model User {
   matchParticipations MatchParticipant[]
   ratingsGiven        PlayerRating[]     @relation("RatingAuthor")
   ratingsReceived     PlayerRating[]     @relation("RatingTarget")
+  sportProfiles       UserSportProfile[]
 
   @@map("users")
 }
@@ -112,7 +113,8 @@ model Sport {
   name         String
   displayOrder Int    @map("display_order")
 
-  modalities SportModality[]
+  modalities   SportModality[]
+  userProfiles UserSportProfile[]
 
   @@map("sports")
 }
@@ -262,4 +264,44 @@ model PlayerRating {
   @@index([matchId])
   @@index([targetUserId])
   @@map("player_ratings")
+}
+
+/// A user's sporting profile for a single sport: positions played and whether
+/// they show up as available to receive invitations. One row per user+sport.
+model UserSportProfile {
+  id                        String   @id @default(uuid())
+  userId                    String   @map("user_id")
+  sportId                   String   @map("sport_id")
+  positions                 String[] @default([])
+  isAvailableForInvitations Boolean  @default(true) @map("is_available_for_invitations")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  user         User                 @relation(fields: [userId], references: [id])
+  sport        Sport                @relation(fields: [sportId], references: [id])
+  availability PlayerAvailability[]
+
+  @@unique([userId, sportId])
+  @@index([userId])
+  @@index([sportId])
+  @@map("user_sport_profiles")
+}
+
+/// A weekly recurring availability slot for a UserSportProfile. `dayOfWeek`
+/// follows JS `Date#getUTCDay()` convention: 0 = Sunday ... 6 = Saturday.
+/// `startMinutes`/`endMinutes` count minutes since 00:00 on that day.
+model PlayerAvailability {
+  id                 String   @id @default(uuid())
+  userSportProfileId String   @map("user_sport_profile_id")
+  dayOfWeek          Int      @map("day_of_week")
+  startMinutes       Int      @map("start_minutes")
+  endMinutes         Int      @map("end_minutes")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  userSportProfile UserSportProfile @relation(fields: [userSportProfileId], references: [id])
+
+  @@unique([userSportProfileId, dayOfWeek, startMinutes, endMinutes])
+  @@index([userSportProfileId])
+  @@map("player_availabilities")
 }

@@ -162,9 +162,13 @@ export async function runSeed(): Promise<void> {
     { id: SEED_IDS.users.martin, clerkUserId: 'seed_martin_gomez', email: 'martin.gomez.seed@rondo.local', firstName: 'Martín', lastName: 'Gómez' },
     { id: SEED_IDS.users.luciano, clerkUserId: 'seed_luciano_diaz', email: 'luciano.diaz.seed@rondo.local', firstName: 'Luciano', lastName: 'Díaz' },
     { id: SEED_IDS.users.ana, clerkUserId: 'seed_ana_torres', email: 'ana.torres.seed@rondo.local', firstName: 'Ana', lastName: 'Torres' },
+    { id: SEED_IDS.users.sofia, clerkUserId: 'seed_sofia_castro', email: 'sofia.castro.seed@rondo.local', firstName: 'Sofía', lastName: 'Castro' },
+    { id: SEED_IDS.users.camila, clerkUserId: 'seed_camila_ruiz', email: 'camila.ruiz.seed@rondo.local', firstName: 'Camila', lastName: 'Ruiz' },
+    { id: SEED_IDS.users.diego, clerkUserId: 'seed_diego_navarro', email: 'diego.navarro.seed@rondo.local', firstName: 'Diego', lastName: 'Navarro' },
+    { id: SEED_IDS.users.valentina, clerkUserId: 'seed_valentina_ortiz', email: 'valentina.ortiz.seed@rondo.local', firstName: 'Valentina', lastName: 'Ortiz' },
   ];
 
-  const [juan, martin, luciano, ana] = await Promise.all(
+  const [juan, martin, luciano, ana, sofia, camila, diego, valentina] = await Promise.all(
     demoUsers.map((user) =>
       prisma.user.upsert({
         where: { id: user.id },
@@ -173,9 +177,77 @@ export async function runSeed(): Promise<void> {
       }),
     ),
   );
-  if (!juan || !martin || !luciano || !ana) {
+  if (!juan || !martin || !luciano || !ana || !sofia || !camila || !diego || !valentina) {
     throw new Error('Failed to seed demo users.');
   }
+
+  // Sport profiles + weekly availability for the demo players, used to
+  // exercise the sport-profile screen and endpoints against real data.
+  const juanFootballProfile = await prisma.userSportProfile.upsert({
+    where: { id: SEED_IDS.sportProfiles.juanFootball },
+    update: { userId: juan.id, sportId: football.id, positions: ['Defensor', 'Mediocampista'], isAvailableForInvitations: true },
+    create: {
+      id: SEED_IDS.sportProfiles.juanFootball,
+      userId: juan.id,
+      sportId: football.id,
+      positions: ['Defensor', 'Mediocampista'],
+      isAvailableForInvitations: true,
+    },
+  });
+
+  const martinPadelProfile = await prisma.userSportProfile.upsert({
+    where: { id: SEED_IDS.sportProfiles.martinPadel },
+    update: { userId: martin.id, sportId: padel.id, positions: [], isAvailableForInvitations: true },
+    create: { id: SEED_IDS.sportProfiles.martinPadel, userId: martin.id, sportId: padel.id, positions: [], isAvailableForInvitations: true },
+  });
+
+  await prisma.userSportProfile.upsert({
+    where: { id: SEED_IDS.sportProfiles.lucianoFootball },
+    update: { userId: luciano.id, sportId: football.id, positions: ['Arquero'], isAvailableForInvitations: false },
+    create: {
+      id: SEED_IDS.sportProfiles.lucianoFootball,
+      userId: luciano.id,
+      sportId: football.id,
+      positions: ['Arquero'],
+      isAvailableForInvitations: false,
+    },
+  });
+
+  await prisma.playerAvailability.upsert({
+    where: { id: SEED_IDS.availability.juanFootballMonday },
+    update: { userSportProfileId: juanFootballProfile.id, dayOfWeek: 1, startMinutes: 18 * 60, endMinutes: 22 * 60 },
+    create: {
+      id: SEED_IDS.availability.juanFootballMonday,
+      userSportProfileId: juanFootballProfile.id,
+      dayOfWeek: 1,
+      startMinutes: 18 * 60,
+      endMinutes: 22 * 60,
+    },
+  });
+
+  await prisma.playerAvailability.upsert({
+    where: { id: SEED_IDS.availability.juanFootballWednesday },
+    update: { userSportProfileId: juanFootballProfile.id, dayOfWeek: 3, startMinutes: 18 * 60, endMinutes: 22 * 60 },
+    create: {
+      id: SEED_IDS.availability.juanFootballWednesday,
+      userSportProfileId: juanFootballProfile.id,
+      dayOfWeek: 3,
+      startMinutes: 18 * 60,
+      endMinutes: 22 * 60,
+    },
+  });
+
+  await prisma.playerAvailability.upsert({
+    where: { id: SEED_IDS.availability.martinPadelSaturday },
+    update: { userSportProfileId: martinPadelProfile.id, dayOfWeek: 6, startMinutes: 10 * 60, endMinutes: 14 * 60 },
+    create: {
+      id: SEED_IDS.availability.martinPadelSaturday,
+      userSportProfileId: martinPadelProfile.id,
+      dayOfWeek: 6,
+      startMinutes: 10 * 60,
+      endMinutes: 14 * 60,
+    },
+  });
 
   async function upsertMatch(input: {
     id: string;
@@ -251,9 +323,12 @@ export async function runSeed(): Promise<void> {
     return match;
   }
 
+  // Captured outside the block (unlike the other demo matches below) so the
+  // candidates seed data further down can derive a weekly slot that actually
+  // overlaps this match's day/time, regardless of when the seed runs.
+  const organizingMatchStartsAt = hoursFromNow(48);
+  const organizingMatchEndsAt = hoursFromNow(49);
   {
-    const startsAt = hoursFromNow(48);
-    const endsAt = hoursFromNow(49);
     await upsertMatch({
       id: SEED_IDS.matches.organizing,
       clubId: club.id,
@@ -262,10 +337,10 @@ export async function runSeed(): Promise<void> {
       organizerUserId: juan.id,
       minPlayers: 2,
       maxPlayers: 10,
-      scheduledDate: startOfUtcDay(startsAt),
-      ...windowAround(startsAt, endsAt),
-      startsAt,
-      endsAt,
+      scheduledDate: startOfUtcDay(organizingMatchStartsAt),
+      ...windowAround(organizingMatchStartsAt, organizingMatchEndsAt),
+      startsAt: organizingMatchStartsAt,
+      endsAt: organizingMatchEndsAt,
       status: 'ORGANIZING',
       statusChangedAt: hoursFromNow(-1),
       statusChangedByType: 'SYSTEM',
@@ -398,7 +473,9 @@ export async function runSeed(): Promise<void> {
   // A match with a confirmed day but no confirmed time yet: the organizer
   // picked a day and an availability window, but has not locked in an exact
   // startsAt. Stays ORGANIZING indefinitely until a time is set or the day
-  // (tomorrow) ends.
+  // (tomorrow) ends. Captured outside the call so the candidates seed data
+  // below can derive a weekly slot that overlaps this exact day.
+  const pendingScheduleDate = daysFromNowUtc(1);
   await upsertMatch({
     id: SEED_IDS.matches.pendingSchedule,
     clubId: club.id,
@@ -407,7 +484,7 @@ export async function runSeed(): Promise<void> {
     organizerUserId: juan.id,
     minPlayers: 2,
     maxPlayers: 10,
-    scheduledDate: daysFromNowUtc(1),
+    scheduledDate: pendingScheduleDate,
     availabilityStartMinutes: 14 * 60,
     availabilityEndMinutes: 19 * 60,
     startsAt: null,
@@ -442,6 +519,98 @@ export async function runSeed(): Promise<void> {
     statusChangedByUserId: null,
     cancellationReason: null,
     participantUserIds: [martin.id],
+  });
+
+  // Candidate-matching demo data: sport profiles + weekly availability crafted
+  // to exercise every rule of the deterministic matching (see MATCHES/USERS
+  // docs) against the real matches seeded above.
+  const sofiaFootballProfile = await prisma.userSportProfile.upsert({
+    where: { id: SEED_IDS.sportProfiles.sofiaFootball },
+    update: { userId: sofia.id, sportId: football.id, positions: ['Delantero'], isAvailableForInvitations: true },
+    create: { id: SEED_IDS.sportProfiles.sofiaFootball, userId: sofia.id, sportId: football.id, positions: ['Delantero'], isAvailableForInvitations: true },
+  });
+
+  // Compatible candidate: covers matches.organizing's exact startsAt-endsAt window with margin on both sides.
+  const organizingStartMinutes = organizingMatchStartsAt.getUTCHours() * 60 + organizingMatchStartsAt.getUTCMinutes();
+  const organizingEndMinutes = organizingMatchEndsAt.getUTCHours() * 60 + organizingMatchEndsAt.getUTCMinutes();
+  await prisma.playerAvailability.upsert({
+    where: { id: SEED_IDS.availability.sofiaFootballMatchDay },
+    update: {
+      userSportProfileId: sofiaFootballProfile.id,
+      dayOfWeek: organizingMatchStartsAt.getUTCDay(),
+      startMinutes: Math.max(0, organizingStartMinutes - 60),
+      endMinutes: Math.min(1440, organizingEndMinutes + 60),
+    },
+    create: {
+      id: SEED_IDS.availability.sofiaFootballMatchDay,
+      userSportProfileId: sofiaFootballProfile.id,
+      dayOfWeek: organizingMatchStartsAt.getUTCDay(),
+      startMinutes: Math.max(0, organizingStartMinutes - 60),
+      endMinutes: Math.min(1440, organizingEndMinutes + 60),
+    },
+  });
+
+  // Incompatible availability: right sport, available for invitations, but only ever free early morning.
+  const valentinaFootballProfile = await prisma.userSportProfile.upsert({
+    where: { id: SEED_IDS.sportProfiles.valentinaFootball },
+    update: { userId: valentina.id, sportId: football.id, positions: ['Delantero'], isAvailableForInvitations: true },
+    create: {
+      id: SEED_IDS.sportProfiles.valentinaFootball,
+      userId: valentina.id,
+      sportId: football.id,
+      positions: ['Delantero'],
+      isAvailableForInvitations: true,
+    },
+  });
+
+  await prisma.playerAvailability.upsert({
+    where: { id: SEED_IDS.availability.valentinaFootballIncompatible },
+    update: { userSportProfileId: valentinaFootballProfile.id, dayOfWeek: 1, startMinutes: 5 * 60, endMinutes: 7 * 60 },
+    create: {
+      id: SEED_IDS.availability.valentinaFootballIncompatible,
+      userSportProfileId: valentinaFootballProfile.id,
+      dayOfWeek: 1,
+      startMinutes: 5 * 60,
+      endMinutes: 7 * 60,
+    },
+  });
+
+  // Different positions: available, right sport, overlapping schedule with matches.pendingSchedule, but only plays Arquero.
+  const camilaFootballProfile = await prisma.userSportProfile.upsert({
+    where: { id: SEED_IDS.sportProfiles.camilaFootball },
+    update: { userId: camila.id, sportId: football.id, positions: ['Arquero'], isAvailableForInvitations: true },
+    create: { id: SEED_IDS.sportProfiles.camilaFootball, userId: camila.id, sportId: football.id, positions: ['Arquero'], isAvailableForInvitations: true },
+  });
+
+  await prisma.playerAvailability.upsert({
+    where: { id: SEED_IDS.availability.camilaFootballPendingDay },
+    update: { userSportProfileId: camilaFootballProfile.id, dayOfWeek: pendingScheduleDate.getUTCDay(), startMinutes: 15 * 60, endMinutes: 18 * 60 },
+    create: {
+      id: SEED_IDS.availability.camilaFootballPendingDay,
+      userSportProfileId: camilaFootballProfile.id,
+      dayOfWeek: pendingScheduleDate.getUTCDay(),
+      startMinutes: 15 * 60,
+      endMinutes: 18 * 60,
+    },
+  });
+
+  // Different sport: only plays pádel, so never a football candidate.
+  const diegoPadelProfile = await prisma.userSportProfile.upsert({
+    where: { id: SEED_IDS.sportProfiles.diegoPadel },
+    update: { userId: diego.id, sportId: padel.id, positions: [], isAvailableForInvitations: true },
+    create: { id: SEED_IDS.sportProfiles.diegoPadel, userId: diego.id, sportId: padel.id, positions: [], isAvailableForInvitations: true },
+  });
+
+  await prisma.playerAvailability.upsert({
+    where: { id: SEED_IDS.availability.diegoPadelSunday },
+    update: { userSportProfileId: diegoPadelProfile.id, dayOfWeek: 0, startMinutes: 10 * 60, endMinutes: 13 * 60 },
+    create: {
+      id: SEED_IDS.availability.diegoPadelSunday,
+      userSportProfileId: diegoPadelProfile.id,
+      dayOfWeek: 0,
+      startMinutes: 10 * 60,
+      endMinutes: 13 * 60,
+    },
   });
 
   await prisma.playerRating.upsert({

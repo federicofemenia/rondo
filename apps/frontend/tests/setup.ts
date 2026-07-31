@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, vi } from 'vitest';
-import type { SportDto, UserClubDto } from '@rondo/contracts';
+import type { CandidateDto, SportDto, SportProfileDto, UserClubDto } from '@rondo/contracts';
 
 type MockClerkError = { message: string; longMessage?: string };
 
@@ -80,11 +80,32 @@ export const mockSportsCatalog: SportDto[] = [
 
 export const mockClubs: UserClubDto[] = [{ id: 'club-1', code: 'senor-pato', name: 'Club Señor Pato', role: 'MEMBER', status: 'ACTIVE', isFavorite: false }];
 
+/** Mutable per-test fixture for the sport-profiles endpoints; reset to empty before every test. */
+export const mockSportProfiles: SportProfileDto[] = [];
+/** sportIds added here make every sport-profile request for that sport respond with a 500, to exercise error states. */
+export const mockSportProfileFailingSportIds = new Set<string>();
+
+/** Mutable per-test fixture for GET /api/v1/matches/:matchId/candidates; reset to empty before every test. */
+export const mockCandidates: CandidateDto[] = [];
+/** matchIds added here make the candidates request for that match respond with a 500, to exercise error states. */
+export const mockCandidatesFailingMatchIds = new Set<string>();
+
+function findSportName(sportId: string): string {
+  return mockSportsCatalog.find((sport) => sport.id === sportId)?.name ?? '';
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
 const originalFetch = global.fetch;
+
+beforeEach(() => {
+  mockSportProfiles.length = 0;
+  mockSportProfileFailingSportIds.clear();
+  mockCandidates.length = 0;
+  mockCandidatesFailingMatchIds.clear();
+});
 
 beforeEach(() => {
   global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -223,6 +244,76 @@ beforeEach(() => {
       return json({
         data: { matchId: 'unknown', enabled: false, closed: false, closeAt: new Date().toISOString(), pendingCount: 0, participants: [] },
       });
+    }
+
+    if (method === 'GET' && url.endsWith('/api/v1/me/sport-profiles')) {
+      return json({ data: mockSportProfiles });
+    }
+
+    const sportProfileMatch = url.match(/\/api\/v1\/me\/sport-profiles\/([^/]+)(\/availability)?$/);
+    if (sportProfileMatch) {
+      const sportId = sportProfileMatch[1]!;
+      const isAvailability = Boolean(sportProfileMatch[2]);
+
+      if (mockSportProfileFailingSportIds.has(sportId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+
+      if (method === 'PUT' && !isAvailability) {
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as { positions: string[]; isAvailableForInvitations: boolean })
+          : { positions: [], isAvailableForInvitations: true };
+        const now = new Date().toISOString();
+        let profile = mockSportProfiles.find((candidate) => candidate.sportId === sportId);
+        if (!profile) {
+          profile = {
+            id: `profile-${sportId}`,
+            sportId,
+            sportName: findSportName(sportId),
+            positions: body.positions,
+            isAvailableForInvitations: body.isAvailableForInvitations,
+            availability: [],
+            createdAt: now,
+            updatedAt: now,
+          };
+          mockSportProfiles.push(profile);
+        } else {
+          profile.positions = body.positions;
+          profile.isAvailableForInvitations = body.isAvailableForInvitations;
+          profile.updatedAt = now;
+        }
+        return json({ data: profile });
+      }
+
+      if (method === 'PUT' && isAvailability) {
+        const body = init?.body
+          ? (JSON.parse(init.body as string) as { slots: Array<{ dayOfWeek: number; startMinutes: number; endMinutes: number }> })
+          : { slots: [] };
+        const profile = mockSportProfiles.find((candidate) => candidate.sportId === sportId);
+        if (!profile) {
+          return json({ error: { code: 'SPORT_PROFILE_NOT_FOUND', message: 'No tenés un perfil deportivo para este deporte.' } }, 404);
+        }
+        profile.availability = body.slots.map((slot, index) => ({ id: `slot-${sportId}-${index}`, ...slot }));
+        return json({ data: profile });
+      }
+
+      if (method === 'DELETE') {
+        const index = mockSportProfiles.findIndex((candidate) => candidate.sportId === sportId);
+        if (index === -1) {
+          return json({ error: { code: 'SPORT_PROFILE_NOT_FOUND', message: 'No tenés un perfil deportivo para este deporte.' } }, 404);
+        }
+        mockSportProfiles.splice(index, 1);
+        return new Response(null, { status: 204 });
+      }
+    }
+
+    const candidatesMatch = url.match(/\/api\/v1\/matches\/([^/]+)\/candidates$/);
+    if (method === 'GET' && candidatesMatch) {
+      const matchId = candidatesMatch[1]!;
+      if (mockCandidatesFailingMatchIds.has(matchId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      return json({ data: mockCandidates });
     }
 
     throw new Error(`Unhandled fetch in tests: ${method} ${url}`);

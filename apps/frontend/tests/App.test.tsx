@@ -53,7 +53,7 @@ describe('App', () => {
     await screen.findByText('Delantero');
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
-    expect(screen.getByRole('heading', { name: /candidatos compatibles/i })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: /candidatos compatibles/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /finalizar/i }));
 
     await screen.findByRole('heading', { name: /hola, federico/i });

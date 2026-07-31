@@ -1,43 +1,84 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import CandidatesPage from '../src/CandidatesPage';
+import { mockCandidates, mockCandidatesFailingMatchIds } from './setup';
+
+const bruno = {
+  id: 'candidate-bruno',
+  firstName: 'Bruno',
+  lastName: 'Silva',
+  avatarUrl: null,
+  sportId: 'sport-football',
+  positions: ['Delantero'],
+  matchingAvailability: 'Disponible entre 15:00 y 18:00',
+};
 
 describe('CandidatesPage', () => {
-  it('renders the candidates list with reputation data and position', () => {
-    render(<CandidatesPage />);
+  it('shows a loading state while the candidates are being fetched', () => {
+    render(<CandidatesPage matchId="match-1" />);
 
-    expect(screen.getByRole('heading', { name: /candidatos compatibles/i })).toBeTruthy();
-    expect(screen.getByText(/mauro/i)).toBeTruthy();
-    expect(screen.getAllByText(/invitar/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/conducta/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/juego/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/del/i)).toBeTruthy();
+    expect(screen.getByRole('progressbar')).toBeTruthy();
   });
 
-  it('calls the invite handler for a selected candidate', () => {
+  it('shows the backend error message when the request fails', async () => {
+    mockCandidatesFailingMatchIds.add('match-1');
+    render(<CandidatesPage matchId="match-1" />);
+
+    expect(await screen.findByText(/ocurrió un error inesperado/i)).toBeTruthy();
+  });
+
+  it('shows an empty-state message when there are no compatible candidates', async () => {
+    render(<CandidatesPage matchId="match-1" />);
+
+    expect(await screen.findByText(/no encontramos jugadores compatibles para este partido/i)).toBeTruthy();
+  });
+
+  it('renders the real candidates returned by the backend', async () => {
+    mockCandidates.push(bruno);
+    render(<CandidatesPage matchId="match-1" />);
+
+    expect(await screen.findByText('Bruno Silva')).toBeTruthy();
+    expect(screen.getByText('Disponible entre 15:00 y 18:00')).toBeTruthy();
+    expect(screen.getByText('DEL')).toBeTruthy();
+  });
+
+  it('calls the invite handler with the selected candidate name', async () => {
+    mockCandidates.push(bruno);
     const onInviteCandidate = vi.fn();
-    render(<CandidatesPage onInviteCandidate={onInviteCandidate} />);
+    render(<CandidatesPage matchId="match-1" onInviteCandidate={onInviteCandidate} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: /invitar/i })[0]!);
+    fireEvent.click(await screen.findByRole('button', { name: /invitar/i }));
 
-    expect(onInviteCandidate).toHaveBeenCalledWith('Mauro');
+    expect(onInviteCandidate).toHaveBeenCalledWith('Bruno Silva');
+    expect(await screen.findByText(/invitación enviada a bruno silva/i)).toBeTruthy();
   });
 
-  it('calls the finish handler when the wizard is completed', () => {
+  it('excludes candidates already invited via excludeNames', async () => {
+    mockCandidates.push(bruno, { ...bruno, id: 'candidate-carla', firstName: 'Carla', lastName: 'Nuñez' });
+    render(<CandidatesPage matchId="match-1" excludeNames={['Bruno Silva']} />);
+
+    expect(await screen.findByText('Carla Nuñez')).toBeTruthy();
+    expect(screen.queryByText('Bruno Silva')).toBeFalsy();
+  });
+
+  it('calls the finish handler when the wizard is completed', async () => {
     const onFinish = vi.fn();
-    render(<CandidatesPage onFinish={onFinish} />);
+    render(<CandidatesPage matchId="match-1" onFinish={onFinish} />);
+    await screen.findByText(/no encontramos jugadores compatibles/i);
 
     fireEvent.click(screen.getByRole('button', { name: /finalizar/i }));
 
     expect(onFinish).toHaveBeenCalled();
   });
 
-  it('opens the reviews dialog for a candidate', () => {
-    render(<CandidatesPage />);
+  it('never shows the old mock candidates or the retired reputation UI', async () => {
+    mockCandidates.push(bruno);
+    render(<CandidatesPage matchId="match-1" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /3 comentarios/i }));
-
-    expect(screen.getByText(/valoraciones de mauro/i)).toBeTruthy();
-    expect(screen.getByText(/buenísima onda, siempre puntual/i)).toBeTruthy();
+    await screen.findByText('Bruno Silva');
+    expect(screen.queryByText('Mauro')).toBeFalsy();
+    expect(screen.queryByText('Lina')).toBeFalsy();
+    expect(screen.queryByText(/conducta/i)).toBeFalsy();
+    expect(screen.queryByText(/comentarios/i)).toBeFalsy();
   });
 });

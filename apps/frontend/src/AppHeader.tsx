@@ -10,15 +10,17 @@ import Stack from '@mui/material/Stack';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded';
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
+import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import logoIcon from './assets/logo-icon.png';
 
 type AppHeaderProps = {
   onEditProfile?: () => void;
+  onEditSportProfile?: () => void;
   onLogout?: () => void;
 };
 
-function AppHeader({ onEditProfile, onLogout }: AppHeaderProps) {
+function AppHeader({ onEditProfile, onEditSportProfile, onLogout }: AppHeaderProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const menuOpen = Boolean(menuAnchor);
 
@@ -68,6 +70,17 @@ function AppHeader({ onEditProfile, onLogout }: AppHeaderProps) {
             <PersonOutlineRoundedIcon fontSize="small" />
           </ListItemIcon>
           Editar perfil
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            closeMenu();
+            onEditSportProfile?.();
+          }}
+        >
+          <ListItemIcon>
+            <SportsSoccerRoundedIcon fontSize="small" />
+          </ListItemIcon>
+          Perfil deportivo
         </MenuItem>
         <Divider />
         <MenuItem

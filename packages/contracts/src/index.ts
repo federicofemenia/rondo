@@ -231,3 +231,103 @@ export interface MatchRatingsPendingTaskDto {
 }
 
 export type PendingTaskDto = MatchRatingsPendingTaskDto;
+
+// ---------------------------------------------------------------------------
+// Sport profiles & weekly availability
+// ---------------------------------------------------------------------------
+
+export interface PlayerAvailabilitySlotDto {
+  id: string;
+  dayOfWeek: number;
+  startMinutes: number;
+  endMinutes: number;
+}
+
+export interface SportProfileDto {
+  id: string;
+  sportId: string;
+  sportName: string;
+  positions: string[];
+  isAvailableForInvitations: boolean;
+  availability: PlayerAvailabilitySlotDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const upsertSportProfileInputSchema = z
+  .object({
+    positions: z.array(z.string().trim().min(1)).max(10),
+    isAvailableForInvitations: z.boolean(),
+  })
+  .superRefine((data, ctx) => {
+    const seen = new Set<string>();
+    data.positions.forEach((position, index) => {
+      if (seen.has(position)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'No se permiten posiciones duplicadas.', path: ['positions', index] });
+      }
+      seen.add(position);
+    });
+  });
+
+export type UpsertSportProfileInputDto = z.infer<typeof upsertSportProfileInputSchema>;
+
+export const availabilitySlotInputSchema = z
+  .object({
+    dayOfWeek: z.number().int().min(0).max(6),
+    startMinutes: z.number().int().min(0).max(1440),
+    endMinutes: z.number().int().min(0).max(1440),
+  })
+  .superRefine((data, ctx) => {
+    if (data.endMinutes <= data.startMinutes) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'endMinutes debe ser mayor a startMinutes.', path: ['endMinutes'] });
+    }
+  });
+
+export type AvailabilitySlotInputDto = z.infer<typeof availabilitySlotInputSchema>;
+
+/**
+ * Structural validation for a full weekly-availability replacement: each slot
+ * must be well-formed (day 0-6, minutes 0-1440, start < end), no two slots on
+ * the same day may be exact duplicates, and no two slots on the same day may
+ * overlap. Cross-slot checks run here because they need the whole array at
+ * once, unlike the per-slot shape checks above.
+ */
+export const replaceAvailabilityInputSchema = z
+  .object({
+    slots: z.array(availabilitySlotInputSchema).max(50),
+  })
+  .superRefine((data, ctx) => {
+    for (let i = 0; i < data.slots.length; i += 1) {
+      for (let j = i + 1; j < data.slots.length; j += 1) {
+        const a = data.slots[i]!;
+        const b = data.slots[j]!;
+        if (a.dayOfWeek !== b.dayOfWeek) {
+          continue;
+        }
+        if (a.startMinutes === b.startMinutes && a.endMinutes === b.endMinutes) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'No se permiten franjas duplicadas.', path: ['slots', j] });
+          continue;
+        }
+        const overlaps = a.startMinutes < b.endMinutes && b.startMinutes < a.endMinutes;
+        if (overlaps) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Las franjas no pueden superponerse.', path: ['slots', j] });
+        }
+      }
+    }
+  });
+
+export type ReplaceAvailabilityInputDto = z.infer<typeof replaceAvailabilityInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Match candidates (deterministic matching)
+// ---------------------------------------------------------------------------
+
+export interface CandidateDto {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl: string | null;
+  sportId: string;
+  positions: string[];
+  matchingAvailability: string;
+}

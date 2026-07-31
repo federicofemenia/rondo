@@ -13,6 +13,12 @@ export function formatMinutesAsTime(minutes: number): string {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 }
 
+/** Parses an "HH:MM" string into minutes since midnight, e.g. "18:30" -> 1110. */
+export function parseTimeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+}
+
 /** Reads the UTC time-of-day portion of an ISO instant as "HH:MM". */
 export function formatIsoTime(iso: string): string {
   const date = new Date(iso);

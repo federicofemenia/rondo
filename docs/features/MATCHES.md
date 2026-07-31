@@ -170,68 +170,63 @@ La vinculación deberá validarse desde el backend.
 
 ```ts
 enum MatchStatus {
-  DRAFT = 'DRAFT',
-  OPEN = 'OPEN',
+  ORGANIZING = 'ORGANIZING',
   FULL = 'FULL',
-  CONFIRMED = 'CONFIRMED',
-  CANCELLED = 'CANCELLED',
+  IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
 }
 ```
 
-## DRAFT
+## ORGANIZING
 
-El partido todavía no se publicó.
-
-## OPEN
-
-Está publicado y tiene cupos disponibles.
+El partido fue creado y todavía tiene cupos disponibles. Es el estado inicial: no existe un paso de publicación separado, el partido se crea directamente en `ORGANIZING`.
 
 ## FULL
 
-Alcanzó el máximo de participantes.
+Alcanzó el máximo de participantes, pero todavía no comenzó.
 
-## CONFIRMED
+## IN_PROGRESS
 
-El organizador confirmó que el partido se realizará.
-
-## CANCELLED
-
-El partido fue cancelado.
+El horario confirmado (`startsAt`) ya comenzó y el partido está en curso.
 
 ## COMPLETED
 
-El horario terminó y el partido se considera finalizado.
+El horario confirmado (`endsAt`) ya terminó.
+
+## CANCELLED
+
+El organizador canceló el partido.
+
+## EXPIRED
+
+Terminó el día programado (`scheduledDate`) sin que el partido llegara a tener un horario confirmado, o se llegó al horario de fin (`endsAt`) sin haberse llenado. Un partido sin horario confirmado nunca pasa automáticamente a `IN_PROGRESS` ni a `COMPLETED`: si nunca se confirma una hora, vence al terminar el día seleccionado.
 
 ---
 
 # Transiciones principales
 
+Las transiciones automáticas se calculan comparando la hora actual contra `scheduledDate`, `startsAt` y `endsAt`:
+
 ```text
-DRAFT
-  ↓
-OPEN
-  ↓
-FULL
-  ↓
-CONFIRMED
-  ↓
-COMPLETED
+ORGANIZING  → EXPIRED       (termina el día programado sin horario confirmado, o se llega a endsAt sin haberse llenado)
+FULL        → IN_PROGRESS   (llega startsAt)
+FULL        → COMPLETED     (se llega a endsAt sin haber pasado por IN_PROGRESS)
+IN_PROGRESS → COMPLETED     (llega endsAt)
 ```
 
-Desde `OPEN`, `FULL` o `CONFIRMED` podrá pasar a:
+Cualquier estado no terminal (`ORGANIZING`, `FULL`, `IN_PROGRESS`) puede pasar a:
 
 ```text
 CANCELLED
 ```
 
-Si un participante abandona un partido `FULL`, deberá volver a:
+por acción explícita del organizador.
 
-```text
-OPEN
-```
+`COMPLETED`, `CANCELLED` y `EXPIRED` son estados finales: ningún partido vuelve atrás desde ellos.
 
-salvo que ya esté confirmado y la regla del organizador indique lo contrario.
+La transición entre `ORGANIZING` y `FULL` depende de la cantidad de participantes confirmados. Este slice del MVP todavía no implementa el alta de participantes más allá del organizador, por lo que esa transición no está activa en la implementación actual.
 
 ---
 
@@ -515,31 +510,16 @@ Para crear un partido se requiere:
 * visibilidad;
 * club.
 
-Fecha, hora y cancha son opcionales al crear el partido.
+El día (`scheduledDate`) y la franja horaria disponible (`availabilityStartMinutes` / `availabilityEndMinutes`) son obligatorios al crear el partido. La hora exacta (`startsAt`) es opcional; la cancha también es opcional y puede definirse más adelante, incluso mediante una reserva posterior.
 
-Un usuario puede armar un partido sin saber todavía cuándo ni dónde va a jugarse, y completar esos datos más adelante, incluso mediante una reserva posterior.
+Reglas de horario vigentes en la implementación actual:
 
-Estado inicial recomendado:
+* `scheduledDate` se persiste siempre;
+* `startsAt` y `endsAt` pueden ser `null` cuando todavía no hay una hora exacta confirmada;
+* si se informa `startsAt`, el backend calcula `endsAt` automáticamente a partir de la duración de la modalidad deportiva, validando que el rango calculado entre dentro de la franja horaria elegida;
+* un partido sin horario confirmado vence (`EXPIRED`) al terminar el día programado.
 
-```text
-DRAFT
-```
-
-El usuario podrá publicarlo mediante una acción explícita.
-
----
-
-# Publicación
-
-Para pasar a `OPEN` deberá validarse:
-
-* perfil del organizador completo;
-* deporte activo;
-* modalidad válida;
-* horario futuro;
-* cupos válidos;
-* ubicación informada;
-* partido no cancelado.
+El partido se crea directamente en estado `ORGANIZING`: no existe un paso separado de publicación ni un estado `DRAFT`.
 
 ---
 
@@ -634,19 +614,15 @@ Los partidos públicos podrán buscarse por:
 * cupos disponibles;
 * club.
 
-Solo deberán aparecer partidos:
+Solo deberán aparecer partidos activos:
 
 ```text
-OPEN
-```
-
-o, según la interfaz:
-
-```text
+ORGANIZING
 FULL
+IN_PROGRESS
 ```
 
-Los cancelados y completados no aparecerán en búsquedas activas.
+Los partidos `CANCELLED`, `COMPLETED` y `EXPIRED` solo se muestran durante las 24 horas posteriores al cambio de estado (o al horario de fin, o al final del día programado si nunca tuvo horario); pasado ese lapso dejan de aparecer.
 
 ---
 

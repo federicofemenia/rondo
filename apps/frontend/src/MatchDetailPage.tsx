@@ -360,7 +360,7 @@ function MatchDetailPage({
       ) : null}
 
       {tab === 'invitar' && visibleTabs.includes('invitar') ? (
-        <CandidatesPage matchDraft={match} excludeNames={match.invitedCandidates} onInviteCandidate={onInviteCandidate} />
+        <CandidatesPage matchId={match.id} matchSummary={match} excludeNames={match.invitedCandidates} onInviteCandidate={onInviteCandidate} />
       ) : null}
 
       {tab === 'candidatos' && visibleTabs.includes('candidatos') ? (

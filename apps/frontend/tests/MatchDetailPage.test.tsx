@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import MatchDetailPage from '../src/MatchDetailPage';
 import type { MatchEntity } from '../src/types';
+import { mockCandidates } from './setup';
 
 const baseMatch: MatchEntity = {
   id: 'match-1',
@@ -89,7 +90,11 @@ describe('MatchDetailPage', () => {
     expect(screen.queryByRole('button', { name: /rechazar/i })).toBeFalsy();
   });
 
-  it('invitar tab lets the organizer invite more candidates, excluding those already invited', () => {
+  it('invitar tab lets the organizer invite more candidates, excluding those already invited', async () => {
+    mockCandidates.push(
+      { id: 'candidate-mauro', firstName: 'Mauro', lastName: null, avatarUrl: null, sportId: 'sport-football', positions: [], matchingAvailability: 'Disponible' },
+      { id: 'candidate-lina', firstName: 'Lina', lastName: null, avatarUrl: null, sportId: 'sport-football', positions: [], matchingAvailability: 'Disponible' },
+    );
     const onInviteCandidate = vi.fn();
     render(
       <MatchDetailPage
@@ -100,8 +105,8 @@ describe('MatchDetailPage', () => {
     );
 
     fireEvent.click(screen.getByRole('tab', { name: /^invitar$/i }));
+    expect(await screen.findByText('Lina')).toBeTruthy();
     expect(screen.queryByText(/^mauro$/i)).toBeFalsy();
-    expect(screen.getByText('Lina')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /^invitar$/i }));
     expect(onInviteCandidate).toHaveBeenCalledWith('Lina');

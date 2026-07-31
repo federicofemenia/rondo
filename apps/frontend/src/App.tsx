@@ -32,6 +32,7 @@ import ReservationFlowPage from './ReservationFlowPage';
 import type { ConfirmedBooking } from './ReservationFlowPage';
 import { buildIsoDateTime, describeSchedule } from './scheduleFormat';
 import type { ScheduleUpdateInput } from './scheduleFormat';
+import SportProfilePage from './SportProfilePage';
 import type { BookingEntity, MatchEntity } from './types';
 
 const BOOKING_CHIP_COLOR = { bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main' };
@@ -45,7 +46,8 @@ type View =
   | 'reservation'
   | 'match-detail'
   | 'booking-detail'
-  | 'edit-profile';
+  | 'edit-profile'
+  | 'sport-profile';
 
 const wizardSteps = [
   { key: 'create', label: 'Armar partido' },
@@ -84,6 +86,7 @@ function App() {
   const [pendingTasks, setPendingTasks] = useState<PendingTaskDto[]>([]);
 
   const [matchDraft, setMatchDraft] = useState<MatchDraft | null>(null);
+  const [createdMatchId, setCreatedMatchId] = useState<string | null>(null);
   const [invitedCandidates, setInvitedCandidates] = useState<string[]>([]);
 
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
@@ -155,6 +158,7 @@ function App() {
 
   const openCreateFlow = () => {
     setMatchDraft(null);
+    setCreatedMatchId(null);
     setInvitedCandidates([]);
     setCurrentView('create');
   };
@@ -175,39 +179,41 @@ function App() {
     setCurrentView('booking-detail');
   };
 
-  const handleCreateMatch = (draft: MatchDraft) => {
-    setMatchDraft(draft);
-    setCurrentView('candidates');
+  // The match is created here, before moving into the Candidatos step, so
+  // that step can fetch real matching candidates from the backend (it needs
+  // a persisted matchId). Finalizar (handleFinishWizard) no longer creates
+  // anything: the match already exists by the time the user reaches it.
+  const handleCreateMatch = async (draft: MatchDraft) => {
+    try {
+      const response = await api.post<{ data: MatchSummaryDto }>('/api/v1/matches', {
+        sportModalityId: draft.sportModalityId,
+        clubId: draft.clubId,
+        minPlayers: Number(draft.minPlayers),
+        maxPlayers: Number(draft.maxPlayers),
+        positions: draft.positions,
+        scheduledDate: draft.date,
+        availabilityStartMinutes: draft.availabilityStartMinutes,
+        availabilityEndMinutes: draft.availabilityEndMinutes,
+        startsAt: draft.startTimeMinutes !== null ? buildIsoDateTime(draft.date, draft.startTimeMinutes) : null,
+      });
+      setMatches((current) => [...current, matchSummaryToEntity(response.data)]);
+      setMatchDraft(draft);
+      setCreatedMatchId(response.data.id);
+      setCurrentView('candidates');
+    } catch (error) {
+      setGlobalError(describeError(error, 'No pudimos crear el partido. Reintentá.'));
+    }
   };
 
   const handleInviteCandidate = (name: string) => {
     setInvitedCandidates((current) => (current.includes(name) ? current : [...current, name]));
   };
 
-  const handleFinishWizard = async () => {
-    if (!matchDraft) {
-      setCurrentView('home');
-      return;
-    }
-    try {
-      const response = await api.post<{ data: MatchSummaryDto }>('/api/v1/matches', {
-        sportModalityId: matchDraft.sportModalityId,
-        clubId: matchDraft.clubId,
-        minPlayers: Number(matchDraft.minPlayers),
-        maxPlayers: Number(matchDraft.maxPlayers),
-        positions: matchDraft.positions,
-        scheduledDate: matchDraft.date,
-        availabilityStartMinutes: matchDraft.availabilityStartMinutes,
-        availabilityEndMinutes: matchDraft.availabilityEndMinutes,
-        startsAt: matchDraft.startTimeMinutes !== null ? buildIsoDateTime(matchDraft.date, matchDraft.startTimeMinutes) : null,
-      });
-      setMatches((current) => [...current, matchSummaryToEntity(response.data)]);
-      setMatchDraft(null);
-      setInvitedCandidates([]);
-      setCurrentView('home');
-    } catch (error) {
-      setGlobalError(describeError(error, 'No pudimos crear el partido. Reintentá.'));
-    }
+  const handleFinishWizard = () => {
+    setMatchDraft(null);
+    setCreatedMatchId(null);
+    setInvitedCandidates([]);
+    setCurrentView('home');
   };
 
   const handleRequestBookingForMatch = (matchId: string) => {
@@ -314,6 +320,7 @@ function App() {
   };
 
   const openEditProfile = () => setCurrentView('edit-profile');
+  const openSportProfile = () => setCurrentView('sport-profile');
 
   const handleLogout = async () => {
     setCurrentView('login');
@@ -350,6 +357,10 @@ function App() {
 
     if (currentView === 'edit-profile') {
       return <EditProfilePage onBack={() => setCurrentView('home')} />;
+    }
+
+    if (currentView === 'sport-profile') {
+      return <SportProfilePage onBack={() => setCurrentView('home')} />;
     }
 
     if (currentView === 'match-detail') {
@@ -519,10 +530,21 @@ function App() {
     const renderWizardStep = () => {
       switch (currentView) {
         case 'candidates':
-          return <CandidatesPage matchDraft={matchDraft} onInviteCandidate={handleInviteCandidate} onFinish={() => void handleFinishWizard()} />;
+          if (!createdMatchId) {
+            setCurrentView('home');
+            return null;
+          }
+          return (
+            <CandidatesPage
+              matchId={createdMatchId}
+              matchSummary={matchDraft}
+              onInviteCandidate={handleInviteCandidate}
+              onFinish={handleFinishWizard}
+            />
+          );
         case 'create':
         default:
-          return <CreateMatchPage onCreateMatch={handleCreateMatch} />;
+          return <CreateMatchPage onCreateMatch={(draft) => void handleCreateMatch(draft)} />;
       }
     };
 
@@ -580,7 +602,7 @@ function App() {
 
   return (
     <>
-      {showAppHeader ? <AppHeader onEditProfile={openEditProfile} onLogout={() => void handleLogout()} /> : null}
+      {showAppHeader ? <AppHeader onEditProfile={openEditProfile} onEditSportProfile={openSportProfile} onLogout={() => void handleLogout()} /> : null}
       {renderView()}
       <Snackbar open={globalError !== null} autoHideDuration={5000} onClose={() => setGlobalError(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="error" onClose={() => setGlobalError(null)} sx={{ width: '100%' }}>
