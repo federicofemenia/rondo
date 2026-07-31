@@ -12,6 +12,9 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import { ApiError, useApi } from './apiClient';
+import { useVisiblePolling } from './useVisiblePolling';
+
+const POLL_INTERVAL_MS = 20_000;
 
 type MatchPlayersPageProps = {
   matchId: string;
@@ -123,6 +126,22 @@ function MatchPlayersPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
+
+  // Background refresh while the Jugadores tab is mounted and visible:
+  // organizer/confirmed/pending/rejected and cupos stay current without a
+  // manual refresh. Silent — keeps the last known roster on a failed tick.
+  useVisiblePolling({
+    callback: async () => {
+      try {
+        const response = await api.get<{ data: MatchParticipantsResponseDto }>(`/api/v1/matches/${matchId}/participants`);
+        setRoster(response.data);
+      } catch {
+        // silent: keep the last known roster, retry next tick
+      }
+    },
+    intervalMs: POLL_INTERVAL_MS,
+    runImmediately: false,
+  });
 
   const rosterEditable = !NON_EDITABLE_STATUSES.includes(status);
 

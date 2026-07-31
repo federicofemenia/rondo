@@ -6,6 +6,7 @@ import {
   mockCancelInvitationFailingIds,
   mockLeaveMatchFailingMatchIds,
   mockParticipantsByMatchId,
+  mockParticipantsFailingMatchIds,
   mockRemoveParticipantFailingUserIds,
 } from './setup';
 
@@ -162,6 +163,38 @@ describe('MatchPlayersPage', () => {
 
     await waitFor(() => expect(screen.getByText(/ocurrió un error inesperado/i)).toBeTruthy());
     expect(onLeftMatch).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the roster automatically on a background poll', async () => {
+    mockParticipantsByMatchId.set('match-1', structuredClone(fullRoster));
+    vi.useFakeTimers();
+    try {
+      render(<MatchPlayersPage matchId="match-1" isOrganizer status="ORGANIZING" participantsCount={7} maxPlayers={10} />);
+      await vi.waitFor(() => expect(screen.getByText('Mauro')).toBeTruthy());
+
+      mockParticipantsByMatchId.get('match-1')!.confirmed.push({ userId: 'user-nuevo', displayName: 'Nuevo Jugador', avatarUrl: null });
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.waitFor(() => expect(screen.getByText('Nuevo Jugador')).toBeTruthy());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the roster visible when a background poll fails', async () => {
+    mockParticipantsByMatchId.set('match-1', structuredClone(fullRoster));
+    vi.useFakeTimers();
+    try {
+      render(<MatchPlayersPage matchId="match-1" isOrganizer status="ORGANIZING" participantsCount={7} maxPlayers={10} />);
+      await vi.waitFor(() => expect(screen.getByText('Mauro')).toBeTruthy());
+
+      mockParticipantsFailingMatchIds.add('match-1');
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(screen.getByText('Mauro')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('hides Abandonar partido and roster edit actions once the match is no longer editable', async () => {

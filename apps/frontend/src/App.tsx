@@ -35,6 +35,9 @@ import { buildIsoDateTime, describeSchedule } from './scheduleFormat';
 import type { ScheduleUpdateInput } from './scheduleFormat';
 import SportProfilePage from './SportProfilePage';
 import type { BookingEntity, MatchEntity } from './types';
+import { useVisiblePolling } from './useVisiblePolling';
+
+const HOME_POLL_INTERVAL_MS = 20_000;
 
 const BOOKING_CHIP_COLOR = { bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main' };
 
@@ -64,7 +67,7 @@ function isWizardStep(view: View): view is WizardStep {
 
 function displayName(user: UserDto): string {
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return fullName || user.email;
+  return fullName || user.email || 'Jugador';
 }
 
 function describeError(error: unknown, fallback: string): string {
@@ -125,7 +128,7 @@ function App() {
     }
   }, [authLoaded, isSignedIn]);
 
-  const loadAccountData = async () => {
+  const loadAccountData = async (options?: { silent?: boolean }) => {
     try {
       const [meResponse, matchesResponse, tasksResponse, invitationsResponse] = await Promise.all([
         api.get<{ data: UserDto }>('/api/v1/me'),
@@ -138,7 +141,11 @@ function App() {
       setPendingTasks(tasksResponse.data);
       setMyInvitations(invitationsResponse.data);
     } catch (error) {
-      setGlobalError(describeError(error, 'No pudimos cargar tu información. Reintentá más tarde.'));
+      // A silent (polling) refresh never surfaces an invasive error: keep
+      // whatever was last shown and just retry on the next tick.
+      if (!options?.silent) {
+        setGlobalError(describeError(error, 'No pudimos cargar tu información. Reintentá más tarde.'));
+      }
     }
   };
 
@@ -149,6 +156,20 @@ function App() {
     void loadAccountData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn]);
+
+  // Lightweight "feels real-time" refresh for Home and MatchDetail: reuses
+  // the same loadAccountData used after local mutations, just silenced and
+  // scoped to the two screens that read from this state. Chat and the other
+  // screens keep their own independent polling/lifecycles untouched. Gating
+  // on currentView alone is enough: the app only ever reaches 'home' or
+  // 'match-detail' while signed in (the sign-out effect above always routes
+  // back to 'login' otherwise).
+  useVisiblePolling({
+    callback: () => loadAccountData({ silent: true }),
+    intervalMs: HOME_POLL_INTERVAL_MS,
+    enabled: currentView === 'home' || currentView === 'match-detail',
+    runImmediately: false,
+  });
 
   const openCreateFlow = () => {
     setMatchDraft(null);

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { MatchInvitationDto } from '@rondo/contracts';
 import InvitationsPage from '../src/InvitationsPage';
-import { mockInvitationRespondFailingIds, mockMyInvitations } from './setup';
+import { mockInvitationRespondFailingIds, mockInvitationsListState, mockMyInvitations } from './setup';
 
 const pendingInvitation: MatchInvitationDto = {
   id: 'invitation-1',
@@ -116,6 +116,39 @@ describe('InvitationsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^aceptar$/i }));
 
     expect(await screen.findByText(/ocurrió un error inesperado/i)).toBeTruthy();
+  });
+
+  it('shows a new invitation automatically after a background refresh, without remounting', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<InvitationsPage />);
+      await vi.waitFor(() => expect(screen.getByText(/todavía no tenés invitaciones/i)).toBeTruthy());
+
+      mockMyInvitations.push({ ...pendingInvitation });
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.waitFor(() => expect(screen.getByText(/fútbol • fútbol 5/i)).toBeTruthy());
+      expect(screen.queryByText(/todavía no tenés invitaciones/i)).toBeFalsy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the current list visible when a background refresh fails', async () => {
+    mockMyInvitations.push({ ...pendingInvitation });
+    vi.useFakeTimers();
+    try {
+      render(<InvitationsPage />);
+      await vi.waitFor(() => expect(screen.getByText(/fútbol • fútbol 5/i)).toBeTruthy());
+
+      mockInvitationsListState.failing = true;
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(screen.getByText(/fútbol • fútbol 5/i)).toBeTruthy();
+      expect(screen.queryByText(/ocurrió un error inesperado/i)).toBeFalsy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('calls onBack when the back button is clicked', async () => {

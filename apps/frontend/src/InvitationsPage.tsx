@@ -12,6 +12,9 @@ import Button from '@mui/material/Button';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import { ApiError, useApi } from './apiClient';
 import { describeSchedule } from './scheduleFormat';
+import { useVisiblePolling } from './useVisiblePolling';
+
+const POLL_INTERVAL_MS = 20_000;
 
 type InvitationsPageProps = {
   onBack?: () => void;
@@ -72,6 +75,23 @@ function InvitationsPage({ onBack, onRespond, onViewMatch }: InvitationsPageProp
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Background refresh while this screen is visible: a new invitation shows
+  // up on its own, and one accepted/rejected/cancelled from another device
+  // updates in place. Keeps whatever is on screen if a tick fails — no
+  // spinner, no invasive error, just retried on the next cycle.
+  useVisiblePolling({
+    callback: async () => {
+      try {
+        const response = await api.get<{ data: MatchInvitationDto[] }>('/api/v1/me/invitations');
+        setInvitations(response.data);
+      } catch {
+        // silent: keep the last known list, retry next tick
+      }
+    },
+    intervalMs: POLL_INTERVAL_MS,
+    runImmediately: false,
+  });
 
   const respond = async (invitation: MatchInvitationDto, action: 'accept' | 'reject') => {
     setRespondingId(invitation.id);

@@ -382,6 +382,41 @@ Automatizar:
 
 ---
 
+# TD-014
+
+## Título
+
+Actualización automática sin WebSockets (beta)
+
+## Estado
+
+Aceptada
+
+## Decisión
+
+Polling visible, por pantalla, mediante un hook reutilizable (`useVisiblePolling`), no un scheduler global ni un endpoint de resumen nuevo.
+
+Reglas:
+
+- Home, Mis invitaciones, MatchDetail y la pestaña Jugadores refrescan cada 20 segundos mientras `document.visibilityState === "visible"`.
+- El polling se detiene por completo (no se reduce) cuando la pestaña queda oculta.
+- Al volver a estar visible, al recuperar foco de la ventana o al recuperar conectividad (`online`), se refresca de inmediato.
+- Cada pantalla reutiliza su propia función de carga existente (`loadAccountData`, fetch de invitaciones, fetch de participantes); no se creó `/me/pending-summary` ni ningún endpoint agregador.
+- Una actualización silenciosa nunca reemplaza los datos visibles por un spinner ni por un error invasivo: si falla, se reintenta en el siguiente ciclo y se conserva la última información válida.
+- Un guard de concurrencia evita solicitudes superpuestas si el ciclo anterior no terminó (relevante cuando el backend gratuito de Render está despertando).
+- El chat mantiene su polling propio de 10 segundos, activo únicamente mientras la pestaña Chat está montada; este mecanismo no lo reemplaza ni lo duplica.
+- No existe sincronización mientras la aplicación está completamente cerrada (sin pestaña abierta); el polling depende de que el documento exista en el navegador.
+
+## Justificación
+
+Da una sensación de "tiempo real" razonable para una beta cerrada sin el costo de infraestructura de WebSockets/SSE, evitando además el resource-usage de un intervalo global corriendo durante toda la sesión sin importar la pantalla activa.
+
+## Futuro
+
+Cuando se justifique (mayor escala, latencia esperada menor), migrar a WebSockets o Server-Sent Events reemplazaría este polling sin cambiar el contrato de las pantallas (siguen "suscribiéndose" a una señal de actualización, solo cambia cómo se dispara).
+
+---
+
 # Revisión
 
 Las decisiones técnicas podrán modificarse.

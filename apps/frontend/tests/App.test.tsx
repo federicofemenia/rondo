@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
+import { mockMyInvitations } from './setup';
 
 async function loginAndReachHome() {
   render(<App />);
@@ -65,6 +66,42 @@ describe('App', () => {
     expect(screen.getByRole('tab', { name: /^resumen$/i })).toBeTruthy();
     expect(screen.getByText(/cancha pendiente/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /realizar una reserva/i })).toBeTruthy();
+  });
+
+  it('shows a new pending-invitation action on Home automatically after a background refresh', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+      await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
+      expect(screen.queryByText(/tenés una invitación pendiente/i)).toBeFalsy();
+
+      mockMyInvitations.push({
+        id: 'invitation-poll-1',
+        matchId: 'match-poll-1',
+        status: 'PENDING',
+        position: null,
+        invitedUserId: 'user-test',
+        invitedUserDisplayName: 'Federico Femenia',
+        invitedById: 'organizer-1',
+        organizerDisplayName: 'Juan Pérez',
+        sportName: 'Fútbol',
+        modalityName: 'Fútbol 5',
+        clubName: null,
+        scheduledDate: '2026-08-05',
+        availabilityStartMinutes: 17 * 60,
+        availabilityEndMinutes: 22 * 60,
+        startsAt: null,
+        endsAt: null,
+        createdAt: '2026-08-01T00:00:00.000Z',
+        respondedAt: null,
+      });
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.waitFor(() => expect(screen.getByText(/tenés una invitación pendiente/i)).toBeTruthy());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('creates a standalone booking and lands on its detail page with sin partido asociado', async () => {
