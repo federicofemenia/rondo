@@ -72,6 +72,7 @@ model User {
   sportProfiles       UserSportProfile[]
   invitationsReceived MatchInvitation[]  @relation("InvitationInvitedUser")
   invitationsSent     MatchInvitation[]  @relation("InvitationInvitedBy")
+  chatMessages        MatchChatMessage[]
 
   @@map("users")
 }
@@ -230,6 +231,7 @@ model Match {
   participants        MatchParticipant[]
   ratings             PlayerRating[]
   invitations         MatchInvitation[]
+  chatMessages        MatchChatMessage[]
 
   @@index([clubId])
   @@index([sportModalityId])
@@ -277,6 +279,23 @@ model MatchInvitation {
   @@index([matchId])
   @@index([invitedUserId])
   @@map("match_invitations")
+}
+
+/// A single group chat per match, open to the organizer and confirmed
+/// participants. Messages are never deleted or edited (MVP); when a user
+/// loses access (leaves or is removed) their past messages stay visible.
+model MatchChatMessage {
+  id        String   @id @default(uuid())
+  matchId   String   @map("match_id")
+  authorId  String   @map("author_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  match  Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([matchId, createdAt])
+  @@map("match_chat_messages")
 }
 
 model PlayerRating {

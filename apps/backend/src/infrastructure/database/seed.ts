@@ -521,6 +521,28 @@ export async function runSeed(): Promise<void> {
     participantUserIds: [martin.id],
   });
 
+  // A match completed well over a day ago, so its chat closed for good (the
+  // 24h post-match grace window has already passed).
+  await upsertMatch({
+    id: SEED_IDS.matches.completedStale,
+    clubId: club.id,
+    sportModalityId: football5.id,
+    courtId: SEED_IDS.courts.football5,
+    organizerUserId: ana.id,
+    minPlayers: 2,
+    maxPlayers: 10,
+    scheduledDate: startOfUtcDay(hoursFromNow(-31)),
+    ...windowAround(hoursFromNow(-31), hoursFromNow(-30)),
+    startsAt: hoursFromNow(-31),
+    endsAt: hoursFromNow(-30),
+    status: 'COMPLETED',
+    statusChangedAt: hoursFromNow(-30),
+    statusChangedByType: 'SYSTEM',
+    statusChangedByUserId: null,
+    cancellationReason: null,
+    participantUserIds: [ana.id, diego.id],
+  });
+
   // Candidate-matching demo data: sport profiles + weekly availability crafted
   // to exercise every rule of the deterministic matching (see MATCHES/USERS
   // docs) against the real matches seeded above.
@@ -706,6 +728,45 @@ export async function runSeed(): Promise<void> {
       gameplayScore: 5,
       conductScore: 5,
       comment: 'Excelente compañero de equipo.',
+    },
+  });
+
+  // A short exchange on the FULL match (organizer + a confirmed participant),
+  // and a single post-match message on the match completed within 24h, kept
+  // deliberately small — just enough to exercise the chat with real data.
+  await prisma.matchChatMessage.upsert({
+    where: { id: SEED_IDS.chatMessages.fullMatchWelcome },
+    update: { matchId: SEED_IDS.matches.full, authorId: juan.id, content: 'Che, nos vemos en la cancha. ¡Lleven algo para tomar!' },
+    create: {
+      id: SEED_IDS.chatMessages.fullMatchWelcome,
+      matchId: SEED_IDS.matches.full,
+      authorId: juan.id,
+      content: 'Che, nos vemos en la cancha. ¡Lleven algo para tomar!',
+      createdAt: hoursFromNow(-1),
+    },
+  });
+
+  await prisma.matchChatMessage.upsert({
+    where: { id: SEED_IDS.chatMessages.fullMatchReply },
+    update: { matchId: SEED_IDS.matches.full, authorId: martin.id, content: 'Dale, ahí llevo yo.' },
+    create: {
+      id: SEED_IDS.chatMessages.fullMatchReply,
+      matchId: SEED_IDS.matches.full,
+      authorId: martin.id,
+      content: 'Dale, ahí llevo yo.',
+      createdAt: hoursFromNow(-0.9),
+    },
+  });
+
+  await prisma.matchChatMessage.upsert({
+    where: { id: SEED_IDS.chatMessages.completedMatchThanks },
+    update: { matchId: SEED_IDS.matches.completed, authorId: juan.id, content: 'Buen partido de hoy, ¡nos vemos la próxima!' },
+    create: {
+      id: SEED_IDS.chatMessages.completedMatchThanks,
+      matchId: SEED_IDS.matches.completed,
+      authorId: juan.id,
+      content: 'Buen partido de hoy, ¡nos vemos la próxima!',
+      createdAt: hoursFromNow(-1.9),
     },
   });
 }

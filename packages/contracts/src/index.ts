@@ -399,3 +399,35 @@ export interface MatchParticipantsResponseDto {
   pending: MatchPendingInvitationDto[];
   rejected: MatchRejectedInvitationDto[];
 }
+
+// ---------------------------------------------------------------------------
+// Match chat
+// ---------------------------------------------------------------------------
+
+export interface MatchChatAuthorDto {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface MatchChatMessageDto {
+  id: string;
+  content: string;
+  createdAt: string;
+  isCurrentUser: boolean;
+  author: MatchChatAuthorDto;
+}
+
+export interface MatchChatResponseDto {
+  matchId: string;
+  canSend: boolean;
+  closed: boolean;
+  closesAt: string | null;
+  messages: MatchChatMessageDto[];
+}
+
+export const sendMatchChatMessageInputSchema = z.object({
+  content: z.string().trim().min(1).max(1000),
+});
+
+export type SendMatchChatMessageInputDto = z.infer<typeof sendMatchChatMessageInputSchema>;

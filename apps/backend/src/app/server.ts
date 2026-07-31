@@ -11,6 +11,7 @@ import { registerPendingTaskRoutes } from '../modules/matches/pendingTasks.contr
 import { registerCandidateRoutes } from '../modules/matches/candidates.controller.js';
 import { registerInvitationRoutes } from '../modules/matches/invitations.controller.js';
 import { registerParticipantRoutes } from '../modules/matches/participants.controller.js';
+import { registerMatchChatRoutes } from '../modules/matches/chat.controller.js';
 import { registerSportProfileRoutes } from '../modules/sportProfiles/sportProfiles.controller.js';
 import { createClerkAuthAdapter } from '../infrastructure/auth/clerkAuthAdapter.js';
 import type { AuthAdapter } from '../infrastructure/auth/authAdapter.js';
@@ -49,6 +50,7 @@ export async function buildServer(env: Pick<Env, 'NODE_ENV' | 'CLERK_SECRET_KEY'
   registerCandidateRoutes(app);
   registerInvitationRoutes(app);
   registerParticipantRoutes(app);
+  registerMatchChatRoutes(app);
 
   return app;
 }

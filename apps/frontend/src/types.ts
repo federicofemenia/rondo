@@ -2,11 +2,6 @@ import type { MatchStatusDto, RateParticipantInputDto, StatusChangedByTypeDto } 
 
 export type PlayerRating = RateParticipantInputDto;
 
-export type ChatMessage = {
-  author: string;
-  text: string;
-};
-
 export type MatchEntity = {
   id: string;
   status: MatchStatusDto;
@@ -28,7 +23,6 @@ export type MatchEntity = {
   organizerUserId: string;
   isOrganizer: boolean;
   bookingId: string | null;
-  chatMessages: ChatMessage[];
   createdAt: number;
   cancelledAt: string | null;
   cancelledByType: StatusChangedByTypeDto | null;

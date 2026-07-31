@@ -25,7 +25,6 @@ const baseMatch: MatchEntity = {
   organizerUserId: 'user-organizer',
   isOrganizer: true,
   bookingId: 'booking-1',
-  chatMessages: [],
   createdAt: 1,
   cancelledAt: null,
   cancelledByType: null,
@@ -119,13 +118,23 @@ describe('MatchDetailPage', () => {
     expect(onCancelMatch).toHaveBeenCalled();
   });
 
-  it('the valoraciones tab is always present, next to Resumen, Jugadores and Gestión', () => {
+  it('the valoraciones tab is always present, next to Resumen, Jugadores, Gestión and Chat', () => {
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
     expect(screen.getByRole('tab', { name: /resumen/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /jugadores/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /gestión/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^chat$/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /valoraciones/i })).toBeTruthy();
+  });
+
+  it('chat tab shows the real chat for this match, with no mock messages left over', async () => {
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /^chat$/i }));
+    expect(await screen.findByText(/todavía no hay mensajes/i)).toBeTruthy();
+    expect(screen.queryByText(/buenísimo, nos vemos a las 19/i)).toBeFalsy();
+    expect(screen.queryByText('Mauro')).toBeFalsy();
   });
 
   it('shows the informational message on the valoraciones tab before the match finishes', async () => {
@@ -153,6 +162,7 @@ describe('MatchDetailPage', () => {
     expect(screen.getByText(/cancelado por federico/i)).toBeTruthy();
     expect(screen.queryByRole('tab', { name: /jugadores/i })).toBeFalsy();
     expect(screen.queryByRole('tab', { name: /gestión/i })).toBeFalsy();
+    expect(screen.getByRole('tab', { name: /^chat$/i })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: /valoraciones/i }));
     await waitFor(() => expect(screen.getByText(/este partido fue cancelado y no admite valoraciones/i)).toBeTruthy());

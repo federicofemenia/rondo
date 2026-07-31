@@ -22,6 +22,7 @@ import { buildDayOptions } from './dateOptions';
 import EntityPickerDialog from './EntityPickerDialog';
 import type { PickerItem } from './EntityPickerDialog';
 import ExactStartTimeInput from './ExactStartTimeInput';
+import MatchChatPage from './MatchChatPage';
 import MatchManagementPage from './MatchManagementPage';
 import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import MatchPlayersPage from './MatchPlayersPage';
@@ -46,7 +47,7 @@ type MatchDetailPageProps = {
   onLeftMatch?: () => void;
 };
 
-export type Tab = 'datos' | 'jugadores' | 'gestion' | 'valoraciones';
+export type Tab = 'datos' | 'jugadores' | 'gestion' | 'chat' | 'valoraciones';
 
 const INVITATION_STATUS_BANNER: Partial<Record<MatchInvitationStatusDto, { label: string; color: string; bgcolor: string }>> = {
   PENDING: { label: 'Invitación pendiente', color: 'warning.main', bgcolor: 'rgba(245, 197, 66, 0.08)' },
@@ -118,7 +119,9 @@ function MatchDetailPage({
   const status = match.status;
   const cancelled = status === 'CANCELLED';
   const canEditSchedule = status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'EXPIRED';
-  const visibleTabs: Tab[] = cancelled ? ['datos', 'valoraciones'] : ['datos', 'jugadores', 'gestion', 'valoraciones'];
+  const visibleTabs: Tab[] = cancelled
+    ? ['datos', 'chat', 'valoraciones']
+    : ['datos', 'jugadores', 'gestion', 'chat', 'valoraciones'];
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
   const schedule = describeSchedule(match);
 
@@ -218,6 +221,7 @@ function MatchDetailPage({
           <Tab value="datos" label="Resumen" sx={{ minHeight: 0 }} />
           {visibleTabs.includes('jugadores') ? <Tab value="jugadores" label="Jugadores" sx={{ minHeight: 0 }} /> : null}
           {visibleTabs.includes('gestion') ? <Tab value="gestion" label="Gestión" sx={{ minHeight: 0 }} /> : null}
+          {visibleTabs.includes('chat') ? <Tab value="chat" label="Chat" sx={{ minHeight: 0 }} /> : null}
           <Tab value="valoraciones" label="Valoraciones" sx={{ minHeight: 0 }} />
         </Tabs>
       </Box>
@@ -408,6 +412,8 @@ function MatchDetailPage({
       ) : null}
 
       {tab === 'gestion' && visibleTabs.includes('gestion') ? <MatchManagementPage onCancelMatch={onCancelMatch} /> : null}
+
+      {tab === 'chat' && visibleTabs.includes('chat') ? <MatchChatPage matchId={match.id} status={status} /> : null}
 
       {tab === 'valoraciones' ? (
         <MatchRatingsPage

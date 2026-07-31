@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, vi } from 'vitest';
-import type { CandidateDto, MatchInvitationDto, MatchParticipantsResponseDto, SportDto, SportProfileDto, UserClubDto } from '@rondo/contracts';
+import type {
+  CandidateDto,
+  MatchChatResponseDto,
+  MatchInvitationDto,
+  MatchParticipantsResponseDto,
+  SportDto,
+  SportProfileDto,
+  UserClubDto,
+} from '@rondo/contracts';
 
 type MockClerkError = { message: string; longMessage?: string };
 
@@ -108,6 +116,15 @@ export const mockLeaveMatchFailingMatchIds = new Set<string>();
 /** invitationIds added here make POST .../invitations/:id/cancel respond with a 500. */
 export const mockCancelInvitationFailingIds = new Set<string>();
 
+/** Mutable per-test fixture for GET /api/v1/matches/:matchId/chat/messages, keyed by matchId; reset (cleared) before every test. */
+export const mockChatByMatchId = new Map<string, MatchChatResponseDto>();
+/** matchIds added here make chat requests (GET or POST) respond with a 403, to exercise the access-denied state. */
+export const mockChatAccessDeniedMatchIds = new Set<string>();
+/** matchIds added here make GET .../chat/messages respond with a 500. */
+export const mockChatLoadFailingMatchIds = new Set<string>();
+/** matchIds added here make POST .../chat/messages respond with a 500. */
+export const mockChatSendFailingMatchIds = new Set<string>();
+
 function findSportName(sportId: string): string {
   return mockSportsCatalog.find((sport) => sport.id === sportId)?.name ?? '';
 }
@@ -131,6 +148,10 @@ beforeEach(() => {
   mockRemoveParticipantFailingUserIds.clear();
   mockLeaveMatchFailingMatchIds.clear();
   mockCancelInvitationFailingIds.clear();
+  mockChatByMatchId.clear();
+  mockChatAccessDeniedMatchIds.clear();
+  mockChatLoadFailingMatchIds.clear();
+  mockChatSendFailingMatchIds.clear();
 });
 
 beforeEach(() => {
@@ -441,6 +462,43 @@ beforeEach(() => {
         return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
       }
       return new Response(null, { status: 204 });
+    }
+
+    const chatMessagesMatch = url.match(/\/api\/v1\/matches\/([^/]+)\/chat\/messages$/);
+    if (chatMessagesMatch) {
+      const matchId = chatMessagesMatch[1]!;
+      if (mockChatAccessDeniedMatchIds.has(matchId)) {
+        return json({ error: { code: 'CHAT_ACCESS_DENIED', message: 'No tenés acceso al chat de este partido.' } }, 403);
+      }
+
+      if (method === 'GET') {
+        if (mockChatLoadFailingMatchIds.has(matchId)) {
+          return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+        }
+        const chat = mockChatByMatchId.get(matchId) ?? { matchId, canSend: true, closed: false, closesAt: null, messages: [] };
+        return json({ data: chat });
+      }
+
+      if (method === 'POST') {
+        if (mockChatSendFailingMatchIds.has(matchId)) {
+          return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+        }
+        const body = init?.body ? (JSON.parse(init.body as string) as { content: string }) : { content: '' };
+        const message = {
+          id: `message-${matchId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          content: body.content,
+          createdAt: new Date().toISOString(),
+          isCurrentUser: true,
+          author: { id: 'user-test', displayName: 'Federico Femenia', avatarUrl: null },
+        };
+        const chat = mockChatByMatchId.get(matchId);
+        if (chat) {
+          chat.messages.push(message);
+        } else {
+          mockChatByMatchId.set(matchId, { matchId, canSend: true, closed: false, closesAt: null, messages: [message] });
+        }
+        return json({ data: message }, 201);
+      }
     }
 
     throw new Error(`Unhandled fetch in tests: ${method} ${url}`);

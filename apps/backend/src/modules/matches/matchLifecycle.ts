@@ -5,6 +5,9 @@ const TERMINAL_STATUSES: readonly MatchStatus[] = ['COMPLETED', 'CANCELLED', 'EX
 
 export const HOME_VISIBILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const RATINGS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const CHAT_POST_MATCH_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const CHAT_WRITABLE_STATUSES: readonly MatchStatus[] = ['ORGANIZING', 'FULL', 'IN_PROGRESS', 'COMPLETED'];
 
 type LifecycleMatch = Pick<Match, 'status' | 'scheduledDate' | 'startsAt' | 'endsAt'>;
 
@@ -89,6 +92,31 @@ export function isRatingsEnabled(match: Pick<Match, 'status'>): boolean {
 export function isRatingsOpen(match: Pick<Match, 'status' | 'endsAt'>, now: Date = new Date()): boolean {
   const closeAt = ratingsCloseAt(match);
   return isRatingsEnabled(match) && closeAt !== null && now.getTime() < closeAt.getTime();
+}
+
+/**
+ * The match chat accepts new messages while the match is active (ORGANIZING,
+ * FULL, IN_PROGRESS), and for a 24h grace window after it completes.
+ * Cancelled and expired matches close the chat immediately — history stays
+ * readable, but nothing new can be posted.
+ */
+export function canSendMatchChatMessage(match: Pick<Match, 'status' | 'endsAt'>, now: Date = new Date()): boolean {
+  if (!CHAT_WRITABLE_STATUSES.includes(match.status)) {
+    return false;
+  }
+  if (match.status !== 'COMPLETED') {
+    return true;
+  }
+  // endsAt is guaranteed once a match reaches COMPLETED (see resolveMatchStatus).
+  return match.endsAt !== null && now.getTime() - match.endsAt.getTime() < CHAT_POST_MATCH_WINDOW_MS;
+}
+
+/** When a COMPLETED match's chat will close, or null if it isn't on that timer. */
+export function matchChatClosesAt(match: Pick<Match, 'status' | 'endsAt'>): Date | null {
+  if (match.status !== 'COMPLETED' || !match.endsAt) {
+    return null;
+  }
+  return new Date(match.endsAt.getTime() + CHAT_POST_MATCH_WINDOW_MS);
 }
 
 export function isVisibleOnHome(
