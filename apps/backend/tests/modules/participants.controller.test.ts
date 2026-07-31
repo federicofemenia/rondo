@@ -21,7 +21,7 @@ async function createTestUser(firstName: string, lastName = 'Test'): Promise<Use
 
 function authAdapterFor(user: User) {
   return createFakeAuthAdapter({
-    acting: { clerkUserId: user.clerkUserId, email: user.email, firstName: user.firstName, lastName: user.lastName, avatarUrl: null },
+    acting: { clerkUserId: user.clerkUserId, email: user.email!, firstName: user.firstName, lastName: user.lastName, avatarUrl: null },
   });
 }
 

@@ -67,7 +67,7 @@ async function deleteInvitation(invitationId: string): Promise<void> {
 
 function authAdapterFor(user: User) {
   return createFakeAuthAdapter({
-    candidate: { clerkUserId: user.clerkUserId, email: user.email, firstName: user.firstName, lastName: user.lastName, avatarUrl: null },
+    candidate: { clerkUserId: user.clerkUserId, email: user.email!, firstName: user.firstName, lastName: user.lastName, avatarUrl: null },
   });
 }
 

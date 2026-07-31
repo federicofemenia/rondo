@@ -17,9 +17,9 @@ const matchInclude = {
 
 export type MatchWithRelations = Prisma.MatchGetPayload<{ include: typeof matchInclude }>;
 
-export function displayName(user: { firstName: string | null; lastName: string | null; email: string }): string {
+export function displayName(user: { firstName: string | null; lastName: string | null; email: string | null }): string {
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return fullName || user.email;
+  return fullName || user.email || 'Jugador';
 }
 
 export async function findMatchWithRelations(matchId: string, now: Date = new Date()): Promise<MatchWithRelations | null> {
