@@ -22,9 +22,9 @@ import { buildDayOptions } from './dateOptions';
 import EntityPickerDialog from './EntityPickerDialog';
 import type { PickerItem } from './EntityPickerDialog';
 import ExactStartTimeInput from './ExactStartTimeInput';
-import MatchChatPage from './MatchChatPage';
 import MatchManagementPage from './MatchManagementPage';
 import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
+import MatchPlayersPage from './MatchPlayersPage';
 import MatchRatingsPage from './MatchRatingsPage';
 import { buildIsoDateTime, describeSchedule, isoTimeToMinutes } from './scheduleFormat';
 import type { ScheduleUpdateInput } from './scheduleFormat';
@@ -37,16 +37,16 @@ type MatchDetailPageProps = {
   initialTab?: Tab;
   myInvitationStatus?: MatchInvitationStatusDto | null;
   onBack?: () => void;
-  onSendMessage?: (text: string) => void;
-  onRemoveParticipant?: (name: string) => void;
   onCancelMatch?: () => void;
   onEditClub?: (clubName: string | null) => void;
   onEditSchedule?: (input: ScheduleUpdateInput) => Promise<void>;
   onRequestBooking?: () => void;
   onAssociateBooking?: (bookingId: string) => void;
+  onRosterChanged?: () => void;
+  onLeftMatch?: () => void;
 };
 
-export type Tab = 'datos' | 'invitar' | 'gestion' | 'chat' | 'valoraciones';
+export type Tab = 'datos' | 'jugadores' | 'gestion' | 'valoraciones';
 
 const INVITATION_STATUS_BANNER: Partial<Record<MatchInvitationStatusDto, { label: string; color: string; bgcolor: string }>> = {
   PENDING: { label: 'Invitación pendiente', color: 'warning.main', bgcolor: 'rgba(245, 197, 66, 0.08)' },
@@ -85,17 +85,19 @@ function MatchDetailPage({
   initialTab,
   myInvitationStatus,
   onBack,
-  onSendMessage,
-  onRemoveParticipant,
   onCancelMatch,
   onEditClub,
   onEditSchedule,
   onRequestBooking,
   onAssociateBooking,
+  onRosterChanged,
+  onLeftMatch,
 }: MatchDetailPageProps) {
   const api = useApi();
   const dayOptions = useMemo(() => buildDayOptions(), []);
   const [tab, setTab] = useState<Tab>(initialTab ?? 'datos');
+  const [searchingPlayers, setSearchingPlayers] = useState(false);
+  const [playersVersion, setPlayersVersion] = useState(0);
   const [associateOpen, setAssociateOpen] = useState(false);
   const [clubDraft, setClubDraft] = useState(match.clubName ?? '');
   const [dateDraft, setDateDraft] = useState(match.scheduledDate);
@@ -116,7 +118,7 @@ function MatchDetailPage({
   const status = match.status;
   const cancelled = status === 'CANCELLED';
   const canEditSchedule = status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'EXPIRED';
-  const visibleTabs: Tab[] = cancelled ? ['datos', 'valoraciones'] : ['datos', 'invitar', 'gestion', 'chat', 'valoraciones'];
+  const visibleTabs: Tab[] = cancelled ? ['datos', 'valoraciones'] : ['datos', 'jugadores', 'gestion', 'valoraciones'];
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
   const schedule = describeSchedule(match);
 
@@ -213,10 +215,9 @@ function MatchDetailPage({
           allowScrollButtonsMobile
           sx={{ minHeight: 0, mb: 4 }}
         >
-          <Tab value="datos" label="Datos" sx={{ minHeight: 0 }} />
-          {visibleTabs.includes('invitar') ? <Tab value="invitar" label="Invitar" sx={{ minHeight: 0 }} /> : null}
+          <Tab value="datos" label="Resumen" sx={{ minHeight: 0 }} />
+          {visibleTabs.includes('jugadores') ? <Tab value="jugadores" label="Jugadores" sx={{ minHeight: 0 }} /> : null}
           {visibleTabs.includes('gestion') ? <Tab value="gestion" label="Gestión" sx={{ minHeight: 0 }} /> : null}
-          {visibleTabs.includes('chat') ? <Tab value="chat" label="Chat" sx={{ minHeight: 0 }} /> : null}
           <Tab value="valoraciones" label="Valoraciones" sx={{ minHeight: 0 }} />
         </Tabs>
       </Box>
@@ -377,13 +378,36 @@ function MatchDetailPage({
         </Box>
       ) : null}
 
-      {tab === 'invitar' && visibleTabs.includes('invitar') ? <CandidatesPage matchId={match.id} matchSummary={match} /> : null}
-
-      {tab === 'gestion' && visibleTabs.includes('gestion') ? (
-        <MatchManagementPage participants={match.participants} onRemoveParticipant={onRemoveParticipant} onCancelMatch={onCancelMatch} />
+      {tab === 'jugadores' && visibleTabs.includes('jugadores') ? (
+        searchingPlayers ? (
+          <CandidatesPage
+            matchId={match.id}
+            matchSummary={match}
+            onFinish={() => {
+              setSearchingPlayers(false);
+              setPlayersVersion((version) => version + 1);
+              onRosterChanged?.();
+            }}
+          />
+        ) : (
+          <MatchPlayersPage
+            key={playersVersion}
+            matchId={match.id}
+            isOrganizer={match.isOrganizer}
+            status={match.status}
+            participantsCount={match.participantsCount}
+            maxPlayers={Number(match.maxPlayers)}
+            onSearchPlayers={() => setSearchingPlayers(true)}
+            onRosterChanged={() => {
+              setPlayersVersion((version) => version + 1);
+              onRosterChanged?.();
+            }}
+            onLeftMatch={onLeftMatch}
+          />
+        )
       ) : null}
 
-      {tab === 'chat' && visibleTabs.includes('chat') ? <MatchChatPage initialMessages={match.chatMessages} onSendMessage={onSendMessage} /> : null}
+      {tab === 'gestion' && visibleTabs.includes('gestion') ? <MatchManagementPage onCancelMatch={onCancelMatch} /> : null}
 
       {tab === 'valoraciones' ? (
         <MatchRatingsPage

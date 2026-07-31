@@ -10,6 +10,7 @@ import { registerRatingRoutes } from '../modules/matches/ratings.controller.js';
 import { registerPendingTaskRoutes } from '../modules/matches/pendingTasks.controller.js';
 import { registerCandidateRoutes } from '../modules/matches/candidates.controller.js';
 import { registerInvitationRoutes } from '../modules/matches/invitations.controller.js';
+import { registerParticipantRoutes } from '../modules/matches/participants.controller.js';
 import { registerSportProfileRoutes } from '../modules/sportProfiles/sportProfiles.controller.js';
 import { createClerkAuthAdapter } from '../infrastructure/auth/clerkAuthAdapter.js';
 import type { AuthAdapter } from '../infrastructure/auth/authAdapter.js';
@@ -47,6 +48,7 @@ export async function buildServer(env: Pick<Env, 'NODE_ENV' | 'CLERK_SECRET_KEY'
   registerSportProfileRoutes(app);
   registerCandidateRoutes(app);
   registerInvitationRoutes(app);
+  registerParticipantRoutes(app);
 
   return app;
 }

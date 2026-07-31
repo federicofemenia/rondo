@@ -28,7 +28,6 @@ export type MatchEntity = {
   organizerUserId: string;
   isOrganizer: boolean;
   bookingId: string | null;
-  participants: string[];
   chatMessages: ChatMessage[];
   createdAt: number;
   cancelledAt: string | null;

@@ -264,18 +264,9 @@ function App() {
     );
   };
 
-  const handleSendMessage = (matchId: string, text: string) => {
-    setMatches((current) =>
-      current.map((match) => (match.id === matchId ? { ...match, chatMessages: [...match.chatMessages, { author: 'Vos', text }] } : match)),
-    );
-  };
-
-  const handleRemoveParticipant = (matchId: string, name: string) => {
-    setMatches((current) =>
-      current.map((match) =>
-        match.id === matchId ? { ...match, participants: match.participants.filter((participant) => participant !== name) } : match,
-      ),
-    );
+  const handleLeftMatch = () => {
+    setCurrentView('home');
+    void loadAccountData();
   };
 
   const handleCancelMatch = async (matchId: string) => {
@@ -364,13 +355,13 @@ function App() {
           initialTab={initialMatchTab}
           myInvitationStatus={myInvitation?.status ?? null}
           onBack={() => setCurrentView('home')}
-          onSendMessage={(text) => handleSendMessage(match.id, text)}
-          onRemoveParticipant={(name) => handleRemoveParticipant(match.id, name)}
           onCancelMatch={() => void handleCancelMatch(match.id)}
           onEditClub={(clubName) => handleEditMatchClub(match.id, clubName)}
           onEditSchedule={(input) => handleEditMatchSchedule(match.id, input)}
           onRequestBooking={() => handleRequestBookingForMatch(match.id)}
           onAssociateBooking={(bookingId) => linkMatchAndBooking(match.id, bookingId)}
+          onRosterChanged={() => void loadAccountData()}
+          onLeftMatch={handleLeftMatch}
         />
       );
     }
@@ -473,6 +464,7 @@ function App() {
         .map((entity) => {
           if ('sport' in entity) {
             const schedule = describeSchedule(entity);
+            const missingPlayers = Number(entity.maxPlayers) - entity.participantsCount;
             return {
               id: entity.id,
               kind: 'match' as const,
@@ -480,7 +472,12 @@ function App() {
               subtitle: schedule.isConfirmed
                 ? `${schedule.dateLabel} • ${schedule.timeLabel}`
                 : `${schedule.dateLabel} • Horario a confirmar (${schedule.windowLabel})`,
-              meta: `${entity.participantsCount}/${entity.maxPlayers}`,
+              meta:
+                entity.status === 'FULL'
+                  ? 'Equipo completo'
+                  : missingPlayers === 1
+                    ? 'Falta 1 jugador'
+                    : `Faltan ${missingPlayers} jugadores`,
               chipLabel: MATCH_STATUS_LABELS[entity.status],
               chipColor: MATCH_STATUS_CHIP_STYLES[entity.status],
               onClick: () => openMatchDetail(entity.id),

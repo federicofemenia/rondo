@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, vi } from 'vitest';
-import type { CandidateDto, MatchInvitationDto, SportDto, SportProfileDto, UserClubDto } from '@rondo/contracts';
+import type { CandidateDto, MatchInvitationDto, MatchParticipantsResponseDto, SportDto, SportProfileDto, UserClubDto } from '@rondo/contracts';
 
 type MockClerkError = { message: string; longMessage?: string };
 
@@ -97,6 +97,17 @@ export const mockInvitationCreateFailingMatchIds = new Set<string>();
 /** invitationIds added here make POST .../accept|reject respond with a 500, to exercise the InvitationsPage error state. */
 export const mockInvitationRespondFailingIds = new Set<string>();
 
+/** Mutable per-test fixture for GET /api/v1/matches/:matchId/participants, keyed by matchId; reset (cleared) before every test. */
+export const mockParticipantsByMatchId = new Map<string, MatchParticipantsResponseDto>();
+/** matchIds added here make GET .../participants respond with a 500, to exercise MatchPlayersPage's error state. */
+export const mockParticipantsFailingMatchIds = new Set<string>();
+/** userIds added here make DELETE .../participants/:userId respond with a 500. */
+export const mockRemoveParticipantFailingUserIds = new Set<string>();
+/** matchIds added here make POST .../leave respond with a 500. */
+export const mockLeaveMatchFailingMatchIds = new Set<string>();
+/** invitationIds added here make POST .../invitations/:id/cancel respond with a 500. */
+export const mockCancelInvitationFailingIds = new Set<string>();
+
 function findSportName(sportId: string): string {
   return mockSportsCatalog.find((sport) => sport.id === sportId)?.name ?? '';
 }
@@ -115,6 +126,11 @@ beforeEach(() => {
   mockMyInvitations.length = 0;
   mockInvitationCreateFailingMatchIds.clear();
   mockInvitationRespondFailingIds.clear();
+  mockParticipantsByMatchId.clear();
+  mockParticipantsFailingMatchIds.clear();
+  mockRemoveParticipantFailingUserIds.clear();
+  mockLeaveMatchFailingMatchIds.clear();
+  mockCancelInvitationFailingIds.clear();
 });
 
 beforeEach(() => {
@@ -375,6 +391,56 @@ beforeEach(() => {
       invitation.status = action === 'accept' ? 'ACCEPTED' : 'REJECTED';
       invitation.respondedAt = new Date().toISOString();
       return json({ data: invitation });
+    }
+
+    const cancelInvitationMatch = url.match(/\/api\/v1\/invitations\/([^/]+)\/cancel$/);
+    if (method === 'POST' && cancelInvitationMatch) {
+      const invitationId = cancelInvitationMatch[1]!;
+      if (mockCancelInvitationFailingIds.has(invitationId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      for (const roster of mockParticipantsByMatchId.values()) {
+        roster.pending = roster.pending.filter((invitation) => invitation.invitationId !== invitationId);
+      }
+      return json({ data: { id: invitationId, status: 'CANCELLED' } });
+    }
+
+    const participantsMatch = url.match(/\/api\/v1\/matches\/([^/]+)\/participants$/);
+    if (method === 'GET' && participantsMatch) {
+      const matchId = participantsMatch[1]!;
+      if (mockParticipantsFailingMatchIds.has(matchId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      const roster = mockParticipantsByMatchId.get(matchId) ?? {
+        organizer: { userId: 'user-organizer', displayName: 'Organizador', avatarUrl: null },
+        confirmed: [],
+        pending: [],
+        rejected: [],
+      };
+      return json({ data: roster });
+    }
+
+    const removeParticipantMatch = url.match(/\/api\/v1\/matches\/([^/]+)\/participants\/([^/]+)$/);
+    if (method === 'DELETE' && removeParticipantMatch) {
+      const matchId = removeParticipantMatch[1]!;
+      const userId = removeParticipantMatch[2]!;
+      if (mockRemoveParticipantFailingUserIds.has(userId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      const roster = mockParticipantsByMatchId.get(matchId);
+      if (roster) {
+        roster.confirmed = roster.confirmed.filter((participant) => participant.userId !== userId);
+      }
+      return new Response(null, { status: 204 });
+    }
+
+    const leaveMatchMatch = url.match(/\/api\/v1\/matches\/([^/]+)\/leave$/);
+    if (method === 'POST' && leaveMatchMatch) {
+      const matchId = leaveMatchMatch[1]!;
+      if (mockLeaveMatchFailingMatchIds.has(matchId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      return new Response(null, { status: 204 });
     }
 
     throw new Error(`Unhandled fetch in tests: ${method} ${url}`);

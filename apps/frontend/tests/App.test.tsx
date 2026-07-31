@@ -62,7 +62,7 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /fútbol • fútbol 5/i }));
 
-    expect(screen.getByRole('tab', { name: /^datos$/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^resumen$/i })).toBeTruthy();
     expect(screen.getByText(/cancha pendiente/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /realizar una reserva/i })).toBeTruthy();
   });

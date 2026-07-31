@@ -63,6 +63,7 @@ export async function createTestMatch(input: CreateTestMatchInput = {}): Promise
 
 export async function deleteTestMatch(matchId: string): Promise<void> {
   await prisma.playerRating.deleteMany({ where: { matchId } });
+  await prisma.matchInvitation.deleteMany({ where: { matchId } });
   await prisma.matchParticipant.deleteMany({ where: { matchId } });
   await prisma.match.deleteMany({ where: { id: matchId } });
 }

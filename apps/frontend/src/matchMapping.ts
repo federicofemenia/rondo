@@ -29,7 +29,6 @@ export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntit
     organizerUserId: dto.organizerUserId,
     isOrganizer: dto.isOrganizer,
     bookingId: previous?.bookingId ?? null,
-    participants: previous?.participants ?? [],
     chatMessages: previous?.chatMessages ?? [],
     createdAt: Date.parse(dto.createdAt),
     cancelledAt: dto.status === 'CANCELLED' ? dto.statusChangedAt : null,

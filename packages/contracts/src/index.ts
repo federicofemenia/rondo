@@ -365,3 +365,37 @@ export const createInvitationInputSchema = z.object({
 });
 
 export type CreateInvitationInputDto = z.infer<typeof createInvitationInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Match roster (participants & invitations, from the organizer's Jugadores tab)
+// ---------------------------------------------------------------------------
+
+export interface MatchParticipantSummaryDto {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface MatchPendingInvitationDto {
+  invitationId: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  position: string | null;
+  createdAt: string;
+}
+
+export interface MatchRejectedInvitationDto {
+  invitationId: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  respondedAt: string | null;
+}
+
+export interface MatchParticipantsResponseDto {
+  organizer: MatchParticipantSummaryDto;
+  confirmed: MatchParticipantSummaryDto[];
+  pending: MatchPendingInvitationDto[];
+  rejected: MatchRejectedInvitationDto[];
+}
