@@ -613,6 +613,82 @@ export async function runSeed(): Promise<void> {
     },
   });
 
+  // Invitation examples covering each status, kept to the minimum needed to
+  // exercise "Mis invitaciones" and the match-detail banner against real data.
+  await prisma.matchInvitation.upsert({
+    where: { id: SEED_IDS.invitations.pending },
+    update: { matchId: SEED_IDS.matches.organizing, invitedUserId: camila.id, invitedById: juan.id, position: null, status: 'PENDING', respondedAt: null },
+    create: {
+      id: SEED_IDS.invitations.pending,
+      matchId: SEED_IDS.matches.organizing,
+      invitedUserId: camila.id,
+      invitedById: juan.id,
+      position: null,
+      status: 'PENDING',
+    },
+  });
+
+  // Accepted invitations must be reflected by a real participant, exactly like the endpoint does.
+  await prisma.matchParticipant.upsert({
+    where: { matchId_userId: { matchId: SEED_IDS.matches.organizing, userId: sofia.id } },
+    update: {},
+    create: { matchId: SEED_IDS.matches.organizing, userId: sofia.id },
+  });
+  await prisma.matchInvitation.upsert({
+    where: { id: SEED_IDS.invitations.accepted },
+    update: {
+      matchId: SEED_IDS.matches.organizing,
+      invitedUserId: sofia.id,
+      invitedById: juan.id,
+      position: null,
+      status: 'ACCEPTED',
+      respondedAt: hoursFromNow(-1),
+    },
+    create: {
+      id: SEED_IDS.invitations.accepted,
+      matchId: SEED_IDS.matches.organizing,
+      invitedUserId: sofia.id,
+      invitedById: juan.id,
+      position: null,
+      status: 'ACCEPTED',
+      respondedAt: hoursFromNow(-1),
+    },
+  });
+
+  await prisma.matchInvitation.upsert({
+    where: { id: SEED_IDS.invitations.rejected },
+    update: {
+      matchId: SEED_IDS.matches.organizing,
+      invitedUserId: valentina.id,
+      invitedById: juan.id,
+      position: null,
+      status: 'REJECTED',
+      respondedAt: hoursFromNow(-2),
+    },
+    create: {
+      id: SEED_IDS.invitations.rejected,
+      matchId: SEED_IDS.matches.organizing,
+      invitedUserId: valentina.id,
+      invitedById: juan.id,
+      position: null,
+      status: 'REJECTED',
+      respondedAt: hoursFromNow(-2),
+    },
+  });
+
+  await prisma.matchInvitation.upsert({
+    where: { id: SEED_IDS.invitations.cancelled },
+    update: { matchId: SEED_IDS.matches.pendingSchedule, invitedUserId: valentina.id, invitedById: juan.id, position: null, status: 'CANCELLED' },
+    create: {
+      id: SEED_IDS.invitations.cancelled,
+      matchId: SEED_IDS.matches.pendingSchedule,
+      invitedUserId: valentina.id,
+      invitedById: juan.id,
+      position: null,
+      status: 'CANCELLED',
+    },
+  });
+
   await prisma.playerRating.upsert({
     where: {
       matchId_authorUserId_targetUserId: {

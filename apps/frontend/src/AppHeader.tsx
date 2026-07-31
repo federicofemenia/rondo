@@ -7,6 +7,7 @@ import ListItemIcon from '@mui/material/ListItemIcon';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
+import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded';
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
@@ -17,10 +18,11 @@ import logoIcon from './assets/logo-icon.png';
 type AppHeaderProps = {
   onEditProfile?: () => void;
   onEditSportProfile?: () => void;
+  onOpenInvitations?: () => void;
   onLogout?: () => void;
 };
 
-function AppHeader({ onEditProfile, onEditSportProfile, onLogout }: AppHeaderProps) {
+function AppHeader({ onEditProfile, onEditSportProfile, onOpenInvitations, onLogout }: AppHeaderProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const menuOpen = Boolean(menuAnchor);
 
@@ -81,6 +83,17 @@ function AppHeader({ onEditProfile, onEditSportProfile, onLogout }: AppHeaderPro
             <SportsSoccerRoundedIcon fontSize="small" />
           </ListItemIcon>
           Perfil deportivo
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            closeMenu();
+            onOpenInvitations?.();
+          }}
+        >
+          <ListItemIcon>
+            <MailOutlineRoundedIcon fontSize="small" />
+          </ListItemIcon>
+          Mis invitaciones
         </MenuItem>
         <Divider />
         <MenuItem

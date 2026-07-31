@@ -46,6 +46,13 @@ enum StatusChangedByType {
   SYSTEM
 }
 
+enum MatchInvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
 model User {
   id          String   @id @default(uuid())
   clerkUserId String   @unique @map("clerk_user_id")
@@ -63,6 +70,8 @@ model User {
   ratingsGiven        PlayerRating[]     @relation("RatingAuthor")
   ratingsReceived     PlayerRating[]     @relation("RatingTarget")
   sportProfiles       UserSportProfile[]
+  invitationsReceived MatchInvitation[]  @relation("InvitationInvitedUser")
+  invitationsSent     MatchInvitation[]  @relation("InvitationInvitedBy")
 
   @@map("users")
 }
@@ -220,6 +229,7 @@ model Match {
   statusChangedByUser User?              @relation("MatchStatusChangedBy", fields: [statusChangedByUserId], references: [id])
   participants        MatchParticipant[]
   ratings             PlayerRating[]
+  invitations         MatchInvitation[]
 
   @@index([clubId])
   @@index([sportModalityId])
@@ -243,6 +253,30 @@ model MatchParticipant {
   @@unique([matchId, userId])
   @@index([userId])
   @@map("match_participants")
+}
+
+/// A real invitation from a match organizer to a candidate. One invitation per
+/// (match, invited user) ever — the unique constraint below is permanent, so a
+/// rejected or cancelled invitation cannot be re-sent to the same candidate.
+model MatchInvitation {
+  id            String                @id @default(uuid())
+  matchId       String                @map("match_id")
+  invitedUserId String                @map("invited_user_id")
+  invitedById   String                @map("invited_by_id")
+  position      String?
+  status        MatchInvitationStatus @default(PENDING)
+  respondedAt   DateTime?             @map("responded_at")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  match       Match @relation(fields: [matchId], references: [id])
+  invitedUser User  @relation("InvitationInvitedUser", fields: [invitedUserId], references: [id])
+  invitedBy   User  @relation("InvitationInvitedBy", fields: [invitedById], references: [id])
+
+  @@unique([matchId, invitedUserId])
+  @@index([matchId])
+  @@index([invitedUserId])
+  @@map("match_invitations")
 }
 
 model PlayerRating {

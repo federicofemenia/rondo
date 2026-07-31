@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CandidateDto } from '@rondo/contracts';
+import type { CandidateDto, MatchInvitationDto } from '@rondo/contracts';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
@@ -10,6 +10,7 @@ import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import { ApiError, useApi } from './apiClient';
 import PageFooter from './PageFooter';
@@ -24,8 +25,6 @@ export type CandidateMatchSummary = {
 type CandidatesPageProps = {
   matchId: string;
   matchSummary?: CandidateMatchSummary | null;
-  excludeNames?: string[];
-  onInviteCandidate?: (name: string) => void;
   onFinish?: () => void;
 };
 
@@ -45,12 +44,15 @@ function describeError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
 
-function CandidatesPage({ matchId, matchSummary, excludeNames = [], onInviteCandidate, onFinish }: CandidatesPageProps) {
+function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps) {
   const api = useApi();
   const [candidates, setCandidates] = useState<CandidateDto[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [invitedName, setInvitedName] = useState<string | null>(null);
+
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -82,13 +84,21 @@ function CandidatesPage({ matchId, matchSummary, excludeNames = [], onInviteCand
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
-  const handleInvite = (candidate: CandidateDto) => {
-    const name = candidateDisplayName(candidate);
-    setInvitedName(name);
-    onInviteCandidate?.(name);
+  const handleInvite = async (candidate: CandidateDto) => {
+    setInvitingId(candidate.id);
+    setInviteErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== candidate.id)));
+
+    try {
+      await api.post<{ data: MatchInvitationDto }>(`/api/v1/matches/${matchId}/invitations`, { invitedUserId: candidate.id });
+      setSentIds((current) => new Set(current).add(candidate.id));
+    } catch (caught) {
+      setInviteErrors((current) => ({ ...current, [candidate.id]: describeError(caught, 'No pudimos enviar la invitación. Reintentá.') }));
+    } finally {
+      setInvitingId(null);
+    }
   };
 
-  const visibleCandidates = (candidates ?? []).filter((candidate) => !excludeNames.includes(candidateDisplayName(candidate)));
+  const candidateList = candidates ?? [];
 
   return (
     <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: onFinish ? '120px' : 12 }}>
@@ -108,57 +118,73 @@ function CandidatesPage({ matchId, matchSummary, excludeNames = [], onInviteCand
           ) : null}
         </Stack>
 
-        {invitedName ? (
-          <Typography sx={{ mb: 4, color: 'primary.light', fontWeight: 600 }}>Invitación enviada a {invitedName}.</Typography>
-        ) : null}
-
         {loading ? (
           <Stack alignItems="center" sx={{ py: 8 }}>
             <CircularProgress />
           </Stack>
         ) : error ? (
           <Alert severity="error">{error}</Alert>
-        ) : visibleCandidates.length === 0 ? (
+        ) : candidateList.length === 0 ? (
           <Typography color="text.secondary">No encontramos jugadores compatibles para este partido.</Typography>
         ) : (
           <Stack spacing={3}>
-            {visibleCandidates.map((candidate) => (
-              <Card key={candidate.id} variant="outlined" sx={{ p: 4, bgcolor: 'background.default', borderColor: 'divider' }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Avatar
-                      src={candidate.avatarUrl ?? undefined}
-                      sx={{ width: 40, height: 40, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}
-                    >
-                      {!candidate.avatarUrl ? <PersonRoundedIcon sx={{ color: 'text.secondary', fontSize: '1.2rem' }} /> : null}
-                    </Avatar>
-                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                      <Typography variant="h3" component="h2">
-                        {candidateDisplayName(candidate)}
-                      </Typography>
-                      {candidate.positions.map((position) => (
-                        <Tooltip key={position} title={position}>
-                          <Chip
-                            label={positionAbbreviations[position] ?? position}
-                            size="small"
-                            sx={{ bgcolor: 'background.paper', color: 'text.secondary', fontWeight: 700 }}
-                          />
-                        </Tooltip>
-                      ))}
-                    </Stack>
-                  </Stack>
-                  <Chip
-                    label={candidate.matchingAvailability}
-                    size="small"
-                    sx={{ bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main', fontWeight: 700 }}
-                  />
-                </Stack>
+            {candidateList.map((candidate) => {
+              const isSent = sentIds.has(candidate.id);
+              const isInviting = invitingId === candidate.id;
+              const inviteError = inviteErrors[candidate.id];
 
-                <Button variant="outlined" color="primary" fullWidth onClick={() => handleInvite(candidate)} sx={{ mt: 3 }}>
-                  Invitar
-                </Button>
-              </Card>
-            ))}
+              return (
+                <Card key={candidate.id} variant="outlined" sx={{ p: 4, bgcolor: 'background.default', borderColor: 'divider' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      <Avatar
+                        src={candidate.avatarUrl ?? undefined}
+                        sx={{ width: 40, height: 40, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}
+                      >
+                        {!candidate.avatarUrl ? <PersonRoundedIcon sx={{ color: 'text.secondary', fontSize: '1.2rem' }} /> : null}
+                      </Avatar>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography variant="h3" component="h2">
+                          {candidateDisplayName(candidate)}
+                        </Typography>
+                        {candidate.positions.map((position) => (
+                          <Tooltip key={position} title={position}>
+                            <Chip
+                              label={positionAbbreviations[position] ?? position}
+                              size="small"
+                              sx={{ bgcolor: 'background.paper', color: 'text.secondary', fontWeight: 700 }}
+                            />
+                          </Tooltip>
+                        ))}
+                      </Stack>
+                    </Stack>
+                    <Chip
+                      label={candidate.matchingAvailability}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main', fontWeight: 700 }}
+                    />
+                  </Stack>
+
+                  {inviteError ? (
+                    <Alert severity="error" sx={{ mt: 2 }}>
+                      {inviteError}
+                    </Alert>
+                  ) : null}
+
+                  <Button
+                    variant={isSent ? 'text' : 'outlined'}
+                    color="primary"
+                    fullWidth
+                    disabled={isSent || isInviting}
+                    startIcon={isInviting ? <CircularProgress size={16} color="inherit" /> : isSent ? <CheckCircleRoundedIcon /> : null}
+                    onClick={() => void handleInvite(candidate)}
+                    sx={{ mt: 3 }}
+                  >
+                    {isSent ? 'Invitación enviada' : isInviting ? 'Enviando…' : 'Invitar'}
+                  </Button>
+                </Card>
+              );
+            })}
           </Stack>
         )}
       </Card>

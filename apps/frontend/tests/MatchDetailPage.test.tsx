@@ -25,8 +25,6 @@ const baseMatch: MatchEntity = {
   organizerUserId: 'user-organizer',
   isOrganizer: true,
   bookingId: 'booking-1',
-  invitedCandidates: [],
-  declinedCandidates: [],
   participants: ['Mauro'],
   chatMessages: [],
   createdAt: 1,
@@ -74,42 +72,35 @@ describe('MatchDetailPage', () => {
     expect(screen.getByText(/^completo$/i)).toBeTruthy();
   });
 
-  it('candidatos tab shows every invited candidate as a read-only status, no accept/decline buttons', () => {
-    render(
-      <MatchDetailPage
-        match={{ ...baseMatch, invitedCandidates: ['Tomás', 'Lina'], participants: ['Mauro', 'Lina'] }}
-        unlinkedBookings={[]}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('tab', { name: /^candidatos$/i }));
-    expect(screen.getByText('Tomás')).toBeTruthy();
-    expect(screen.getByText(/pendiente de confirmación/i)).toBeTruthy();
-    expect(screen.getByText(/^aceptado$/i)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /aceptar/i })).toBeFalsy();
-    expect(screen.queryByRole('button', { name: /rechazar/i })).toBeFalsy();
-  });
-
-  it('invitar tab lets the organizer invite more candidates, excluding those already invited', async () => {
-    mockCandidates.push(
-      { id: 'candidate-mauro', firstName: 'Mauro', lastName: null, avatarUrl: null, sportId: 'sport-football', positions: [], matchingAvailability: 'Disponible' },
-      { id: 'candidate-lina', firstName: 'Lina', lastName: null, avatarUrl: null, sportId: 'sport-football', positions: [], matchingAvailability: 'Disponible' },
-    );
-    const onInviteCandidate = vi.fn();
-    render(
-      <MatchDetailPage
-        match={{ ...baseMatch, invitedCandidates: ['Mauro'] }}
-        unlinkedBookings={[]}
-        onInviteCandidate={onInviteCandidate}
-      />,
-    );
+  it('invitar tab lets the organizer send a real invitation to a candidate', async () => {
+    mockCandidates.push({
+      id: 'candidate-lina',
+      firstName: 'Lina',
+      lastName: null,
+      avatarUrl: null,
+      sportId: 'sport-football',
+      positions: [],
+      matchingAvailability: 'Disponible',
+    });
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
     fireEvent.click(screen.getByRole('tab', { name: /^invitar$/i }));
     expect(await screen.findByText('Lina')).toBeTruthy();
-    expect(screen.queryByText(/^mauro$/i)).toBeFalsy();
 
     fireEvent.click(screen.getByRole('button', { name: /^invitar$/i }));
-    expect(onInviteCandidate).toHaveBeenCalledWith('Lina');
+    expect(await screen.findByRole('button', { name: /invitación enviada/i })).toBeTruthy();
+  });
+
+  it('shows a banner when the current user has a pending or accepted invitation to this match', () => {
+    const { rerender } = render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} myInvitationStatus="PENDING" />);
+    expect(screen.getByText(/invitación pendiente/i)).toBeTruthy();
+
+    rerender(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} myInvitationStatus="ACCEPTED" />);
+    expect(screen.getByText(/invitación aceptada/i)).toBeTruthy();
+
+    rerender(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} myInvitationStatus={null} />);
+    expect(screen.queryByText(/invitación pendiente/i)).toBeFalsy();
+    expect(screen.queryByText(/invitación aceptada/i)).toBeFalsy();
   });
 
   it('gestión tab only lists confirmed participants and can remove or cancel', () => {
@@ -135,11 +126,10 @@ describe('MatchDetailPage', () => {
     expect(onCancelMatch).toHaveBeenCalled();
   });
 
-  it('the valoraciones tab is always present, next to Gestión, Candidatos and Chat', () => {
+  it('the valoraciones tab is always present, next to Invitar, Gestión and Chat', () => {
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
     expect(screen.getByRole('tab', { name: /^invitar$/i })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: /^candidatos$/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /gestión/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /^chat$/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /valoraciones/i })).toBeTruthy();
@@ -169,7 +159,6 @@ describe('MatchDetailPage', () => {
     expect(screen.getByText(/partido cancelado/i)).toBeTruthy();
     expect(screen.getByText(/cancelado por federico/i)).toBeTruthy();
     expect(screen.queryByRole('tab', { name: /^invitar$/i })).toBeFalsy();
-    expect(screen.queryByRole('tab', { name: /^candidatos$/i })).toBeFalsy();
     expect(screen.queryByRole('tab', { name: /gestión/i })).toBeFalsy();
     expect(screen.queryByRole('tab', { name: /^chat$/i })).toBeFalsy();
 

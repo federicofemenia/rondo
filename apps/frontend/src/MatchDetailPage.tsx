@@ -14,7 +14,7 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
-import type { MatchRatingsResponseDto } from '@rondo/contracts';
+import type { MatchInvitationStatusDto, MatchRatingsResponseDto } from '@rondo/contracts';
 import { useApi } from './apiClient';
 import CandidatesPage from './CandidatesPage';
 import { clubOptions } from './clubOptions';
@@ -22,7 +22,6 @@ import { buildDayOptions } from './dateOptions';
 import EntityPickerDialog from './EntityPickerDialog';
 import type { PickerItem } from './EntityPickerDialog';
 import ExactStartTimeInput from './ExactStartTimeInput';
-import InvitationsPage from './InvitationsPage';
 import MatchChatPage from './MatchChatPage';
 import MatchManagementPage from './MatchManagementPage';
 import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
@@ -36,9 +35,9 @@ type MatchDetailPageProps = {
   match: MatchEntity;
   unlinkedBookings: PickerItem[];
   initialTab?: Tab;
+  myInvitationStatus?: MatchInvitationStatusDto | null;
   onBack?: () => void;
   onSendMessage?: (text: string) => void;
-  onInviteCandidate?: (name: string) => void;
   onRemoveParticipant?: (name: string) => void;
   onCancelMatch?: () => void;
   onEditClub?: (clubName: string | null) => void;
@@ -47,7 +46,13 @@ type MatchDetailPageProps = {
   onAssociateBooking?: (bookingId: string) => void;
 };
 
-export type Tab = 'datos' | 'invitar' | 'candidatos' | 'gestion' | 'chat' | 'valoraciones';
+export type Tab = 'datos' | 'invitar' | 'gestion' | 'chat' | 'valoraciones';
+
+const INVITATION_STATUS_BANNER: Partial<Record<MatchInvitationStatusDto, { label: string; color: string; bgcolor: string }>> = {
+  PENDING: { label: 'Invitación pendiente', color: 'warning.main', bgcolor: 'rgba(245, 197, 66, 0.08)' },
+  ACCEPTED: { label: 'Invitación aceptada', color: 'primary.light', bgcolor: 'rgba(46, 204, 113, 0.08)' },
+  REJECTED: { label: 'Invitación rechazada', color: 'error.main', bgcolor: 'rgba(255, 77, 79, 0.08)' },
+};
 
 function formatCancelledAt(iso: string): string {
   const date = new Date(iso);
@@ -78,9 +83,9 @@ function MatchDetailPage({
   match,
   unlinkedBookings,
   initialTab,
+  myInvitationStatus,
   onBack,
   onSendMessage,
-  onInviteCandidate,
   onRemoveParticipant,
   onCancelMatch,
   onEditClub,
@@ -111,9 +116,7 @@ function MatchDetailPage({
   const status = match.status;
   const cancelled = status === 'CANCELLED';
   const canEditSchedule = status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'EXPIRED';
-  const visibleTabs: Tab[] = cancelled
-    ? ['datos', 'valoraciones']
-    : ['datos', 'invitar', 'candidatos', 'gestion', 'chat', 'valoraciones'];
+  const visibleTabs: Tab[] = cancelled ? ['datos', 'valoraciones'] : ['datos', 'invitar', 'gestion', 'chat', 'valoraciones'];
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
   const schedule = describeSchedule(match);
 
@@ -212,7 +215,6 @@ function MatchDetailPage({
         >
           <Tab value="datos" label="Datos" sx={{ minHeight: 0 }} />
           {visibleTabs.includes('invitar') ? <Tab value="invitar" label="Invitar" sx={{ minHeight: 0 }} /> : null}
-          {visibleTabs.includes('candidatos') ? <Tab value="candidatos" label="Candidatos" sx={{ minHeight: 0 }} /> : null}
           {visibleTabs.includes('gestion') ? <Tab value="gestion" label="Gestión" sx={{ minHeight: 0 }} /> : null}
           {visibleTabs.includes('chat') ? <Tab value="chat" label="Chat" sx={{ minHeight: 0 }} /> : null}
           <Tab value="valoraciones" label="Valoraciones" sx={{ minHeight: 0 }} />
@@ -236,6 +238,22 @@ function MatchDetailPage({
                   Motivo: {match.cancellationReason}
                 </Typography>
               ) : null}
+            </Card>
+          ) : null}
+
+          {!cancelled && myInvitationStatus && INVITATION_STATUS_BANNER[myInvitationStatus] ? (
+            <Card
+              variant="outlined"
+              sx={{
+                p: 4,
+                mb: 6,
+                borderColor: INVITATION_STATUS_BANNER[myInvitationStatus]!.color,
+                bgcolor: INVITATION_STATUS_BANNER[myInvitationStatus]!.bgcolor,
+              }}
+            >
+              <Typography sx={{ fontWeight: 700, color: INVITATION_STATUS_BANNER[myInvitationStatus]!.color }}>
+                {INVITATION_STATUS_BANNER[myInvitationStatus]!.label}
+              </Typography>
             </Card>
           ) : null}
 
@@ -359,17 +377,7 @@ function MatchDetailPage({
         </Box>
       ) : null}
 
-      {tab === 'invitar' && visibleTabs.includes('invitar') ? (
-        <CandidatesPage matchId={match.id} matchSummary={match} excludeNames={match.invitedCandidates} onInviteCandidate={onInviteCandidate} />
-      ) : null}
-
-      {tab === 'candidatos' && visibleTabs.includes('candidatos') ? (
-        <InvitationsPage
-          invitedCandidates={match.invitedCandidates}
-          participants={match.participants}
-          declinedCandidates={match.declinedCandidates}
-        />
-      ) : null}
+      {tab === 'invitar' && visibleTabs.includes('invitar') ? <CandidatesPage matchId={match.id} matchSummary={match} /> : null}
 
       {tab === 'gestion' && visibleTabs.includes('gestion') ? (
         <MatchManagementPage participants={match.participants} onRemoveParticipant={onRemoveParticipant} onCancelMatch={onCancelMatch} />

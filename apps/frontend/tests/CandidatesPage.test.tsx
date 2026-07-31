@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import CandidatesPage from '../src/CandidatesPage';
-import { mockCandidates, mockCandidatesFailingMatchIds } from './setup';
+import { mockCandidates, mockCandidatesFailingMatchIds, mockInvitationCreateFailingMatchIds } from './setup';
 
 const bruno = {
   id: 'candidate-bruno',
@@ -42,23 +42,28 @@ describe('CandidatesPage', () => {
     expect(screen.getByText('DEL')).toBeTruthy();
   });
 
-  it('calls the invite handler with the selected candidate name', async () => {
+  it('sends a real invitation to the backend and disables the button once sent', async () => {
     mockCandidates.push(bruno);
-    const onInviteCandidate = vi.fn();
-    render(<CandidatesPage matchId="match-1" onInviteCandidate={onInviteCandidate} />);
+    render(<CandidatesPage matchId="match-1" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /invitar/i }));
+    const inviteButton = await screen.findByRole('button', { name: /^invitar$/i });
+    fireEvent.click(inviteButton);
 
-    expect(onInviteCandidate).toHaveBeenCalledWith('Bruno Silva');
-    expect(await screen.findByText(/invitación enviada a bruno silva/i)).toBeTruthy();
+    const sentButton = await screen.findByRole<HTMLButtonElement>('button', { name: /invitación enviada/i });
+    expect(sentButton.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: /^invitar$/i })).toBeFalsy();
   });
 
-  it('excludes candidates already invited via excludeNames', async () => {
-    mockCandidates.push(bruno, { ...bruno, id: 'candidate-carla', firstName: 'Carla', lastName: 'Nuñez' });
-    render(<CandidatesPage matchId="match-1" excludeNames={['Bruno Silva']} />);
+  it('shows the backend error message when sending an invitation fails, and lets the button be re-enabled', async () => {
+    mockCandidates.push(bruno);
+    mockInvitationCreateFailingMatchIds.add('match-1');
+    render(<CandidatesPage matchId="match-1" />);
 
-    expect(await screen.findByText('Carla Nuñez')).toBeTruthy();
-    expect(screen.queryByText('Bruno Silva')).toBeFalsy();
+    fireEvent.click(await screen.findByRole('button', { name: /^invitar$/i }));
+
+    expect(await screen.findByText(/ocurrió un error inesperado/i)).toBeTruthy();
+    const inviteButtonAgain = screen.getByRole<HTMLButtonElement>('button', { name: /^invitar$/i });
+    expect(inviteButtonAgain.disabled).toBe(false);
   });
 
   it('calls the finish handler when the wizard is completed', async () => {

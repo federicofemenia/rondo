@@ -331,3 +331,37 @@ export interface CandidateDto {
   positions: string[];
   matchingAvailability: string;
 }
+
+// ---------------------------------------------------------------------------
+// Match invitations
+// ---------------------------------------------------------------------------
+
+export type MatchInvitationStatusDto = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
+
+export interface MatchInvitationDto {
+  id: string;
+  matchId: string;
+  status: MatchInvitationStatusDto;
+  position: string | null;
+  invitedUserId: string;
+  invitedUserDisplayName: string;
+  invitedById: string;
+  organizerDisplayName: string;
+  sportName: string;
+  modalityName: string;
+  clubName: string | null;
+  scheduledDate: string;
+  availabilityStartMinutes: number;
+  availabilityEndMinutes: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+  respondedAt: string | null;
+}
+
+export const createInvitationInputSchema = z.object({
+  invitedUserId: z.string().uuid(),
+  position: z.string().trim().min(1).optional(),
+});
+
+export type CreateInvitationInputDto = z.infer<typeof createInvitationInputSchema>;

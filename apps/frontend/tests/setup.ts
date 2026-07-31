@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, vi } from 'vitest';
-import type { CandidateDto, SportDto, SportProfileDto, UserClubDto } from '@rondo/contracts';
+import type { CandidateDto, MatchInvitationDto, SportDto, SportProfileDto, UserClubDto } from '@rondo/contracts';
 
 type MockClerkError = { message: string; longMessage?: string };
 
@@ -90,6 +90,13 @@ export const mockCandidates: CandidateDto[] = [];
 /** matchIds added here make the candidates request for that match respond with a 500, to exercise error states. */
 export const mockCandidatesFailingMatchIds = new Set<string>();
 
+/** Mutable per-test fixture for GET /api/v1/me/invitations, also mutated in place by the accept/reject mock handlers below. */
+export const mockMyInvitations: MatchInvitationDto[] = [];
+/** matchIds added here make POST .../invitations respond with a 500, to exercise the CandidatesPage error state. */
+export const mockInvitationCreateFailingMatchIds = new Set<string>();
+/** invitationIds added here make POST .../accept|reject respond with a 500, to exercise the InvitationsPage error state. */
+export const mockInvitationRespondFailingIds = new Set<string>();
+
 function findSportName(sportId: string): string {
   return mockSportsCatalog.find((sport) => sport.id === sportId)?.name ?? '';
 }
@@ -105,6 +112,9 @@ beforeEach(() => {
   mockSportProfileFailingSportIds.clear();
   mockCandidates.length = 0;
   mockCandidatesFailingMatchIds.clear();
+  mockMyInvitations.length = 0;
+  mockInvitationCreateFailingMatchIds.clear();
+  mockInvitationRespondFailingIds.clear();
 });
 
 beforeEach(() => {
@@ -130,6 +140,10 @@ beforeEach(() => {
 
     if (url.endsWith('/api/v1/me/pending-tasks')) {
       return json({ data: [] });
+    }
+
+    if (method === 'GET' && url.endsWith('/api/v1/me/invitations')) {
+      return json({ data: mockMyInvitations });
     }
 
     if (method === 'POST' && /\/api\/v1\/matches$/.test(url)) {
@@ -314,6 +328,53 @@ beforeEach(() => {
         return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
       }
       return json({ data: mockCandidates });
+    }
+
+    const createInvitationMatch = url.match(/\/api\/v1\/matches\/([^/]+)\/invitations$/);
+    if (method === 'POST' && createInvitationMatch) {
+      const matchId = createInvitationMatch[1]!;
+      if (mockInvitationCreateFailingMatchIds.has(matchId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      const body = init?.body ? (JSON.parse(init.body as string) as { invitedUserId: string; position?: string }) : { invitedUserId: '' };
+      const now = new Date().toISOString();
+      const invitation: MatchInvitationDto = {
+        id: `invitation-${matchId}-${body.invitedUserId}`,
+        matchId,
+        status: 'PENDING',
+        position: body.position ?? null,
+        invitedUserId: body.invitedUserId,
+        invitedUserDisplayName: 'Candidato',
+        invitedById: 'user-test',
+        organizerDisplayName: 'Federico Femenia',
+        sportName: 'Fútbol',
+        modalityName: 'Fútbol 5',
+        clubName: null,
+        scheduledDate: '2026-08-08',
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+        startsAt: null,
+        endsAt: null,
+        createdAt: now,
+        respondedAt: null,
+      };
+      return json({ data: invitation }, 201);
+    }
+
+    const respondInvitationMatch = url.match(/\/api\/v1\/invitations\/([^/]+)\/(accept|reject)$/);
+    if (method === 'POST' && respondInvitationMatch) {
+      const invitationId = respondInvitationMatch[1]!;
+      const action = respondInvitationMatch[2]! as 'accept' | 'reject';
+      if (mockInvitationRespondFailingIds.has(invitationId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      const invitation = mockMyInvitations.find((current) => current.id === invitationId);
+      if (!invitation) {
+        return json({ error: { code: 'INVITATION_NOT_FOUND', message: 'La invitación no existe.' } }, 404);
+      }
+      invitation.status = action === 'accept' ? 'ACCEPTED' : 'REJECTED';
+      invitation.respondedAt = new Date().toISOString();
+      return json({ data: invitation });
     }
 
     throw new Error(`Unhandled fetch in tests: ${method} ${url}`);

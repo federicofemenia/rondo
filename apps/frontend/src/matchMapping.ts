@@ -3,9 +3,9 @@ import type { MatchEntity } from './types';
 
 /**
  * Converts a backend MatchSummaryDto into the local MatchEntity shape.
- * Fields with no backend equivalent yet (invitations, chat, booking link)
- * are carried over from the previous local entity, if any, since those
- * flows are still frontend-only mocks in this slice.
+ * Fields with no backend equivalent yet (chat, booking link, confirmed
+ * participant names) are carried over from the previous local entity, if
+ * any, since those flows are still frontend-only mocks in this slice.
  */
 export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntity): MatchEntity {
   return {
@@ -29,8 +29,6 @@ export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntit
     organizerUserId: dto.organizerUserId,
     isOrganizer: dto.isOrganizer,
     bookingId: previous?.bookingId ?? null,
-    invitedCandidates: previous?.invitedCandidates ?? [],
-    declinedCandidates: previous?.declinedCandidates ?? [],
     participants: previous?.participants ?? [],
     chatMessages: previous?.chatMessages ?? [],
     createdAt: Date.parse(dto.createdAt),
