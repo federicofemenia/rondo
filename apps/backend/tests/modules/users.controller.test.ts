@@ -48,16 +48,17 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.clubMembership.deleteMany({
-    where: {
-      user: {
-        clerkUserId: { in: [TEST_CLERK_USER_ID, TEST_ADMIN_CLERK_USER_ID, TEST_USERNAME_ADMIN_CLERK_USER_ID, TEST_NO_EMAIL_CLERK_USER_ID] },
-      },
-    },
-  });
-  await prisma.user.deleteMany({
-    where: { clerkUserId: { in: [TEST_CLERK_USER_ID, TEST_ADMIN_CLERK_USER_ID, TEST_USERNAME_ADMIN_CLERK_USER_ID, TEST_NO_EMAIL_CLERK_USER_ID] } },
-  });
+  const testUserIds = (
+    await prisma.user.findMany({
+      where: { clerkUserId: { in: [TEST_CLERK_USER_ID, TEST_ADMIN_CLERK_USER_ID, TEST_USERNAME_ADMIN_CLERK_USER_ID, TEST_NO_EMAIL_CLERK_USER_ID] } },
+      select: { id: true },
+    })
+  ).map((user) => user.id);
+
+  await prisma.playerAvailability.deleteMany({ where: { userSportProfile: { userId: { in: testUserIds } } } });
+  await prisma.userSportProfile.deleteMany({ where: { userId: { in: testUserIds } } });
+  await prisma.clubMembership.deleteMany({ where: { userId: { in: testUserIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: testUserIds } } });
   await prisma.$disconnect();
 });
 
@@ -99,15 +100,41 @@ describe('GET /api/v1/me', () => {
 
     await app.close();
   });
+
+  it('defaults a new account to available every day, all hours, for every sport', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/me/sport-profiles', headers: { authorization: 'Bearer regular-user-token' } });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      data: Array<{ sportId: string; isAvailableForInvitations: boolean; availability: Array<{ dayOfWeek: number; startMinutes: number; endMinutes: number }> }>;
+    };
+
+    expect(body.data.length).toBeGreaterThanOrEqual(2);
+    for (const profile of body.data) {
+      expect(profile.isAvailableForInvitations).toBe(true);
+      expect(profile.availability).toHaveLength(7);
+      expect(profile.availability.map((slot) => slot.dayOfWeek).sort()).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      for (const slot of profile.availability) {
+        expect(slot.startMinutes).toBe(0);
+        expect(slot.endMinutes).toBe(1440);
+      }
+    }
+
+    await app.close();
+  });
 });
 
 describe('GET /api/v1/me/clubs', () => {
-  it('returns an empty list for a user with no memberships', async () => {
+  it('auto-grants a MEMBER (non-admin) membership at Señor Pato for a user with no memberships', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
     const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer regular-user-token' } });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ data: [] });
+    const body = response.json() as { data: Array<{ id: string; role: string; isFavorite: boolean }> };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).toMatchObject({ id: SEED_IDS.club.senorPato, role: 'MEMBER', isFavorite: false });
 
     await app.close();
   });
@@ -117,7 +144,9 @@ describe('GET /api/v1/me/clubs', () => {
     const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ data: [] });
+    const body = response.json() as { data: Array<{ role: string }> };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).toMatchObject({ role: 'MEMBER' });
 
     await app.close();
   });
@@ -192,11 +221,18 @@ describe('GET /api/v1/me/clubs', () => {
       const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer ordering-user-token' } });
       const body = response.json() as { data: Array<{ name: string }> };
 
-      expect(body.data.map((club) => club.name)).toEqual(['Mmm Club Favorito', 'Aaa Club', 'Zzz Club']);
+      // The sync flow auto-grants a Señor Pato membership too (see the
+      // dedicated tests above) — irrelevant to what this test actually
+      // checks, so it's excluded here rather than hardcoding where it
+      // happens to sort alphabetically among these fixture club names.
+      const orderedNames = body.data.map((club) => club.name).filter((name) => name !== 'Señor Pato');
+      expect(orderedNames).toEqual(['Mmm Club Favorito', 'Aaa Club', 'Zzz Club']);
 
       await app.close();
     } finally {
       await prisma.clubMembership.deleteMany({ where: { userId: testUser.id } });
+      await prisma.playerAvailability.deleteMany({ where: { userSportProfile: { userId: testUser.id } } });
+      await prisma.userSportProfile.deleteMany({ where: { userId: testUser.id } });
       await prisma.user.delete({ where: { id: testUser.id } });
       await prisma.club.deleteMany({ where: { id: { in: [clubZzz.id, clubAaa.id, clubFavorite.id] } } });
     }
