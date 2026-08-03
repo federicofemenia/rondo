@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { User } from '@prisma/client';
 import type { AuthAdapter } from '../infrastructure/auth/authAdapter.js';
+import type { BootstrapAdminConfig } from '../modules/users/users.service.js';
 import { syncUserFromClerk } from '../modules/users/users.service.js';
 
 declare module 'fastify' {
@@ -13,7 +14,7 @@ declare module 'fastify' {
   }
 }
 
-export function attachAuth(app: FastifyInstance, authAdapter: AuthAdapter): void {
+export function attachAuth(app: FastifyInstance, authAdapter: AuthAdapter, bootstrapAdmin?: BootstrapAdminConfig): void {
   app.decorateRequest('currentUser', undefined);
 
   app.decorate('requireAuth', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -24,6 +25,6 @@ export function attachAuth(app: FastifyInstance, authAdapter: AuthAdapter): void
       return;
     }
 
-    request.currentUser = await syncUserFromClerk(profile);
+    request.currentUser = await syncUserFromClerk(profile, bootstrapAdmin);
   });
 }

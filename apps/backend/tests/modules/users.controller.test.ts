@@ -7,6 +7,8 @@ import { createFakeAuthAdapter } from '../support/fakeAuthAdapter.js';
 
 const TEST_CLERK_USER_ID = 'test_clerk_user_regular';
 const TEST_ADMIN_CLERK_USER_ID = 'test_clerk_user_admin';
+const TEST_USERNAME_ADMIN_CLERK_USER_ID = 'test_clerk_user_username_admin';
+const TEST_NO_EMAIL_CLERK_USER_ID = 'test_clerk_user_no_email';
 
 const authAdapter = createFakeAuthAdapter({
   'regular-user-token': {
@@ -18,10 +20,26 @@ const authAdapter = createFakeAuthAdapter({
   },
   'admin-user-token': {
     clerkUserId: TEST_ADMIN_CLERK_USER_ID,
-    email: 'femenia.f@gmail.com',
+    email: 'admin.test@example.com',
     firstName: 'Federico',
     lastName: 'Femenia',
     avatarUrl: 'https://example.com/avatar.png',
+  },
+  'username-admin-token': {
+    clerkUserId: TEST_USERNAME_ADMIN_CLERK_USER_ID,
+    username: 'fede',
+    email: null,
+    firstName: null,
+    lastName: null,
+    avatarUrl: null,
+  },
+  'no-email-token': {
+    clerkUserId: TEST_NO_EMAIL_CLERK_USER_ID,
+    username: 'sinmail',
+    email: null,
+    firstName: null,
+    lastName: null,
+    avatarUrl: null,
   },
 });
 
@@ -30,8 +48,16 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.clubMembership.deleteMany({ where: { user: { clerkUserId: { in: [TEST_CLERK_USER_ID, TEST_ADMIN_CLERK_USER_ID] } } } });
-  await prisma.user.deleteMany({ where: { clerkUserId: { in: [TEST_CLERK_USER_ID, TEST_ADMIN_CLERK_USER_ID] } } });
+  await prisma.clubMembership.deleteMany({
+    where: {
+      user: {
+        clerkUserId: { in: [TEST_CLERK_USER_ID, TEST_ADMIN_CLERK_USER_ID, TEST_USERNAME_ADMIN_CLERK_USER_ID, TEST_NO_EMAIL_CLERK_USER_ID] },
+      },
+    },
+  });
+  await prisma.user.deleteMany({
+    where: { clerkUserId: { in: [TEST_CLERK_USER_ID, TEST_ADMIN_CLERK_USER_ID, TEST_USERNAME_ADMIN_CLERK_USER_ID, TEST_NO_EMAIL_CLERK_USER_ID] } },
+  });
   await prisma.$disconnect();
 });
 
@@ -60,6 +86,19 @@ describe('GET /api/v1/me', () => {
 
     await app.close();
   });
+
+  it('syncs a username-only account with no email at all, without failing', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer no-email-token' } });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: { username: string | null; email: string | null; displayName: string } };
+    expect(body.data.username).toBe('sinmail');
+    expect(body.data.email).toBeNull();
+    expect(body.data.displayName).toBe('sinmail');
+
+    await app.close();
+  });
 });
 
 describe('GET /api/v1/me/clubs', () => {
@@ -73,8 +112,18 @@ describe('GET /api/v1/me/clubs', () => {
     await app.close();
   });
 
-  it('auto-grants a CLUB_ADMIN favorite membership at Señor Pato for femenia.f@gmail.com', async () => {
+  it('does not grant admin membership when no BOOTSTRAP_ADMIN_* is configured', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: [] });
+
+    await app.close();
+  });
+
+  it('auto-grants a CLUB_ADMIN favorite membership at Señor Pato when BOOTSTRAP_ADMIN_CLERK_USER_ID matches', async () => {
+    const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_CLERK_USER_ID: TEST_ADMIN_CLERK_USER_ID }, { authAdapter });
     const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
 
     expect(response.statusCode).toBe(200);
@@ -91,6 +140,18 @@ describe('GET /api/v1/me/clubs', () => {
       status: 'ACTIVE',
       isFavorite: true,
     });
+
+    await app.close();
+  });
+
+  it('auto-grants admin membership when BOOTSTRAP_ADMIN_USERNAME matches (dev-only fallback)', async () => {
+    const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_USERNAME: 'fede' }, { authAdapter });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer username-admin-token' } });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: Array<{ role: string }> };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).toMatchObject({ role: 'CLUB_ADMIN' });
 
     await app.close();
   });
@@ -142,7 +203,7 @@ describe('GET /api/v1/me/clubs', () => {
   });
 
   it('is idempotent: logging in twice does not duplicate the membership', async () => {
-    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_CLERK_USER_ID: TEST_ADMIN_CLERK_USER_ID }, { authAdapter });
     await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer admin-user-token' } });
     await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer admin-user-token' } });
 

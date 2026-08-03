@@ -11,7 +11,15 @@ type ChatMessageRow = {
   content: string;
   createdAt: Date;
   authorId: string;
-  author: { id: string; firstName: string | null; lastName: string | null; email: string | null; avatarUrl: string | null };
+  author: {
+    id: string;
+    username: string | null;
+    displayName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    avatarUrl: string | null;
+  };
 };
 
 function toMessageDto(row: ChatMessageRow, currentUserId: string): MatchChatMessageDto {

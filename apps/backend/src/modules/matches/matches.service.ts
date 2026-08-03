@@ -4,6 +4,12 @@ import { prisma } from '../../infrastructure/database/prisma.js';
 import { applyMatchLifecycle, isVisibleOnHome } from './matchLifecycle.js';
 import { MatchServiceError } from './errors.js';
 
+// displayName is a users-domain concern; re-exported here since every
+// match-related service (this file, invitations, participants, ratings,
+// chat) already imports it from matches.service.js.
+import { displayName } from '../users/users.service.js';
+export { displayName };
+
 const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'EXPIRED'] as const;
 
 const matchInclude = {
@@ -16,11 +22,6 @@ const matchInclude = {
 } satisfies Prisma.MatchInclude;
 
 export type MatchWithRelations = Prisma.MatchGetPayload<{ include: typeof matchInclude }>;
-
-export function displayName(user: { firstName: string | null; lastName: string | null; email: string | null }): string {
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return fullName || user.email || 'Jugador';
-}
 
 export async function findMatchWithRelations(matchId: string, now: Date = new Date()): Promise<MatchWithRelations | null> {
   const match = await prisma.match.findUnique({ where: { id: matchId }, include: matchInclude });

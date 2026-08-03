@@ -1,14 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import type { Club, ClubMembership, User } from '@prisma/client';
 import type { UserClubDto, UserDto } from '@rondo/contracts';
-import { getUserClubMemberships } from './users.service.js';
+import { displayName, getUserClubMemberships } from './users.service.js';
 
 function toUserDto(user: User): UserDto {
   return {
     id: user.id,
+    username: user.username,
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
+    displayName: displayName(user),
     avatarUrl: user.avatarUrl,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
