@@ -326,8 +326,7 @@ export type ReplaceAvailabilityInputDto = z.infer<typeof replaceAvailabilityInpu
 
 export interface CandidateDto {
   id: string;
-  firstName: string | null;
-  lastName: string | null;
+  displayName: string;
   avatarUrl: string | null;
   sportId: string;
   positions: string[];

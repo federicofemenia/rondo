@@ -196,6 +196,64 @@ describe('GET /api/v1/matches/:matchId/candidates', () => {
     await app.close();
   });
 
+  it('excludes a candidate who already has a pending invitation for this match', async () => {
+    const invited = await createCandidateUser('Renata');
+    createdUserIds.push(invited.id);
+
+    const profile = await createSportProfile(invited.id, SEED_IDS.sports.football);
+    await addAvailability(profile.id, TEST_DAY_OF_WEEK, 14 * 60, 19 * 60);
+
+    const match = await createTestMatch({
+      scheduledDate: TEST_DAY,
+      availabilityStartMinutes: 14 * 60,
+      availabilityEndMinutes: 19 * 60,
+      startsAt: null,
+      endsAt: null,
+    });
+    createdMatchIds.push(match.id);
+
+    await prisma.matchInvitation.create({
+      data: { matchId: match.id, invitedUserId: invited.id, invitedById: SEED_IDS.users.juan, status: 'PENDING' },
+    });
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/candidates`, headers: { authorization: 'Bearer juan' } });
+
+    const body = response.json() as { data: Array<{ id: string }> };
+    expect(body.data.map((candidate) => candidate.id)).not.toContain(invited.id);
+
+    await app.close();
+  });
+
+  it('excludes a candidate whose invitation was rejected, since re-inviting them is blocked by the unique constraint', async () => {
+    const invited = await createCandidateUser('Ignacio');
+    createdUserIds.push(invited.id);
+
+    const profile = await createSportProfile(invited.id, SEED_IDS.sports.football);
+    await addAvailability(profile.id, TEST_DAY_OF_WEEK, 14 * 60, 19 * 60);
+
+    const match = await createTestMatch({
+      scheduledDate: TEST_DAY,
+      availabilityStartMinutes: 14 * 60,
+      availabilityEndMinutes: 19 * 60,
+      startsAt: null,
+      endsAt: null,
+    });
+    createdMatchIds.push(match.id);
+
+    await prisma.matchInvitation.create({
+      data: { matchId: match.id, invitedUserId: invited.id, invitedById: SEED_IDS.users.juan, status: 'REJECTED', respondedAt: new Date() },
+    });
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/candidates`, headers: { authorization: 'Bearer juan' } });
+
+    const body = response.json() as { data: Array<{ id: string }> };
+    expect(body.data.map((candidate) => candidate.id)).not.toContain(invited.id);
+
+    await app.close();
+  });
+
   describe('without an exact time (availability window overlap)', () => {
     it('includes a candidate whose weekly slot partially overlaps the window, and describes the overlap', async () => {
       const player = await createCandidateUser('Gabriela');
@@ -417,9 +475,38 @@ describe('GET /api/v1/matches/:matchId/candidates', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/candidates`, headers: { authorization: 'Bearer juan' } });
 
-    const body = response.json() as { data: Array<{ id: string; firstName: string | null }> };
-    const relevantNames = body.data.filter((candidate) => [zoe.id, ana.id, miguel.id].includes(candidate.id)).map((candidate) => candidate.firstName);
-    expect(relevantNames).toEqual(['Ana', 'Miguel', 'Zoe']);
+    const body = response.json() as { data: Array<{ id: string; displayName: string }> };
+    const relevantNames = body.data.filter((candidate) => [zoe.id, ana.id, miguel.id].includes(candidate.id)).map((candidate) => candidate.displayName);
+    expect(relevantNames).toEqual(['Ana Test', 'Miguel Test', 'Zoe Test']);
+
+    await app.close();
+  });
+
+  it('shows the real displayName/username for a candidate with no firstName/lastName, not the generic "Jugador" fallback', async () => {
+    // Matches the real beta registration flow (RegisterPage/Clerk sign-up),
+    // which never sets firstName/lastName -- only username + displayName.
+    const beta = await prisma.user.create({
+      data: { clerkUserId: `test_candidate_${randomUUID()}`, username: 'candidato_beta', displayName: 'Candidato Beta' },
+    });
+    createdUserIds.push(beta.id);
+    const profile = await createSportProfile(beta.id, SEED_IDS.sports.football);
+    await addAvailability(profile.id, TEST_DAY_OF_WEEK, 14 * 60, 19 * 60);
+
+    const match = await createTestMatch({
+      scheduledDate: TEST_DAY,
+      availabilityStartMinutes: 14 * 60,
+      availabilityEndMinutes: 19 * 60,
+      startsAt: null,
+      endsAt: null,
+    });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/candidates`, headers: { authorization: 'Bearer juan' } });
+
+    const body = response.json() as { data: Array<{ id: string; displayName: string }> };
+    const candidate = body.data.find((current) => current.id === beta.id);
+    expect(candidate?.displayName).toBe('Candidato Beta');
 
     await app.close();
   });

@@ -35,11 +35,6 @@ const positionAbbreviations: Record<string, string> = {
   Delantero: 'DEL',
 };
 
-function candidateDisplayName(candidate: CandidateDto): string {
-  const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(' ').trim();
-  return fullName || 'Jugador';
-}
-
 function describeError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
@@ -145,7 +140,7 @@ function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps
                       </Avatar>
                       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                         <Typography variant="h3" component="h2">
-                          {candidateDisplayName(candidate)}
+                          {candidate.displayName}
                         </Typography>
                         {candidate.positions.map((position) => (
                           <Tooltip key={position} title={position}>

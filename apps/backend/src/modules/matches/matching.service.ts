@@ -1,7 +1,7 @@
 import type { PlayerAvailability, User, UserSportProfile } from '@prisma/client';
 import type { CandidateDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
-import { displayName, getConfirmedParticipantIds, requireMatchWithRelations } from './matches.service.js';
+import { displayName, getConfirmedParticipantIds, getInvitedUserIds, requireMatchWithRelations } from './matches.service.js';
 
 type MatchScheduleFields = {
   scheduledDate: Date;
@@ -83,8 +83,7 @@ type ProfileWithRelations = UserSportProfile & { user: User; availability: Playe
 function toCandidateDto(profile: ProfileWithRelations, matchingAvailability: string): CandidateDto {
   return {
     id: profile.user.id,
-    firstName: profile.user.firstName,
-    lastName: profile.user.lastName,
+    displayName: displayName(profile.user),
     avatarUrl: profile.user.avatarUrl,
     sportId: profile.sportId,
     positions: profile.positions,
@@ -94,15 +93,18 @@ function toCandidateDto(profile: ProfileWithRelations, matchingAvailability: str
 
 /**
  * Deterministic candidate matching for a match: same sport, available for
- * invitations, not the organizer, not already a participant, position
- * overlap when the match requires one, and a compatible weekly availability
- * slot. No scoring, no ranking — a plain alphabetical list, reusable as-is by
- * the future invitations flow.
+ * invitations, not the organizer, not already a participant, not already
+ * invited to this same match (any invitation status — re-inviting is
+ * blocked by a DB unique constraint regardless), position overlap when the
+ * match requires one, and a compatible weekly availability slot. No
+ * scoring, no ranking — a plain alphabetical list.
  */
 export async function getMatchCandidates(matchId: string): Promise<CandidateDto[]> {
   const match = await requireMatchWithRelations(matchId);
 
   const excludedUserIds = await getConfirmedParticipantIds(matchId);
+  const invitedUserIds = await getInvitedUserIds(matchId);
+  invitedUserIds.forEach((userId) => excludedUserIds.add(userId));
   excludedUserIds.add(match.organizerUserId);
 
   const window = resolveAvailabilityWindow(match);

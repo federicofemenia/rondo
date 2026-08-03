@@ -73,8 +73,7 @@ describe('MatchDetailPage', () => {
   it('jugadores tab shows the roster and lets the organizer search real candidates for this match', async () => {
     mockCandidates.push({
       id: 'candidate-lina',
-      firstName: 'Lina',
-      lastName: null,
+      displayName: 'Lina',
       avatarUrl: null,
       sportId: 'sport-football',
       positions: [],

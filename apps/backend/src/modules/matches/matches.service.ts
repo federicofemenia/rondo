@@ -235,3 +235,16 @@ export async function getConfirmedParticipantIds(matchId: string): Promise<Set<s
   const participants = await prisma.matchParticipant.findMany({ where: { matchId }, select: { userId: true } });
   return new Set(participants.map((participant) => participant.userId));
 }
+
+/**
+ * Every user who already has an invitation row for this match, in any
+ * status. `createInvitation` has a unique (matchId, invitedUserId)
+ * constraint, so re-inviting is permanently blocked regardless of whether
+ * the existing invitation is still PENDING or was ACCEPTED/REJECTED/
+ * CANCELLED — the candidate list mirrors that same rule so it never offers
+ * an "Invitar" action that would just fail.
+ */
+export async function getInvitedUserIds(matchId: string): Promise<Set<string>> {
+  const invitations = await prisma.matchInvitation.findMany({ where: { matchId }, select: { invitedUserId: true } });
+  return new Set(invitations.map((invitation) => invitation.invitedUserId));
+}

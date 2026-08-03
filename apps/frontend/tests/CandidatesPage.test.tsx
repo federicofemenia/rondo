@@ -5,8 +5,7 @@ import { mockCandidates, mockCandidatesFailingMatchIds, mockInvitationCreateFail
 
 const bruno = {
   id: 'candidate-bruno',
-  firstName: 'Bruno',
-  lastName: 'Silva',
+  displayName: 'Bruno Silva',
   avatarUrl: null,
   sportId: 'sport-football',
   positions: ['Delantero'],
