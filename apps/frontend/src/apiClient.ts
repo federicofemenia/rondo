@@ -30,7 +30,12 @@ export function useApi() {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       ...init,
       headers: {
-        'Content-Type': 'application/json',
+        // Only set Content-Type when there is an actual body: Fastify's
+        // default JSON parser rejects an empty body outright when the
+        // content-type claims 'application/json' (FST_ERR_CTP_EMPTY_JSON_BODY),
+        // which broke every no-payload POST (accept/reject/cancel invitation,
+        // leave match).
+        ...(init?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },

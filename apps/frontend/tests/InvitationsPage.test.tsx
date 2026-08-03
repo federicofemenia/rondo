@@ -96,6 +96,15 @@ describe('InvitationsPage', () => {
     expect(await screen.findByText(/^aceptada$/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^aceptar$/i })).toBeFalsy();
     expect(onRespond).toHaveBeenCalled();
+
+    // Regression: a no-payload POST must not send Content-Type: application/json
+    // with an empty body -- Fastify's default JSON parser rejects that outright
+    // (FST_ERR_CTP_EMPTY_JSON_BODY), which broke this exact accept flow in production.
+    const acceptCall = vi.mocked(global.fetch).mock.calls.find(([input]) => String(input).includes('/accept'));
+    expect(acceptCall).toBeDefined();
+    const [, init] = acceptCall!;
+    expect(init?.body).toBeUndefined();
+    expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
   });
 
   it('rejects an invitation and updates its status in place', async () => {
