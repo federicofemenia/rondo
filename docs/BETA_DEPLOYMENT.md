@@ -4,12 +4,23 @@ Guía para desplegar Rondo como beta cerrada:
 
 ```text
 Frontend React/Vite → Vercel
-Backend Fastify      → Render
+Backend Fastify      → Render (plan Free)
 PostgreSQL remoto    → Neon (o Render Postgres pago)
 Autenticación        → Clerk (username + password)
 ```
 
 Reemplazá los placeholders `<VERCEL_BETA_URL>` y `<RENDER_BACKEND_URL>` por las URLs reales una vez creados los servicios. No son URLs reales todavía.
+
+---
+
+## Requisitos
+
+```text
+Node    22.x (fijado en package.json → engines.node)
+pnpm    9.15.0 (fijado en package.json → packageManager; Render/Vercel lo activan vía `corepack enable`)
+```
+
+`engines.node` es informativo para Render/Vercel — no rompe el desarrollo local si tenés otra versión de Node instalada, pero usá 22.x para minimizar diferencias con producción.
 
 ---
 
@@ -36,156 +47,147 @@ Elegí uno:
 - **Neon** (recomendado): creá un proyecto en [neon.tech](https://neon.tech), rama `main`, base `rondo_beta`.
 - **Render Postgres pago**: creá una instancia paga (no la gratuita, que se elimina tras un período de inactividad).
 
-No uses un plan gratuito que se borre solo — la beta necesita persistencia entre sesiones de los testers.
+No uses un plan gratuito que se borre solo — la beta necesita persistencia entre sesiones de los testers. Copiá el connection string con SSL (`?sslmode=require` en Neon) y guardalo para el paso 5 — no lo pegues en ningún archivo del repo.
 
-### 2. Obtener `DATABASE_URL`
+### 2. Crear/configurar Clerk Beta
 
-Copiá el connection string con SSL (`?sslmode=require` en Neon). Guardalo para el paso 9 — no lo pegues en ningún archivo del repo.
+Creá una instancia de Clerk **separada** de la de desarrollo local (o un entorno "Beta" dentro del mismo proyecto Clerk, si tu plan lo permite). Configurá manualmente (ver checklist completa en [Clerk: configuración manual](#clerk-configuración-manual-obligatoria) más abajo):
 
-### 3. Crear/configurar la instancia Clerk de beta
+- Username habilitado y requerido para sign-up, Password habilitado, Email/Phone no requeridos.
+- Todos los proveedores OAuth deshabilitados.
+- Client Trust / Attack Protection revisado para testers de confianza.
 
-Creá una instancia de Clerk **separada** de la de desarrollo local (o un entorno "Beta" dentro del mismo proyecto Clerk, si tu plan lo permite). Ver la checklist completa en [Clerk: configuración manual](#clerk-configuración-manual-obligatoria) más abajo.
+Además, en **Clerk Dashboard → Users**, abrí el usuario que va a administrar Señor Pato y copiá su **User ID** (`user_xxx...`) — va en `BOOTSTRAP_ADMIN_CLERK_USER_ID` (paso 5).
 
-### 4. Habilitar username/password
-
-En **Clerk Dashboard → User & Authentication → Email, Phone, Username**:
-
-- **Username**: habilitado, requerido para sign-up.
-- **Password**: habilitado.
-- **Email address**: no requerido (podés dejarlo deshabilitado directamente para la beta).
-- **Phone number**: deshabilitado.
-
-En **User & Authentication → Social Connections**: deshabilitá todos los proveedores OAuth para la beta.
-
-### 5. Revisar Client Trust
-
-En **Clerk Dashboard → User & Authentication → Attack Protection** (o la sección de MFA/Device verification según la versión del dashboard): con testers conocidos y de confianza, podés desactivar el paso de verificación por dispositivo nuevo para que el login sea directo. Si lo dejás activo, el flujo de "Confirmá que sos vos" del Login ya está implementado en el frontend y funciona igual.
-
-### 6. Crear cuentas de testers
+### 3. Crear cuentas de testers
 
 Ver [Cuentas de testers](#cuentas-de-testers) más abajo. Hacelo manualmente desde el Clerk Dashboard (o el registro de la app si `VITE_BETA_SIGN_UP_ENABLED=true`) — nunca generes contraseñas en el seed ni las commitees.
 
-### 7. Obtener el Clerk User ID del administrador
+### 4. Crear el backend en Render
 
-En **Clerk Dashboard → Users**, abrí el usuario que va a administrar Señor Pato y copiá su **User ID** (`user_xxx...`). Ese valor va en `BOOTSTRAP_ADMIN_CLERK_USER_ID` (paso 9).
-
-### 8. Crear el backend en Render
-
-**New → Web Service** → conectá el repo de GitHub. Si usás `render.yaml` (recomendado, ver raíz del repo), Render detecta el Blueprint automáticamente con:
+**New → Blueprint** (o **New → Web Service** si preferís configurarlo a mano) → conectá el repo de GitHub `federicofemenia/rondo`. Con `render.yaml` en la raíz del repo (recomendado), Render detecta el Blueprint automáticamente:
 
 ```text
-Root Directory:   (vacío / raíz del repo — el Blueprint usa pnpm --filter)
-Runtime:          Node
-Build Command:    corepack enable && pnpm install --frozen-lockfile && pnpm --filter @rondo/backend... build
-Start Command:    pnpm --filter @rondo/backend start
+Root Directory:    (vacío / raíz del repo)
+Runtime:           Node
+Plan:              Free
+Build Command:     corepack enable && pnpm install --frozen-lockfile && pnpm --filter @rondo/backend predeploy && pnpm build:backend
+Start Command:     pnpm --filter @rondo/backend start
 Health Check Path: /health
 ```
 
-Si preferís configurarlo a mano en vez de usar `render.yaml`, copiá exactamente esos comandos. El monorepo usa pnpm workspaces: `@rondo/backend` depende de `@rondo/contracts`, por eso el build usa `--filter @rondo/backend...` (el `...` incluye sus dependencias del workspace).
+Esos son los valores exactos de `render.yaml` — si configurás el servicio a mano en vez de usar el Blueprint, copialos literal.
 
-Después del primer deploy, configurá manualmente el **Pre-Deploy Command** en la configuración del servicio (no todos los planes/versiones de Render exponen este campo en `render.yaml` de la misma forma):
+**Por qué las migraciones corren dentro del Build Command:** el plan Free de Render no garantiza tener disponible el "Pre-Deploy Command" (es una función de nivel dashboard/plan que varía entre versiones del Blueprint), así que en vez de depender de eso, `pnpm --filter @rondo/backend predeploy` — que corre `prisma generate` y después `prisma migrate deploy`, nunca `migrate dev`, nunca un reset — se ejecuta directamente como parte del build, antes de compilar. Render expone las variables de entorno del servicio también durante el build, así que `DATABASE_URL` está disponible en ese momento. **Si una migración falla, el build falla** y el deploy anterior sigue sirviendo tráfico — no hay corte de servicio por una migración rota.
 
-```bash
-pnpm --filter @rondo/backend predeploy
-```
+`pnpm build:backend` (`pnpm --filter @rondo/backend... build` desde la raíz) compila `@rondo/contracts` y después `@rondo/backend` — el `...` incluye las dependencias del workspace del backend.
 
-Ese comando corre `prisma generate` y `prisma migrate deploy` — nunca `prisma migrate dev`, y nunca un reset.
+El Start Command ejecuta el backend ya compilado (`node dist/main.js` vía el script `start`) — nunca `tsx watch`, `nodemon` ni ningún comando de desarrollo.
 
-### 9. Configurar variables de entorno en Render
+### 5. Configurar variables de entorno en Render
 
 | Variable | Valor |
 |---|---|
 | `NODE_ENV` | `production` |
-| `PORT` | `3000` |
 | `HOST` | `0.0.0.0` |
-| `DATABASE_URL` | el connection string del paso 2 |
+| `DATABASE_URL` | el connection string del paso 1 |
 | `CLERK_SECRET_KEY` | Secret Key de la instancia de beta de Clerk |
-| `FRONTEND_URL` | `<VERCEL_BETA_URL>` (podés completarlo después del paso 14 y volver a desplegar) |
-| `BOOTSTRAP_ADMIN_CLERK_USER_ID` | el User ID del paso 7 |
+| `FRONTEND_URL` | `<VERCEL_BETA_URL>` (podés completarlo después del paso 12 y volver a desplegar) — sin barra final |
+| `BOOTSTRAP_ADMIN_CLERK_USER_ID` | el User ID del paso 2 |
 | `BOOTSTRAP_ADMIN_USERNAME` | opcional, no usar en beta (ver más abajo) |
+
+**No configures `PORT` manualmente.** Render inyecta su propio `PORT` en runtime y el backend lo lee de `process.env.PORT` (`apps/backend/src/main.ts`) — fijar un valor propio en el dashboard lo pisaría y el health check fallaría.
 
 `DATABASE_URL`, `CLERK_SECRET_KEY` y `FRONTEND_URL` son **obligatorias**: el backend falla al arrancar en `NODE_ENV=production` si falta alguna (validación en `apps/backend/src/config/env.ts`).
 
-### 10. Desplegar
+### 6. Desplegar el backend
 
-Dispará el deploy desde Render (o hacé push a la rama conectada). El **Pre-Deploy Command** del paso 8 corre las migraciones antes de que el nuevo build sirva tráfico.
+Dispará el deploy desde Render (o hacé push a la rama conectada). El Build Command del paso 4 aplica las migraciones antes de que el nuevo build sirva tráfico.
 
-### 11. Comprobar los health checks
+### 7. Verificar `/health`
 
 ```bash
 curl https://<RENDER_BACKEND_URL>/health
+```
+
+No depende de Clerk ni de la base — si falla, el problema es el arranque del proceso. Este es el único endpoint configurado como Health Check Path automático de Render (nunca `/health/database` — un health check automático no debe depender de la base, para no reiniciar el servicio en un blip transitorio de conexión).
+
+### 8. Verificar `/health/database`
+
+```bash
 curl https://<RENDER_BACKEND_URL>/health/database
 ```
 
-`/health` no depende de Clerk ni de la base — si falla, el problema es el arranque del proceso. `/health/database` confirma la conexión a Postgres sin exponer credenciales en la respuesta (el detalle del error queda solo en los logs del servicio).
+Confirma la conexión a Postgres sin exponer credenciales en la respuesta (el detalle del error queda solo en los logs del servicio). Es una verificación manual del paso 6, no el health check automático de Render.
 
-### 12. Aplicar migraciones (si no corrió el Pre-Deploy Command)
+### 9. Ejecutar el seed base
 
-Si todavía no configuraste el paso 8, corré manualmente una vez desde un shell con acceso a `DATABASE_URL`:
-
-```bash
-cd apps/backend
-pnpm prisma:generate
-pnpm prisma:migrate:deploy
-```
-
-**Nunca** `pnpm prisma:migrate` (eso es `migrate dev`, interactivo y pensado solo para desarrollo local) contra la base de beta.
-
-### 13. Ejecutar el seed base
-
-Una sola vez (es idempotente, podés repetirlo sin miedo):
+Una sola vez (es idempotente, podés repetirlo sin miedo), desde tu máquina con la `DATABASE_URL` de beta:
 
 ```bash
 cd apps/backend
 DATABASE_URL=<connection string de beta> pnpm seed:base
 ```
 
-Esto crea los deportes, modalidades, Club Señor Pato, sus 4 canchas, horarios y la noticia de bienvenida. No borra nada existente.
+Esto crea los deportes, modalidades, Club Señor Pato, sus 4 canchas, horarios y la noticia de bienvenida. No borra nada existente. **No se ejecuta automáticamente en el build de Render** — es un paso manual, deliberadamente separado del deploy.
 
 No corras `pnpm prisma:seed` (el seed completo con partidos/usuarios demo de `seed_juan_perez` y compañía) contra beta — esas identidades no son cuentas Clerk reales y nunca van a poder loguearse.
 
-### 14. Crear el frontend en Vercel
+### 10. Crear el proyecto frontend en Vercel
 
-**New Project** → importá el repo. Configuración del proyecto (ver [Frontend en Vercel](#frontend-en-vercel) para el detalle):
+**New Project** dentro del workspace existente de Vercel → importá el repo `federicofemenia/rondo`. No hace falta crear un Team nuevo ni un repositorio nuevo; el proyecto puede llamarse `rondo-beta`. Configuración (ver [Frontend en Vercel](#frontend-en-vercel) para el detalle):
 
 ```text
-Root Directory:    apps/frontend
-Install Command:   pnpm install (desde la raíz del monorepo — Vercel lo detecta solo)
-Build Command:     pnpm build
-Output Directory:  dist
+Root Directory:    (vacío / raíz del repositorio)
+Framework Preset:  Other
+Install Command:   pnpm install --frozen-lockfile (default; Vercel detecta el workspace de pnpm en la raíz)
+Build Command:     pnpm build:frontend
+Output Directory:  apps/frontend/dist
 ```
 
-### 15. Configurar variables en Vercel
+### 11. Configurar variables en Vercel
 
 | Variable | Valor |
 |---|---|
-| `VITE_API_BASE_URL` | `https://<RENDER_BACKEND_URL>` |
+| `VITE_API_BASE_URL` | `https://<RENDER_BACKEND_URL>` (sin barra final, sin `/api/v1`) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Publishable Key de la instancia de beta de Clerk |
 | `VITE_BETA_SIGN_UP_ENABLED` | `false` (o `true` solo si de verdad querés registro público en la beta) |
 
 Ningún secreto de backend (`CLERK_SECRET_KEY`, `DATABASE_URL`, `BOOTSTRAP_ADMIN_CLERK_USER_ID`) va en Vercel.
 
-### 16. Configurar las URLs de Clerk
+### 12. Desplegar el frontend
 
-Ver la [checklist de Clerk](#clerk-checklist-de-urls-para-el-dominio-de-vercel) más abajo. Hacelo después de tener `<VERCEL_BETA_URL>` definitivo.
+Dispará el deploy desde Vercel (o push a la rama conectada).
 
-### 17. Prueba E2E con dos cuentas
+### 13. Copiar la URL de Vercel a `FRONTEND_URL` de Render
+
+Una vez que Vercel te da la URL definitiva (`<VERCEL_BETA_URL>`), volvé a Render → variables de entorno → completá `FRONTEND_URL` con esa URL (sin barra final).
+
+### 14. Redeploy del backend
+
+Como `FRONTEND_URL` cambió (afecta el allowlist de CORS), volvé a desplegar el backend en Render para que tome el nuevo valor.
+
+### 15. Configurar las URLs de Clerk
+
+Ver la [checklist de Clerk](#clerk-checklist-de-urls-para-el-dominio-de-vercel) más abajo, ahora que ya tenés `<VERCEL_BETA_URL>` definitivo.
+
+### 16. Prueba con dos usuarios en celulares/navegadores distintos
 
 Ver [Checklist E2E](#checklist-e2e) completa más abajo.
 
-### 18. Rollback básico
+### Rollback básico
 
 - **Backend**: en Render, pestaña **Events** o **Deploys** del servicio → **Rollback** al deploy anterior. Las migraciones de Prisma son aditivas en este proyecto (nunca se edita una migración vieja), así que un rollback de código no debería dejar el schema desalineado; si una migración nueva rompió algo, corregí hacia adelante con una migración nueva en vez de revertir la aplicada.
 - **Frontend**: en Vercel, pestaña **Deployments** → elegí un deploy anterior → **Promote to Production**.
 
-### 19. Consultar logs
+### Consultar logs
 
-- **Render**: pestaña **Logs** del servicio (tiempo real y búsqueda). Los errores de `/health/database` loguean el detalle ahí, nunca en la respuesta HTTP.
+- **Render**: pestaña **Logs** del servicio (tiempo real y búsqueda), incluyendo el log del Build Command (ahí se ve si `prisma migrate deploy` falló). Los errores de `/health/database` loguean el detalle ahí, nunca en la respuesta HTTP.
 - **Vercel**: pestaña **Logs** del proyecto para errores de build; para errores de runtime del cliente, la consola del navegador (no hay funciones serverless propias en este proyecto).
 
-### 20. Cómo volver a desplegar
+### Cómo volver a desplegar
 
-- **Backend**: push a la rama conectada en Render, o **Manual Deploy** desde el dashboard. El Pre-Deploy Command vuelve a correr `migrate deploy` automáticamente.
+- **Backend**: push a la rama conectada en Render, o **Manual Deploy** desde el dashboard. El Build Command vuelve a correr `predeploy` (`migrate deploy`) automáticamente antes de cada build.
 - **Frontend**: push a la rama conectada en Vercel, o **Redeploy** desde el dashboard.
 
 ---
@@ -198,9 +200,18 @@ El backend usa `DATABASE_URL` sin asumir el proveedor — cualquier Postgres com
 
 ```bash
 pnpm --filter @rondo/backend prisma:migrate:deploy
+# equivalente: pnpm deploy:migrate (alias en el package.json raíz)
 ```
 
-en producción/beta. **Nunca** `prisma:migrate` (= `migrate dev`) contra una base remota — es interactivo, pensado para desarrollo local, y puede intentar generar una shadow database que no vas a tener permisos para crear.
+en producción/beta — este es el comando que corre automáticamente dentro del Build Command de Render (ver paso 4). **Nunca** `prisma:migrate` (= `migrate dev`) contra una base remota — es interactivo, pensado para desarrollo local, y puede intentar generar una shadow database que no vas a tener permisos para crear. Nunca `prisma db push`. Nunca resetear la base. Las migraciones existentes no se modifican — todo cambio de schema es una migración nueva.
+
+Si por algún motivo necesitás aplicar migraciones a mano (fuera de un deploy de Render, por ejemplo para diagnosticar un problema), corré desde tu máquina con acceso a la `DATABASE_URL` de beta:
+
+```bash
+cd apps/backend
+pnpm prisma:generate
+pnpm prisma:migrate:deploy
+```
 
 ### Seed
 
@@ -211,7 +222,7 @@ pnpm --filter @rondo/backend seed:base   # catálogo: deportes, club, canchas, h
 pnpm --filter @rondo/backend seed:beta   # opcional, manual: perfiles deportivos demo para testers YA logueados
 ```
 
-`seed:beta` busca cada username de `BETA_TESTER_USERNAMES` (editable en `apps/backend/src/infrastructure/database/seedBeta.ts`) y solo actúa sobre los que ya tienen una cuenta interna sincronizada (es decir, que ya iniciaron sesión al menos una vez). Nunca crea identidades Clerk falsas. No se ejecuta automáticamente en ningún deploy — es manual, una vez, después de que los testers ya se hayan logueado.
+`seed:beta` busca cada username de `BETA_TESTER_USERNAMES` (editable en `apps/backend/src/infrastructure/database/seedBeta.ts`) y solo actúa sobre los que ya tienen una cuenta interna sincronizada (es decir, que ya iniciaron sesión al menos una vez). Nunca crea identidades Clerk falsas. No se ejecuta automáticamente en ningún deploy — es manual, una vez, después de que los testers ya se hayan logueado, y solo si el dueño del proyecto decide correrlo.
 
 El seed completo de desarrollo (`pnpm prisma:seed`, con los usuarios demo `seed_juan_perez` y el resto de partidos/invitaciones/chat de prueba) sigue existiendo tal cual para uso **exclusivamente local** — no tiene sentido correrlo contra beta porque esas identidades nunca van a poder autenticarse con una instancia real de Clerk.
 
@@ -253,7 +264,7 @@ Después del primer login, cada tester completa su perfil deportivo desde la app
 
 En **Clerk Dashboard → Domains / Paths** (según versión) de la instancia de beta:
 
-- [ ] **Allowed origins**: agregar `<VERCEL_BETA_URL>` (y mantener `http://localhost:5173` para seguir desarrollando local).
+- [ ] **Allowed origins**: agregar `<VERCEL_BETA_URL>` (sin barra final) y mantener `http://localhost:5173` para seguir desarrollando local.
 - [ ] **Redirect URLs**: agregar `<VERCEL_BETA_URL>/*`.
 - [ ] **Sign-in URL**: `<VERCEL_BETA_URL>` (la app es de una sola página, no hay ruta dedicada).
 - [ ] **Sign-up URL**: igual, solo si `VITE_BETA_SIGN_UP_ENABLED=true`.
@@ -272,9 +283,13 @@ Fastify ya escucha en el host y puerto correctos (`apps/backend/src/main.ts`, `a
 await app.listen({ port: env.PORT, host: env.HOST });
 ```
 
-`HOST` por defecto es `0.0.0.0` y `PORT` lee `process.env.PORT` (Render lo inyecta automáticamente; el valor en `.env.example`/`render.yaml` es solo el default local). No hay un puerto de producción fijo hardcodeado.
+`HOST` por defecto es `0.0.0.0` y `PORT` lee `process.env.PORT` (Render lo inyecta automáticamente en runtime; el valor en `.env.example` es solo el default local, y `render.yaml` deliberadamente no fija `PORT`). No hay un puerto de producción fijo hardcodeado.
 
-`GET /health` y `GET /health/database` ya existen. `/health` no llama a Clerk. `/health/database` corre `SELECT 1` y devuelve `status`/`database`/`timestamp` sin el detalle del error (que sí se loguea server-side).
+`GET /health` y `GET /health/database` ya existen. `/health` no llama a Clerk ni a la base — es el único configurado como Health Check Path automático de Render. `/health/database` corre `SELECT 1` y devuelve `status`/`database`/`timestamp` sin el detalle del error (que sí se loguea server-side); es para verificación manual, no para el health check automático.
+
+### Build y migraciones
+
+Ver el paso 4 de la guía y `render.yaml` para el Build Command exacto. Resumen: `corepack enable` → `pnpm install --frozen-lockfile` → `pnpm --filter @rondo/backend predeploy` (Prisma Client + `migrate deploy`) → `pnpm build:backend` (compila `@rondo/contracts` y `@rondo/backend`). Todo en un solo comando para no depender del Pre-Deploy Command de Render, que no está garantizado en el plan Free.
 
 ### Variables del backend
 
@@ -282,7 +297,7 @@ Ver `apps/backend/.env.example`. En producción (`NODE_ENV=production`) son obli
 
 ### CORS
 
-`apps/backend/src/app/cors.ts` arma una lista explícita de orígenes permitidos: siempre `http://localhost:5173`, más `FRONTEND_URL` si está configurado. Nunca `origin: true` ni `*`. Un origen fuera de la lista recibe error de CORS; una request sin header `Origin` (server-to-server, `curl`, el propio health check) siempre pasa, porque ahí no aplica la same-origin policy del navegador.
+`apps/backend/src/app/cors.ts` arma una lista explícita de orígenes permitidos: siempre `http://localhost:5173`, más `FRONTEND_URL` si está configurado (normalizado sin barra final, aunque lo hayas cargado con una — ver `trimTrailingSlashes` en ese archivo). Nunca `origin: true` ni `*`. Un origen fuera de la lista recibe error de CORS; una request sin header `Origin` (server-to-server, `curl`, el propio health check) siempre pasa, porque ahí no aplica la same-origin policy del navegador.
 
 ---
 
@@ -298,22 +313,27 @@ VITE_CLERK_PUBLISHABLE_KEY=
 VITE_BETA_SIGN_UP_ENABLED=false
 ```
 
-Ningún secreto de backend se agrega acá. La URL de la API se lee desde un único lugar (`apps/frontend/src/runtimeConfig.ts`) — todo el resto del frontend (`apiClient.ts`, `useSports.ts`, el health check de `App.tsx`) importa `apiBaseUrl` desde ahí en vez de recalcularlo. No quedan URLs `localhost` hardcodeadas fuera de ese único fallback de desarrollo.
+Ningún secreto de backend se agrega acá. `VITE_API_BASE_URL` no lleva barra final ni `/api/v1` — la URL de la API se lee desde un único lugar (`apps/frontend/src/runtimeConfig.ts`), que además normaliza y descarta cualquier barra final por las dudas. Todo el resto del frontend (`apiClient.ts`, `useSports.ts`, el health check de `App.tsx`) importa `apiBaseUrl` desde ahí en vez de recalcularlo. No quedan URLs `localhost` hardcodeadas fuera de ese único fallback de desarrollo.
 
 ### SPA routing
 
-La app actual navega con estado interno de React (`currentView` en `App.tsx`), no con rutas de URL reales — no existen todavía rutas como `/matches/:matchId` en la barra de direcciones. De todas formas, `apps/frontend/vercel.json` agrega un rewrite catch-all a `index.html` como protección: si en el futuro se agrega ruteo real, o si alguien navega directo a una URL no-raíz, Vercel sirve la SPA en vez de un 404. Los rewrites de Vercel no interfieren con archivos estáticos existentes (tienen prioridad sobre el rewrite).
+La app actual navega con estado interno de React (`currentView` en `App.tsx`), no con rutas de URL reales — no existen todavía rutas como `/matches/:matchId` en la barra de direcciones. De todas formas, `/vercel.json` (en la raíz del repo) agrega un rewrite catch-all a `index.html` como protección: si en el futuro se agrega ruteo real, o si alguien navega directo a una URL no-raíz, Vercel sirve la SPA en vez de un 404. Los rewrites de Vercel no interfieren con archivos estáticos existentes (tienen prioridad sobre el rewrite).
 
 ### Monorepo (configuración exacta a copiar en Vercel)
 
 ```text
-Root Directory:    apps/frontend
-Install Command:   pnpm install (default; Vercel detecta el workspace de pnpm en la raíz)
-Build Command:     pnpm build
-Output Directory:  dist
+Root Directory:    (vacío / raíz del repositorio)
+Framework Preset:  Other
+Install Command:   pnpm install --frozen-lockfile (default; Vercel detecta el workspace de pnpm en la raíz)
+Build Command:     pnpm build:frontend
+Output Directory:  apps/frontend/dist
 ```
 
+**Por qué Root Directory es la raíz del repo (y no `apps/frontend`):** `@rondo/frontend` depende de dos paquetes internos del workspace, `@rondo/contracts` y `@rondo/config` (ambos con `main`/`types` apuntando a `dist/`, sin código fuente publicado). Si el Root Directory fuera `apps/frontend`, Vercel no vería el resto del monorepo y esas dependencias workspace:* no se podrían instalar ni compilar. Con Root Directory en la raíz, `pnpm install` resuelve el workspace completo y `pnpm build:frontend` (alias de `pnpm --filter @rondo/frontend... build`) compila primero `@rondo/contracts` y `@rondo/config`, y recién después `@rondo/frontend` — el `...` incluye exactamente esas dependencias internas. `Framework Preset: Other` evita que Vercel intente autodetectar comandos de Vite a partir del `package.json` de la raíz (que no tiene Vite como dependencia directa).
+
 `apps/frontend/package.json`'s `build` script ya corre `tsc --noEmit && vite build` — falla el deploy si hay errores de tipos.
+
+`vercel.json` vive en la raíz del repo (`/vercel.json`), no dentro de `apps/frontend`, precisamente porque el Root Directory configurado en Vercel es la raíz — ahí es donde Vercel lo busca. No debe haber una segunda copia en `apps/frontend/vercel.json`.
 
 ---
 

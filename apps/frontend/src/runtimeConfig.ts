@@ -1,5 +1,19 @@
 import { appConfig } from '@rondo/config';
 
+const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '');
+
+/**
+ * Resolves and normalizes the configured API base URL. Exported as a pure
+ * function (separate from the `apiBaseUrl` constant below) so it can be
+ * unit-tested without depending on Vite's static `import.meta.env`
+ * substitution. Strips trailing slashes so callers can always safely do
+ * `${apiBaseUrl}/health` without risking a double slash.
+ */
+export function resolveApiBaseUrl(rawValue: string | undefined, fallback: string): string {
+  const value = rawValue && rawValue.trim().length > 0 ? rawValue : fallback;
+  return trimTrailingSlashes(value);
+}
+
 /**
  * Single source of truth for the API base URL — every other module (the
  * authenticated API client, the initial health check) reads it from here
@@ -7,7 +21,7 @@ import { appConfig } from '@rondo/config';
  * itself. The fallback is only ever exercised in local dev: Vercel always
  * sets VITE_API_BASE_URL explicitly for the beta/production builds.
  */
-export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? appConfig.apiBaseUrl;
+export const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, appConfig.apiBaseUrl);
 
 /**
  * Closed-beta sign-up gate. Defaults to hidden (safe) when unset — must be

@@ -2,28 +2,27 @@
 # Vercel separately (see docs/BETA_DEPLOYMENT.md) — do not add a static
 # site here.
 #
-# Render's "Pre-Deploy Command" is a dashboard/plan-level setting not
-# guaranteed to be scriptable the same way across every Render Blueprint
-# schema version, so it is not encoded here — set it manually in the
-# service settings after the first deploy (see docs/BETA_DEPLOYMENT.md):
-#
-#   pnpm --filter @rondo/backend predeploy
-#
-# That runs `prisma generate` + `prisma migrate deploy` — never
-# `prisma migrate dev`, and never a reset.
+# Render Free does not reliably expose a scriptable "Pre-Deploy Command"
+# across every plan/Blueprint schema version, so migrations are not left as
+# a manual dashboard step: buildCommand runs `pnpm --filter @rondo/backend
+# predeploy` (prisma generate + prisma migrate deploy — never `migrate dev`,
+# never a reset) before compiling. Render exposes the service's env vars
+# during the build step too, so DATABASE_URL is available for migrate
+# deploy at build time. If a migration fails, the build fails and the
+# previous deploy keeps serving traffic.
 services:
   - type: web
     name: rondo-backend
     env: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @rondo/backend... build
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @rondo/backend predeploy && pnpm build:backend
     startCommand: pnpm --filter @rondo/backend start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
+      # PORT is intentionally not set here — Render injects its own PORT at
+      # runtime, and apps/backend/src/main.ts reads process.env.PORT.
       - key: HOST
         value: 0.0.0.0
       # Set these to real values in the Render dashboard — never commit them.

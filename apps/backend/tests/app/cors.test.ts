@@ -17,6 +17,24 @@ describe('buildAllowedOrigins', () => {
   it('does not duplicate the frontend origin when it equals localhost', () => {
     expect(buildAllowedOrigins('http://localhost:5173')).toEqual(['http://localhost:5173']);
   });
+
+  it('strips a trailing slash from the configured frontend origin', () => {
+    expect(buildAllowedOrigins('https://rondo-beta.vercel.app/')).toEqual([
+      'http://localhost:5173',
+      'https://rondo-beta.vercel.app',
+    ]);
+  });
+
+  it('strips multiple trailing slashes from the configured frontend origin', () => {
+    expect(buildAllowedOrigins('https://rondo-beta.vercel.app///')).toEqual([
+      'http://localhost:5173',
+      'https://rondo-beta.vercel.app',
+    ]);
+  });
+
+  it('does not alter the local dev origin, which never has a trailing slash', () => {
+    expect(buildAllowedOrigins(undefined)).toEqual(['http://localhost:5173']);
+  });
 });
 
 describe('createCorsOriginValidator', () => {
@@ -92,6 +110,15 @@ describe('CORS integration on the built server', () => {
     const response = await app.inject({ method: 'GET', url: '/health', headers: { origin: 'https://evil.example.com' } });
 
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    await app.close();
+  });
+
+  it('still allows the trailing-slash-free origin when FRONTEND_URL was configured with a trailing slash', async () => {
+    const app = await buildServer({ NODE_ENV: 'test', FRONTEND_URL: 'https://rondo-beta.vercel.app/' });
+    const response = await app.inject({ method: 'GET', url: '/health', headers: { origin: 'https://rondo-beta.vercel.app' } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBe('https://rondo-beta.vercel.app');
     await app.close();
   });
 

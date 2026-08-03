@@ -1,5 +1,11 @@
 const LOCAL_DEV_ORIGIN = 'http://localhost:5173';
 
+// A browser's Origin header never has a trailing slash, so a FRONTEND_URL
+// pasted with one (e.g. "https://rondo-beta.vercel.app/") would otherwise
+// never match and silently break CORS. Only applied to the configured
+// value below — LOCAL_DEV_ORIGIN is already a known-good literal.
+const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '');
+
 // Vite falls back to 5174, 5175, etc. whenever its default port is already
 // taken (a second dev server, a stale process from a previous run...), so
 // pinning dev/test CORS to exactly :5173 breaks local development the
@@ -11,7 +17,7 @@ const ANY_LOCAL_PORT_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 export function buildAllowedOrigins(frontendUrl: string | undefined): string[] {
   const origins = new Set<string>([LOCAL_DEV_ORIGIN]);
   if (frontendUrl) {
-    origins.add(frontendUrl);
+    origins.add(trimTrailingSlashes(frontendUrl));
   }
   return [...origins];
 }
