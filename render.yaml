@@ -10,12 +10,18 @@
 # during the build step too, so DATABASE_URL is available for migrate
 # deploy at build time. If a migration fails, the build fails and the
 # previous deploy keeps serving traffic.
+#
+# --prod=false is required: NODE_ENV=production (set below) is present
+# during the build too, and pnpm treats that as an implicit --prod, which
+# skips devDependencies workspace-wide — including @types/node, typescript
+# and vitest, all needed to compile the backend. Without it the build fails
+# with TS2688 ("Cannot find type definition file for 'node'"/'vitest/globals').
 services:
   - type: web
     name: rondo-backend
     env: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @rondo/backend predeploy && pnpm build:backend
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm --filter @rondo/backend predeploy && pnpm build:backend
     startCommand: pnpm --filter @rondo/backend start
     healthCheckPath: /health
     envVars:
