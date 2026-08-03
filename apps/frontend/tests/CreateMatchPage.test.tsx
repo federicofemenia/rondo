@@ -36,6 +36,7 @@ describe('CreateMatchPage', () => {
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
     fireEvent.click(await screen.findByText('Delantero'));
+    await screen.findByDisplayValue('Club Señor Pato');
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     const expectedDate = buildDayOptions()[0]!.value;
@@ -47,14 +48,21 @@ describe('CreateMatchPage', () => {
       minPlayers: '4',
       maxPlayers: '10',
       positions: ['Delantero'],
-      clubId: null,
-      clubName: null,
+      clubId: 'club-1',
+      clubName: 'Club Señor Pato',
       courtName: null,
       date: expectedDate,
       availabilityStartMinutes: 13 * 60,
       availabilityEndMinutes: 19 * 60,
       startTimeMinutes: null,
     });
+  });
+
+  it('preselects the club the user is a member of', async () => {
+    render(<CreateMatchPage />);
+
+    const clubSelect = (await screen.findByDisplayValue('Club Señor Pato')) as HTMLSelectElement;
+    expect(clubSelect.value).toBe('club-1');
   });
 
   it('includes the club when one is selected, and the exact start time when it is enabled', async () => {
@@ -75,6 +83,25 @@ describe('CreateMatchPage', () => {
         availabilityStartMinutes: 13 * 60,
         availabilityEndMinutes: 19 * 60,
         startTimeMinutes: 13 * 60,
+      }),
+    );
+  });
+
+  it('lets the user pick Otro and type a free-text club name', async () => {
+    const onCreateMatch = vi.fn();
+    render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
+
+    await screen.findByText('Delantero');
+    const clubSelect = await screen.findByLabelText(/^club \(opcional\)$/i);
+
+    fireEvent.change(clubSelect, { target: { value: '__other__' } });
+    fireEvent.change(screen.getByLabelText(/nombre del club/i), { target: { value: 'Cancha del barrio' } });
+    fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
+
+    expect(onCreateMatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clubId: null,
+        clubName: 'Cancha del barrio',
       }),
     );
   });

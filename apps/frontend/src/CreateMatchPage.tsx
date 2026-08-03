@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -35,6 +35,7 @@ type CreateMatchPageProps = {
 };
 
 const positionOptions = ['Arquero', 'Defensor', 'Mediocampista', 'Delantero'];
+const OTHER_CLUB_VALUE = '__other__';
 
 function toggleValue(values: string[], value: string) {
   return values.includes(value) ? values.filter((current) => current !== value) : [...values, value];
@@ -60,6 +61,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const [maxPlayers, setMaxPlayers] = useState('10');
   const [positions, setPositions] = useState<string[]>([]);
   const [clubId, setClubId] = useState('');
+  const [otherClubName, setOtherClubName] = useState('');
   const [date, setDate] = useState(dayOptions[0]!.value);
   const [availabilityRange, setAvailabilityRange] = useState<[number, number]>(DEFAULT_AVAILABILITY_RANGE);
   const [startTimeMinutes, setStartTimeMinutes] = useState<number | null>(null);
@@ -81,6 +83,14 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
     }
   }, [sport, sportNames, sportModalities]);
 
+  const clubDefaultAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!clubDefaultAppliedRef.current && clubs.length > 0) {
+      setClubId(clubs[0]!.id);
+      clubDefaultAppliedRef.current = true;
+    }
+  }, [clubs]);
+
   const handleSportChange = (nextSport: string) => {
     setSport(nextSport);
     setModality(sportModalities[nextSport]?.[0]?.name ?? '');
@@ -95,7 +105,8 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
     if (!sportModalityId) {
       return;
     }
-    const selectedClub = clubs.find((club) => club.id === clubId);
+    const isOtherClub = clubId === OTHER_CLUB_VALUE;
+    const selectedClub = isOtherClub ? undefined : clubs.find((club) => club.id === clubId);
     onCreateMatch?.({
       sport,
       modality,
@@ -103,8 +114,8 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
       minPlayers,
       maxPlayers,
       positions,
-      clubId: clubId || null,
-      clubName: selectedClub?.name ?? null,
+      clubId: isOtherClub ? null : clubId || null,
+      clubName: isOtherClub ? otherClubName.trim() || null : selectedClub?.name ?? null,
       courtName: null,
       date,
       availabilityStartMinutes,
@@ -221,7 +232,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   onChange={(event) => setClubId(event.target.value)}
                   slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
                   disabled={clubsLoading}
-                  helperText="Podés armar el partido sin definir club todavía. Solo se listan los clubes de los que sos miembro."
+                  helperText="Se preseleccionó el club del que sos miembro. Podés cambiarlo o elegir Otro."
                   fullWidth
                 >
                   <option value="">Sin definir</option>
@@ -230,7 +241,18 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                       {club.name}
                     </option>
                   ))}
+                  <option value={OTHER_CLUB_VALUE}>Otro</option>
                 </TextField>
+
+                {clubId === OTHER_CLUB_VALUE ? (
+                  <TextField
+                    label="Nombre del club"
+                    value={otherClubName}
+                    onChange={(event) => setOtherClubName(event.target.value)}
+                    placeholder="Ingresá el nombre del club"
+                    fullWidth
+                  />
+                ) : null}
 
                 <Box
                   sx={{
