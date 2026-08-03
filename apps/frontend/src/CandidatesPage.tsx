@@ -96,7 +96,7 @@ function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps
   const candidateList = candidates ?? [];
 
   return (
-    <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: onFinish ? '120px' : 12 }}>
+    <Box sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: onFinish ? '120px' : 12 }}>
       <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', mb: 6 }}>
         <Typography variant="h1" sx={{ mb: 2 }}>
           Candidatos compatibles

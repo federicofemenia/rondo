@@ -86,12 +86,16 @@ describe('MatchDetailPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /buscar jugadores/i }));
     expect(await screen.findByText('Lina')).toBeTruthy();
+    // The confirmed/pending roster must stay visible alongside the candidate
+    // search, not get replaced by it (that used to make it unreachable again).
+    expect(screen.getByText('👑 Organizador')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /^invitar$/i }));
     expect(await screen.findByRole('button', { name: /invitación enviada/i })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /finalizar/i }));
     expect(await screen.findByText(/buscar jugadores/i)).toBeTruthy();
+    expect(screen.getByText('👑 Organizador')).toBeTruthy();
   });
 
   it('shows a banner when the current user has a pending or accepted invitation to this match', () => {
@@ -106,23 +110,28 @@ describe('MatchDetailPage', () => {
     expect(screen.queryByText(/invitación aceptada/i)).toBeFalsy();
   });
 
-  it('gestión tab lets the organizer cancel the match', () => {
+  it('resumen tab lets the organizer cancel the match', () => {
     const onCancelMatch = vi.fn();
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} onCancelMatch={onCancelMatch} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: /gestión/i }));
-    expect(screen.getByRole('heading', { name: /gestión del partido/i })).toBeTruthy();
+    expect(screen.getByText(/gestión del partido/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /cancelar partido/i }));
     expect(onCancelMatch).toHaveBeenCalled();
   });
 
-  it('the valoraciones tab is always present, next to Resumen, Jugadores, Gestión and Chat', () => {
+  it('does not offer Cancelar partido once the match is already cancelled', () => {
+    render(<MatchDetailPage match={{ ...baseMatch, status: 'CANCELLED' }} unlinkedBookings={[]} />);
+
+    expect(screen.queryByRole('button', { name: /cancelar partido/i })).toBeFalsy();
+  });
+
+  it('there is no separate Gestión tab; only Resumen, Jugadores, Chat and Valoraciones', () => {
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
     expect(screen.getByRole('tab', { name: /resumen/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /jugadores/i })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: /gestión/i })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /gestión/i })).toBeFalsy();
     expect(screen.getByRole('tab', { name: /^chat$/i })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /valoraciones/i })).toBeTruthy();
   });

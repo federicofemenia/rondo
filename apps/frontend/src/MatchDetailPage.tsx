@@ -23,7 +23,6 @@ import EntityPickerDialog from './EntityPickerDialog';
 import type { PickerItem } from './EntityPickerDialog';
 import ExactStartTimeInput from './ExactStartTimeInput';
 import MatchChatPage from './MatchChatPage';
-import MatchManagementPage from './MatchManagementPage';
 import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import MatchPlayersPage from './MatchPlayersPage';
 import MatchRatingsPage from './MatchRatingsPage';
@@ -47,7 +46,7 @@ type MatchDetailPageProps = {
   onLeftMatch?: () => void;
 };
 
-export type Tab = 'datos' | 'jugadores' | 'gestion' | 'chat' | 'valoraciones';
+export type Tab = 'datos' | 'jugadores' | 'chat' | 'valoraciones';
 
 const INVITATION_STATUS_BANNER: Partial<Record<MatchInvitationStatusDto, { label: string; color: string; bgcolor: string }>> = {
   PENDING: { label: 'Invitación pendiente', color: 'warning.main', bgcolor: 'rgba(245, 197, 66, 0.08)' },
@@ -119,9 +118,7 @@ function MatchDetailPage({
   const status = match.status;
   const cancelled = status === 'CANCELLED';
   const canEditSchedule = status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'EXPIRED';
-  const visibleTabs: Tab[] = cancelled
-    ? ['datos', 'chat', 'valoraciones']
-    : ['datos', 'jugadores', 'gestion', 'chat', 'valoraciones'];
+  const visibleTabs: Tab[] = cancelled ? ['datos', 'chat', 'valoraciones'] : ['datos', 'jugadores', 'chat', 'valoraciones'];
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
   const schedule = describeSchedule(match);
 
@@ -220,7 +217,6 @@ function MatchDetailPage({
         >
           <Tab value="datos" label="Resumen" sx={{ minHeight: 0 }} />
           {visibleTabs.includes('jugadores') ? <Tab value="jugadores" label="Jugadores" sx={{ minHeight: 0 }} /> : null}
-          {visibleTabs.includes('gestion') ? <Tab value="gestion" label="Gestión" sx={{ minHeight: 0 }} /> : null}
           {visibleTabs.includes('chat') ? <Tab value="chat" label="Chat" sx={{ minHeight: 0 }} /> : null}
           <Tab value="valoraciones" label="Valoraciones" sx={{ minHeight: 0 }} />
         </Tabs>
@@ -379,21 +375,23 @@ function MatchDetailPage({
               </Stack>
             ) : null}
           </Card>
+
+          {!cancelled ? (
+            <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', mt: 6 }}>
+              <Typography sx={{ fontWeight: 700, mb: 2 }}>Gestión del partido</Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+                Podés cancelar el partido si ya no se va a jugar.
+              </Typography>
+              <Button variant="outlined" color="error" onClick={onCancelMatch} sx={{ borderColor: 'divider', color: 'error.main' }}>
+                Cancelar partido
+              </Button>
+            </Card>
+          ) : null}
         </Box>
       ) : null}
 
       {tab === 'jugadores' && visibleTabs.includes('jugadores') ? (
-        searchingPlayers ? (
-          <CandidatesPage
-            matchId={match.id}
-            matchSummary={match}
-            onFinish={() => {
-              setSearchingPlayers(false);
-              setPlayersVersion((version) => version + 1);
-              onRosterChanged?.();
-            }}
-          />
-        ) : (
+        <>
           <MatchPlayersPage
             key={playersVersion}
             matchId={match.id}
@@ -408,10 +406,19 @@ function MatchDetailPage({
             }}
             onLeftMatch={onLeftMatch}
           />
-        )
+          {searchingPlayers ? (
+            <CandidatesPage
+              matchId={match.id}
+              matchSummary={match}
+              onFinish={() => {
+                setSearchingPlayers(false);
+                setPlayersVersion((version) => version + 1);
+                onRosterChanged?.();
+              }}
+            />
+          ) : null}
+        </>
       ) : null}
-
-      {tab === 'gestion' && visibleTabs.includes('gestion') ? <MatchManagementPage onCancelMatch={onCancelMatch} /> : null}
 
       {tab === 'chat' && visibleTabs.includes('chat') ? <MatchChatPage matchId={match.id} status={status} /> : null}
 
