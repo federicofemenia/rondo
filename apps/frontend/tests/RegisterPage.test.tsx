@@ -4,32 +4,21 @@ import RegisterPage from '../src/RegisterPage';
 import { signUpMock } from './setup';
 
 describe('RegisterPage', () => {
-  it('renders the registration form including preferred sports', () => {
+  it('renders only Nombre visible, Usuario, Contraseña and Confirmar contraseña', () => {
     render(<RegisterPage />);
 
     expect(screen.getByRole('heading', { name: /creá tu cuenta/i })).toBeTruthy();
-    expect(screen.getByLabelText(/nombre/i)).toBeTruthy();
-    expect(screen.getByLabelText(/apellido/i)).toBeTruthy();
-    expect(screen.getByLabelText(/fecha de nacimiento/i)).toBeTruthy();
-    expect(screen.getByText(/deportes favoritos/i)).toBeTruthy();
-    expect(screen.queryByText(/posición preferida/i)).toBeFalsy();
-  });
+    expect(screen.getByLabelText(/nombre visible/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^usuario$/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^contraseña$/i)).toBeTruthy();
+    expect(screen.getByLabelText(/confirmar contraseña/i)).toBeTruthy();
 
-  it('shows sport-specific position chips once a sport is selected, and both groups when two are picked', async () => {
-    render(<RegisterPage />);
-
-    fireEvent.click(await screen.findByText('Fútbol'));
-
-    expect(screen.getByText(/posición preferida/i)).toBeTruthy();
-    expect(screen.getByText('Delantero')).toBeTruthy();
-    expect(screen.getByText('Arquero')).toBeTruthy();
-    expect(screen.queryByText('Drive')).toBeFalsy();
-
-    fireEvent.click(screen.getByText('Pádel'));
-
-    expect(screen.getByText('Drive')).toBeTruthy();
-    expect(screen.getByText('Revés')).toBeTruthy();
-    expect(screen.getByText('Delantero')).toBeTruthy();
+    expect(screen.queryByLabelText(/^email$/i)).toBeFalsy();
+    expect(screen.queryByLabelText(/teléfono/i)).toBeFalsy();
+    expect(screen.queryByLabelText(/fecha de nacimiento/i)).toBeFalsy();
+    expect(screen.queryByLabelText(/sexo/i)).toBeFalsy();
+    expect(screen.queryByText(/deportes favoritos/i)).toBeFalsy();
+    expect(screen.queryByText(/foto de perfil/i)).toBeFalsy();
   });
 
   it('requires accepting the terms before submitting', () => {
@@ -42,37 +31,52 @@ describe('RegisterPage', () => {
     expect(screen.getByRole('button', { name: /crear cuenta/i })).toHaveProperty('disabled', false);
   });
 
-  it('calls onRegister once Clerk completes the sign-up in one step', async () => {
+  it('rejects mismatched passwords without calling Clerk', async () => {
+    render(<RegisterPage />);
+
+    fireEvent.change(screen.getByLabelText(/nombre visible/i), { target: { value: 'Fede' } });
+    fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'fede' } });
+    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'unaClave123' } });
+    fireEvent.change(screen.getByLabelText(/confirmar contraseña/i), { target: { value: 'otraClave456' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
+
+    expect(await screen.findByText(/las contraseñas no coinciden/i)).toBeTruthy();
+    expect(signUpMock.password).not.toHaveBeenCalled();
+  });
+
+  it('calls onRegister once Clerk completes the sign-up in one step, sending username + displayName metadata', async () => {
     const onRegister = vi.fn();
     render(<RegisterPage onRegister={onRegister} />);
 
-    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'nuevo@rondo.dev' } });
+    fireEvent.change(screen.getByLabelText(/nombre visible/i), { target: { value: 'Fede' } });
+    fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'fede' } });
+    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'unaClave123' } });
+    fireEvent.change(screen.getByLabelText(/confirmar contraseña/i), { target: { value: 'unaClave123' } });
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
 
     await waitFor(() => expect(onRegister).toHaveBeenCalled());
+    expect(signUpMock.password).toHaveBeenCalledWith({
+      username: 'fede',
+      password: 'unaClave123',
+      unsafeMetadata: { displayName: 'Fede' },
+    });
     expect(signUpMock.finalize).toHaveBeenCalled();
   });
 
-  it('asks for an email verification code when Clerk requires it, then completes sign-up', async () => {
-    signUpMock.status = 'missing_requirements';
-    signUpMock.unverifiedFields = ['email_address'];
-    const onRegister = vi.fn();
-    render(<RegisterPage onRegister={onRegister} />);
+  it('shows the Clerk error message when sign-up fails', async () => {
+    signUpMock.password.mockResolvedValueOnce({ error: { message: 'El usuario ya está en uso.' } });
+    render(<RegisterPage />);
 
-    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'nuevo@rondo.dev' } });
+    fireEvent.change(screen.getByLabelText(/nombre visible/i), { target: { value: 'Fede' } });
+    fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'fede' } });
+    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'unaClave123' } });
+    fireEvent.change(screen.getByLabelText(/confirmar contraseña/i), { target: { value: 'unaClave123' } });
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
 
-    await screen.findByText(/confirmá tu email/i);
-    expect(signUpMock.verifications.sendEmailCode).toHaveBeenCalled();
-
-    signUpMock.status = 'complete';
-    fireEvent.change(screen.getByLabelText(/código de verificación/i), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: /^verificar$/i }));
-
-    await waitFor(() => expect(onRegister).toHaveBeenCalled());
-    expect(signUpMock.verifications.verifyEmailCode).toHaveBeenCalledWith({ code: '123456' });
+    expect(await screen.findByText(/el usuario ya está en uso/i)).toBeTruthy();
   });
 
   it('calls onNavigateToLogin when the login link is clicked', () => {

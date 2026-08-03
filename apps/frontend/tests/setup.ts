@@ -102,6 +102,8 @@ export const mockCandidatesFailingMatchIds = new Set<string>();
 export const mockMyInvitations: MatchInvitationDto[] = [];
 /** Flip .failing to true to make GET /api/v1/me/invitations respond with a 500 (e.g. to exercise a silent polling failure). */
 export const mockInvitationsListState = { failing: false };
+/** GET /api/v1/me fails this many times (decrementing) before succeeding — simulates a slow/waking backend for boot-retry tests. */
+export const mockMeState = { failuresRemaining: 0 };
 /** matchIds added here make POST .../invitations respond with a 500, to exercise the CandidatesPage error state. */
 export const mockInvitationCreateFailingMatchIds = new Set<string>();
 /** invitationIds added here make POST .../accept|reject respond with a 500, to exercise the InvitationsPage error state. */
@@ -144,6 +146,7 @@ beforeEach(() => {
   mockCandidatesFailingMatchIds.clear();
   mockMyInvitations.length = 0;
   mockInvitationsListState.failing = false;
+  mockMeState.failuresRemaining = 0;
   mockInvitationCreateFailingMatchIds.clear();
   mockInvitationRespondFailingIds.clear();
   mockParticipantsByMatchId.clear();
@@ -171,7 +174,23 @@ beforeEach(() => {
     }
 
     if (url.endsWith('/api/v1/me')) {
-      return json({ data: { id: 'user-test', email: 'federico@rondo.dev', firstName: 'Federico', lastName: 'Femenia', avatarUrl: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+      if (mockMeState.failuresRemaining > 0) {
+        mockMeState.failuresRemaining -= 1;
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      return json({
+        data: {
+          id: 'user-test',
+          username: 'federico',
+          email: 'federico@rondo.dev',
+          firstName: 'Federico',
+          lastName: 'Femenia',
+          displayName: 'Federico Femenia',
+          avatarUrl: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      });
     }
 
     if (url.endsWith('/api/v1/me/matches')) {

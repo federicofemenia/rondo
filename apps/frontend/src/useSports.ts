@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { SportDto } from '@rondo/contracts';
-import { appConfig } from '@rondo/config';
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? appConfig.apiBaseUrl;
+import { apiBaseUrl } from './runtimeConfig';
 
 type UseSportsResult = {
   sports: SportDto[];

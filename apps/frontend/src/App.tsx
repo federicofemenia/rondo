@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { HealthResponse, MatchInvitationDto, MatchSummaryDto, PendingTaskDto, UserDto } from '@rondo/contracts';
-import { appConfig } from '@rondo/config';
 import { useAuth, useClerk } from '@clerk/react';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
+import CircularProgress from '@mui/material/CircularProgress';
 import IconButton from '@mui/material/IconButton';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
@@ -35,6 +36,8 @@ import { buildIsoDateTime, describeSchedule } from './scheduleFormat';
 import type { ScheduleUpdateInput } from './scheduleFormat';
 import SportProfilePage from './SportProfilePage';
 import type { BookingEntity, MatchEntity } from './types';
+import { apiBaseUrl } from './runtimeConfig';
+import { retryWithBackoff } from './apiRetry';
 import { useVisiblePolling } from './useVisiblePolling';
 
 const HOME_POLL_INTERVAL_MS = 20_000;
@@ -65,16 +68,9 @@ function isWizardStep(view: View): view is WizardStep {
   return view === 'create' || view === 'candidates';
 }
 
-function displayName(user: UserDto): string {
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return fullName || user.email || 'Jugador';
-}
-
 function describeError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? appConfig.apiBaseUrl;
 
 function App() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
@@ -128,18 +124,22 @@ function App() {
     }
   }, [authLoaded, isSignedIn]);
 
+  const fetchAccountDataOnce = async () => {
+    const [meResponse, matchesResponse, tasksResponse, invitationsResponse] = await Promise.all([
+      api.get<{ data: UserDto }>('/api/v1/me'),
+      api.get<{ data: MatchSummaryDto[] }>('/api/v1/me/matches'),
+      api.get<{ data: PendingTaskDto[] }>('/api/v1/me/pending-tasks'),
+      api.get<{ data: MatchInvitationDto[] }>('/api/v1/me/invitations'),
+    ]);
+    setPlayerName(meResponse.data.displayName);
+    setMatches((current) => matchesResponse.data.map((dto) => matchSummaryToEntity(dto, current.find((match) => match.id === dto.id))));
+    setPendingTasks(tasksResponse.data);
+    setMyInvitations(invitationsResponse.data);
+  };
+
   const loadAccountData = async (options?: { silent?: boolean }) => {
     try {
-      const [meResponse, matchesResponse, tasksResponse, invitationsResponse] = await Promise.all([
-        api.get<{ data: UserDto }>('/api/v1/me'),
-        api.get<{ data: MatchSummaryDto[] }>('/api/v1/me/matches'),
-        api.get<{ data: PendingTaskDto[] }>('/api/v1/me/pending-tasks'),
-        api.get<{ data: MatchInvitationDto[] }>('/api/v1/me/invitations'),
-      ]);
-      setPlayerName(displayName(meResponse.data));
-      setMatches((current) => matchesResponse.data.map((dto) => matchSummaryToEntity(dto, current.find((match) => match.id === dto.id))));
-      setPendingTasks(tasksResponse.data);
-      setMyInvitations(invitationsResponse.data);
+      await fetchAccountDataOnce();
     } catch (error) {
       // A silent (polling) refresh never surfaces an invasive error: keep
       // whatever was last shown and just retry on the next tick.
@@ -149,13 +149,40 @@ function App() {
     }
   };
 
+  // First load after sign-in gets a few limited, cancelable retries with
+  // backoff: a free-tier Render backend waking up from sleep can take a few
+  // seconds, and this is the moment a user would otherwise see a hard
+  // failure right after logging in. Silent/polling refreshes never retry
+  // this way — they just wait for the next cycle instead (see loadAccountData above).
+  const [bootPhase, setBootPhase] = useState<'pending' | 'ready' | 'failed'>('pending');
+  const [bootRetryToken, setBootRetryToken] = useState(0);
+
   useEffect(() => {
     if (!isSignedIn) {
+      setBootPhase('pending');
       return;
     }
-    void loadAccountData();
+
+    let cancelled = false;
+    setBootPhase('pending');
+
+    retryWithBackoff(fetchAccountDataOnce, { attempts: 4, baseDelayMs: 1500, isCancelled: () => cancelled })
+      .then(() => {
+        if (!cancelled) {
+          setBootPhase('ready');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBootPhase('failed');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn]);
+  }, [isSignedIn, bootRetryToken]);
 
   // Lightweight "feels real-time" refresh for Home and MatchDetail: reuses
   // the same loadAccountData used after local mutations, just silenced and
@@ -336,6 +363,35 @@ function App() {
   const renderView = () => {
     if (!authLoaded) {
       return null;
+    }
+
+    if (isSignedIn && bootPhase !== 'ready') {
+      if (bootPhase === 'failed') {
+        return (
+          <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', px: 4, textAlign: 'center' }}>
+            <Typography variant="h1" sx={{ mb: 2, fontSize: '1.5rem' }}>
+              No pudimos conectar con Rondo
+            </Typography>
+            <Typography color="text.secondary" sx={{ mb: 6, maxWidth: 360 }}>
+              El servidor puede haberse quedado inactivo por falta de uso. Esto puede tardar unos segundos en la beta.
+            </Typography>
+            <Button variant="contained" onClick={() => setBootRetryToken((token) => token + 1)}>
+              Reintentar
+            </Button>
+          </Box>
+        );
+      }
+      return (
+        <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', px: 4, textAlign: 'center' }}>
+          <CircularProgress sx={{ mb: 4 }} />
+          <Typography variant="h1" sx={{ mb: 2, fontSize: '1.5rem' }}>
+            Estamos iniciando el servidor de Rondo
+          </Typography>
+          <Typography color="text.secondary" sx={{ maxWidth: 360 }}>
+            Esto puede tardar unos segundos en la beta.
+          </Typography>
+        </Box>
+      );
     }
 
     if (currentView === 'login') {

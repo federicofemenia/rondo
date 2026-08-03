@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
-import { mockMyInvitations } from './setup';
+import { clerkAuthMock, mockMeState, mockMyInvitations } from './setup';
 
 async function loginAndReachHome() {
   render(<App />);
@@ -17,14 +17,11 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeTruthy();
   });
 
-  it('navigates to the register screen and back to login', () => {
+  it('hides the register link and shows the closed-beta message by default (VITE_BETA_SIGN_UP_ENABLED unset)', () => {
     render(<App />);
 
-    fireEvent.click(screen.getByText(/registrate gratis/i));
-    expect(screen.getByRole('heading', { name: /creá tu cuenta/i })).toBeTruthy();
-
-    fireEvent.click(screen.getByText(/iniciar sesión/i));
-    expect(screen.getByAltText(/rondo/i)).toBeTruthy();
+    expect(screen.queryByText(/registrate gratis/i)).toBeFalsy();
+    expect(screen.getByText(/esta beta requiere una cuenta asignada/i)).toBeTruthy();
   });
 
   it('renders the home dashboard with the primary quick actions and empty state after logging in', async () => {
@@ -115,5 +112,43 @@ describe('App', () => {
     expect(screen.getByText(/sin partido asociado/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /^crear partido$/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /asociar partido existente/i })).toBeTruthy();
+  });
+
+  it('shows a waking-up screen, then reaches Home once transient failures stop', async () => {
+    clerkAuthMock.isSignedIn = true;
+    mockMeState.failuresRemaining = 2;
+
+    vi.useFakeTimers();
+    try {
+      render(<App />);
+      await vi.waitFor(() => expect(screen.getByText(/estamos iniciando el servidor de rondo/i)).toBeTruthy());
+
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(3000);
+      await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows a retry option after exhausting attempts, and recovers on click', async () => {
+    clerkAuthMock.isSignedIn = true;
+    mockMeState.failuresRemaining = 999;
+
+    vi.useFakeTimers();
+    try {
+      render(<App />);
+      await vi.waitFor(() => expect(screen.getByText(/estamos iniciando el servidor de rondo/i)).toBeTruthy());
+
+      await vi.advanceTimersByTimeAsync(1500 + 3000 + 6000 + 1000);
+      await vi.waitFor(() => expect(screen.getByText(/no pudimos conectar con rondo/i)).toBeTruthy());
+
+      mockMeState.failuresRemaining = 0;
+      fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+
+      await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

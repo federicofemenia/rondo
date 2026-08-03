@@ -7,21 +7,24 @@ import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
+import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
 import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded';
 import logo from './assets/logo.png';
 import PageFooter from './PageFooter';
+import { isSignUpEnabled } from './runtimeConfig';
 
 type LoginPageProps = {
   onLogin?: () => void;
   onNavigateToRegister?: () => void;
+  /** Defaults to the real VITE_BETA_SIGN_UP_ENABLED value; overridable for tests. */
+  signUpEnabled?: boolean;
 };
 
-function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
+function LoginPage({ onLogin, onNavigateToRegister, signUpEnabled = isSignUpEnabled }: LoginPageProps) {
   const { signIn } = useSignIn();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -38,7 +41,7 @@ function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
     setErrorMessage(null);
     setSubmitting(true);
     try {
-      const { error } = await signIn.password({ identifier: email, password });
+      const { error } = await signIn.password({ identifier, password });
       if (error) {
         setErrorMessage(error.longMessage ?? error.message);
         return;
@@ -99,7 +102,7 @@ function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
             Confirmá que sos vos
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 6 }}>
-            Es la primera vez que iniciás sesión desde este dispositivo. Te enviamos un código a {email}.
+            Es la primera vez que iniciás sesión desde este dispositivo. Te enviamos un código de verificación.
           </Typography>
 
           <TextField label="Código de verificación" value={trustCode} onChange={(event) => setTrustCode(event.target.value)} fullWidth autoFocus />
@@ -133,17 +136,18 @@ function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
 
         <Stack spacing={4}>
           <TextField
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="tu@email.com"
+            label="Usuario"
+            type="text"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            placeholder="Tu usuario"
+            autoComplete="username"
             fullWidth
             slotProps={{
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
-                    <MailOutlineRoundedIcon fontSize="small" sx={{ color: 'primary.light' }} />
+                    <PersonRoundedIcon fontSize="small" sx={{ color: 'primary.light' }} />
                   </InputAdornment>
                 ),
               },
@@ -156,6 +160,7 @@ function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Ingresá tu contraseña"
+              autoComplete="current-password"
               fullWidth
               slotProps={{
                 input: {
@@ -187,16 +192,22 @@ function LoginPage({ onLogin, onNavigateToRegister }: LoginPageProps) {
         ) : null}
 
         <Stack alignItems="center" spacing={1} sx={{ mt: 6 }}>
-          <Typography variant="body2" color="text.secondary">
-            ¿No tenés cuenta?{' '}
-            <Box
-              component="span"
-              onClick={onNavigateToRegister}
-              sx={{ color: 'primary.light', fontWeight: 700, cursor: 'pointer' }}
-            >
-              Registrate gratis
-            </Box>
-          </Typography>
+          {signUpEnabled ? (
+            <Typography variant="body2" color="text.secondary">
+              ¿No tenés cuenta?{' '}
+              <Box
+                component="span"
+                onClick={onNavigateToRegister}
+                sx={{ color: 'primary.light', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Registrate gratis
+              </Box>
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', maxWidth: 320 }}>
+              Esta beta requiere una cuenta asignada. Si sos parte de la beta, pedile tu usuario y contraseña al organizador.
+            </Typography>
+          )}
           <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', maxWidth: 320 }}>
             Al continuar, aceptás nuestros Términos y Condiciones y nuestra Política de Privacidad.
           </Typography>

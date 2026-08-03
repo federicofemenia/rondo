@@ -1,7 +1,5 @@
 import { useAuth } from '@clerk/react';
-import { appConfig } from '@rondo/config';
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? appConfig.apiBaseUrl;
+import { apiBaseUrl } from './runtimeConfig';
 
 export class ApiError extends Error {
   status: number;
