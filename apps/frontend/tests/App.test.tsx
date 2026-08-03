@@ -44,6 +44,17 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /volver/i })).toBeTruthy();
   });
 
+  it('scrolls back to the top on every screen change', async () => {
+    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    await loginAndReachHome();
+    scrollToSpy.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /armar partido/i }));
+    expect(screen.getByRole('heading', { name: /armar partido/i })).toBeTruthy();
+
+    expect(scrollToSpy).toHaveBeenCalledWith(0, 0);
+  });
+
   it('completes the wizard, shows the match on Home, and opens its detail with pending status', async () => {
     await loginAndReachHome();
 

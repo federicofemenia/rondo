@@ -79,6 +79,10 @@ function App() {
 
   const [status, setStatus] = useState('Verificando conexión…');
   const [currentView, setCurrentView] = useState<View>('login');
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentView]);
   const [playerName, setPlayerName] = useState('');
   const [globalError, setGlobalError] = useState<string | null>(null);
 
