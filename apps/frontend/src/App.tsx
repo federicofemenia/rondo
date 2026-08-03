@@ -22,7 +22,7 @@ import CreateMatchPage from './CreateMatchPage';
 import type { MatchDraft } from './CreateMatchPage';
 import EditProfilePage from './EditProfilePage';
 import HomePage from './HomePage';
-import type { PendingAction, UpcomingEventItem } from './HomePage';
+import type { UpcomingEventItem } from './HomePage';
 import InvitationsPage from './InvitationsPage';
 import LoginPage from './LoginPage';
 import { matchSummaryToEntity } from './matchMapping';
@@ -35,7 +35,7 @@ import type { ConfirmedBooking } from './ReservationFlowPage';
 import { buildIsoDateTime, describeSchedule } from './scheduleFormat';
 import type { ScheduleUpdateInput } from './scheduleFormat';
 import SportProfilePage from './SportProfilePage';
-import type { BookingEntity, MatchEntity } from './types';
+import type { BookingEntity, MatchEntity, PendingAction } from './types';
 import { apiBaseUrl } from './runtimeConfig';
 import { retryWithBackoff } from './apiRetry';
 import { useVisiblePolling } from './useVisiblePolling';
@@ -577,7 +577,6 @@ function App() {
           <HomePage
             connectionStatus={status}
             playerName={playerName || undefined}
-            pendingActions={pendingActions}
             upcomingEvents={upcomingEvents}
             onReserveCourt={openReservationFlow}
             onCreateMatch={openCreateFlow}
@@ -662,7 +661,7 @@ function App() {
           onEditSportProfile={openSportProfile}
           onOpenInvitations={openInvitations}
           onLogout={() => void handleLogout()}
-          pendingActionsCount={pendingActions.length}
+          pendingActions={pendingActions}
         />
       ) : null}
       {renderView()}

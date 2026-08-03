@@ -13,14 +13,6 @@ import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import PercentRoundedIcon from '@mui/icons-material/PercentRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import PlaceRoundedIcon from '@mui/icons-material/PlaceRounded';
-import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
-
-export type PendingAction = {
-  id: string;
-  label: string;
-  description?: string;
-  onClick: () => void;
-};
 
 export type UpcomingEventItem = {
   id: string;
@@ -37,7 +29,6 @@ type HomePageProps = {
   playerName?: string;
   clubName?: string;
   connectionStatus?: string;
-  pendingActions?: PendingAction[];
   upcomingEvents?: UpcomingEventItem[];
   onReserveCourt?: () => void;
   onCreateMatch?: () => void;
@@ -67,7 +58,6 @@ function HomePage({
   playerName = 'Federico',
   clubName = 'Club Señor Pato',
   connectionStatus,
-  pendingActions = [],
   upcomingEvents = [],
   onReserveCourt,
   onCreateMatch,
@@ -131,32 +121,6 @@ function HomePage({
           ))}
         </Stack>
       </Box>
-
-      {pendingActions.length > 0 ? (
-        <Box sx={{ mb: 8 }}>
-          <SectionHeader title="Acciones pendientes" />
-          <Stack spacing={2}>
-            {pendingActions.map((action) => (
-              <Card key={action.id} variant="outlined" sx={{ borderColor: 'divider', bgcolor: 'background.paper' }}>
-                <CardActionArea onClick={action.onClick} sx={{ p: 3, display: 'flex', gap: 3, alignItems: 'center' }}>
-                  <WarningAmberRoundedIcon sx={{ color: 'warning.main', flexShrink: 0 }} />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {action.label}
-                    </Typography>
-                    {action.description ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        {action.description}
-                      </Typography>
-                    ) : null}
-                  </Box>
-                  <ChevronRightRoundedIcon sx={{ color: 'text.secondary' }} />
-                </CardActionArea>
-              </Card>
-            ))}
-          </Stack>
-        </Box>
-      ) : null}
 
       <Box sx={{ mb: 8 }}>
         <SectionHeader title="Próximos eventos" />

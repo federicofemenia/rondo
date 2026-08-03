@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { clerkAuthMock, mockMeState, mockMyInvitations } from './setup';
@@ -56,7 +56,11 @@ describe('App', () => {
 
     await screen.findByRole('heading', { name: /hola, federico/i });
     expect(screen.queryByText(/tenés una reserva sin partido asociado/i)).toBeFalsy();
+
+    fireEvent.click(screen.getByLabelText(/notificaciones/i));
     expect(screen.getByText(/todavía no tiene cancha/i)).toBeTruthy();
+    fireEvent.keyDown(screen.getByText(/todavía no tiene cancha/i), { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(screen.queryByText(/todavía no tiene cancha/i)).toBeFalsy());
 
     fireEvent.click(screen.getByRole('button', { name: /fútbol • fútbol 5/i }));
 
@@ -96,8 +100,10 @@ describe('App', () => {
       });
 
       await vi.advanceTimersByTimeAsync(20_000);
-      await vi.waitFor(() => expect(screen.getByText(/tenés una invitación pendiente/i)).toBeTruthy());
-      expect(screen.getByLabelText('Notificaciones (1 pendiente)')).toBeTruthy();
+      await vi.waitFor(() => expect(screen.getByLabelText('Notificaciones (1 pendiente)')).toBeTruthy());
+
+      fireEvent.click(screen.getByLabelText('Notificaciones (1 pendiente)'));
+      expect(screen.getByText(/tenés una invitación pendiente/i)).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }

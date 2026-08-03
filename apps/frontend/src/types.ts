@@ -2,6 +2,13 @@ import type { MatchStatusDto, RateParticipantInputDto, StatusChangedByTypeDto } 
 
 export type PlayerRating = RateParticipantInputDto;
 
+export type PendingAction = {
+  id: string;
+  label: string;
+  description?: string;
+  onClick: () => void;
+};
+
 export type MatchEntity = {
   id: string;
   status: MatchStatusDto;
