@@ -72,6 +72,7 @@ describe('App', () => {
       fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
       await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
       expect(screen.queryByText(/tenés una invitación pendiente/i)).toBeFalsy();
+      expect(screen.getByLabelText('Notificaciones')).toBeTruthy();
 
       mockMyInvitations.push({
         id: 'invitation-poll-1',
@@ -96,6 +97,7 @@ describe('App', () => {
 
       await vi.advanceTimersByTimeAsync(20_000);
       await vi.waitFor(() => expect(screen.getByText(/tenés una invitación pendiente/i)).toBeTruthy());
+      expect(screen.getByLabelText('Notificaciones (1 pendiente)')).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }

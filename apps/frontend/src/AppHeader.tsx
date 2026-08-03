@@ -20,9 +20,10 @@ type AppHeaderProps = {
   onEditSportProfile?: () => void;
   onOpenInvitations?: () => void;
   onLogout?: () => void;
+  pendingActionsCount?: number;
 };
 
-function AppHeader({ onEditProfile, onEditSportProfile, onOpenInvitations, onLogout }: AppHeaderProps) {
+function AppHeader({ onEditProfile, onEditSportProfile, onOpenInvitations, onLogout, pendingActionsCount = 0 }: AppHeaderProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const menuOpen = Boolean(menuAnchor);
 
@@ -44,8 +45,15 @@ function AppHeader({ onEditProfile, onEditSportProfile, onOpenInvitations, onLog
         <Box />
         <Box component="img" src={logoIcon} alt="Rondo" sx={{ height: 36, width: 36, objectFit: 'contain', justifySelf: 'center' }} />
         <Stack direction="row" spacing={1.5} sx={{ justifySelf: 'end' }}>
-          <IconButton aria-label="Notificaciones" sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
-            <Badge color="warning" variant="dot">
+          <IconButton
+            aria-label={
+              pendingActionsCount > 0
+                ? `Notificaciones (${pendingActionsCount} ${pendingActionsCount === 1 ? 'pendiente' : 'pendientes'})`
+                : 'Notificaciones'
+            }
+            sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}
+          >
+            <Badge color="error" variant="dot" invisible={pendingActionsCount === 0}>
               <NotificationsNoneRoundedIcon />
             </Badge>
           </IconButton>

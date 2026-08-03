@@ -360,6 +360,45 @@ function App() {
 
   const showAppHeader = currentView !== 'login' && currentView !== 'register';
 
+  const pendingActions: PendingAction[] = [];
+  matches.forEach((match) => {
+    const isActive = match.status === 'ORGANIZING' || match.status === 'FULL';
+
+    if (isActive && !match.clubName) {
+      pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene club.`, onClick: () => openMatchDetail(match.id) });
+    }
+    if (isActive && !match.startsAt) {
+      pendingActions.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario confirmado.`, onClick: () => openMatchDetail(match.id) });
+    }
+    if (isActive && !match.courtName) {
+      pendingActions.push({ id: `${match.id}-court`, label: `Tu partido de ${match.sport} todavía no tiene cancha.`, onClick: () => openMatchDetail(match.id) });
+    }
+  });
+
+  const pendingInvitationsCount = myInvitations.filter((invitation) => invitation.status === 'PENDING').length;
+  if (pendingInvitationsCount > 0) {
+    pendingActions.push({
+      id: 'pending-invitations',
+      label: pendingInvitationsCount === 1 ? 'Tenés una invitación pendiente.' : `Tenés ${pendingInvitationsCount} invitaciones pendientes.`,
+      onClick: openInvitations,
+    });
+  }
+
+  pendingTasks.forEach((task) => {
+    pendingActions.push({
+      id: `${task.matchId}-${task.type}`,
+      label: task.title,
+      description: task.description,
+      onClick: () => openMatchDetail(task.matchId, task.targetTab === 'ratings' ? 'valoraciones' : undefined),
+    });
+  });
+
+  bookings.forEach((booking) => {
+    if (!booking.matchId) {
+      pendingActions.push({ id: `${booking.id}-no-match`, label: 'Tenés una reserva sin partido asociado.', onClick: () => openBookingDetail(booking.id) });
+    }
+  });
+
   const renderView = () => {
     if (!authLoaded) {
       return null;
@@ -496,45 +535,6 @@ function App() {
     }
 
     if (!isWizardStep(currentView)) {
-      const pendingActions: PendingAction[] = [];
-      matches.forEach((match) => {
-        const isActive = match.status === 'ORGANIZING' || match.status === 'FULL';
-
-        if (isActive && !match.clubName) {
-          pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene club.`, onClick: () => openMatchDetail(match.id) });
-        }
-        if (isActive && !match.startsAt) {
-          pendingActions.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario confirmado.`, onClick: () => openMatchDetail(match.id) });
-        }
-        if (isActive && !match.courtName) {
-          pendingActions.push({ id: `${match.id}-court`, label: `Tu partido de ${match.sport} todavía no tiene cancha.`, onClick: () => openMatchDetail(match.id) });
-        }
-      });
-
-      const pendingInvitationsCount = myInvitations.filter((invitation) => invitation.status === 'PENDING').length;
-      if (pendingInvitationsCount > 0) {
-        pendingActions.push({
-          id: 'pending-invitations',
-          label: pendingInvitationsCount === 1 ? 'Tenés una invitación pendiente.' : `Tenés ${pendingInvitationsCount} invitaciones pendientes.`,
-          onClick: openInvitations,
-        });
-      }
-
-      pendingTasks.forEach((task) => {
-        pendingActions.push({
-          id: `${task.matchId}-${task.type}`,
-          label: task.title,
-          description: task.description,
-          onClick: () => openMatchDetail(task.matchId, task.targetTab === 'ratings' ? 'valoraciones' : undefined),
-        });
-      });
-
-      bookings.forEach((booking) => {
-        if (!booking.matchId) {
-          pendingActions.push({ id: `${booking.id}-no-match`, label: 'Tenés una reserva sin partido asociado.', onClick: () => openBookingDetail(booking.id) });
-        }
-      });
-
       const upcomingEvents: UpcomingEventItem[] = [...matches, ...bookings]
         .slice()
         .sort((a, b) => a.createdAt - b.createdAt)
@@ -662,6 +662,7 @@ function App() {
           onEditSportProfile={openSportProfile}
           onOpenInvitations={openInvitations}
           onLogout={() => void handleLogout()}
+          pendingActionsCount={pendingActions.length}
         />
       ) : null}
       {renderView()}
