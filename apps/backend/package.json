@@ -11,6 +11,11 @@
     "test": "vitest run",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "predeploy": "pnpm prisma:generate && pnpm prisma:migrate:deploy",
+    "seed:base": "tsx src/infrastructure/database/seedBase.ts",
+    "seed:beta": "tsx src/infrastructure/database/seedBeta.ts",
+    "seed:candidates": "tsx src/infrastructure/database/seedTestCandidates.ts",
     "prisma:seed": "tsx src/infrastructure/database/seed.ts"
   },
   "prisma": {

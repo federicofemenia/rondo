@@ -16,18 +16,24 @@ import { registerSportProfileRoutes } from '../modules/sportProfiles/sportProfil
 import { createClerkAuthAdapter } from '../infrastructure/auth/clerkAuthAdapter.js';
 import type { AuthAdapter } from '../infrastructure/auth/authAdapter.js';
 import { attachAuth } from './auth.js';
+import { buildAllowedOrigins, createCorsOriginValidator } from './cors.js';
 
 export interface BuildServerDeps {
   authAdapter?: AuthAdapter;
 }
 
-export async function buildServer(env: Pick<Env, 'NODE_ENV' | 'CLERK_SECRET_KEY'>, deps: BuildServerDeps = {}) {
+type BuildServerEnv = Pick<
+  Env,
+  'NODE_ENV' | 'CLERK_SECRET_KEY' | 'FRONTEND_URL' | 'BOOTSTRAP_ADMIN_CLERK_USER_ID' | 'BOOTSTRAP_ADMIN_USERNAME'
+>;
+
+export async function buildServer(env: BuildServerEnv, deps: BuildServerDeps = {}) {
   const app = Fastify({
     logger: env.NODE_ENV !== 'test',
   });
 
   await app.register(cors, {
-    origin: true,
+    origin: createCorsOriginValidator(buildAllowedOrigins(env.FRONTEND_URL), { allowAnyLocalPort: env.NODE_ENV !== 'production' }),
   });
 
   app.get('/health', async (): Promise<HealthResponse> => ({
@@ -39,7 +45,10 @@ export async function buildServer(env: Pick<Env, 'NODE_ENV' | 'CLERK_SECRET_KEY'
   app.get('/health/database', async () => getHealthStatus());
 
   const authAdapter = deps.authAdapter ?? createClerkAuthAdapter(env.CLERK_SECRET_KEY ?? '');
-  attachAuth(app, authAdapter);
+  attachAuth(app, authAdapter, {
+    clerkUserId: env.BOOTSTRAP_ADMIN_CLERK_USER_ID,
+    username: env.BOOTSTRAP_ADMIN_USERNAME,
+  });
 
   registerUserRoutes(app);
   registerSportRoutes(app);

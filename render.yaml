@@ -1,0 +1,39 @@
+# Render Blueprint for the Rondo backend only. The frontend deploys to
+# Vercel separately (see docs/BETA_DEPLOYMENT.md) — do not add a static
+# site here.
+#
+# Render's "Pre-Deploy Command" is a dashboard/plan-level setting not
+# guaranteed to be scriptable the same way across every Render Blueprint
+# schema version, so it is not encoded here — set it manually in the
+# service settings after the first deploy (see docs/BETA_DEPLOYMENT.md):
+#
+#   pnpm --filter @rondo/backend predeploy
+#
+# That runs `prisma generate` + `prisma migrate deploy` — never
+# `prisma migrate dev`, and never a reset.
+services:
+  - type: web
+    name: rondo-backend
+    env: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @rondo/backend... build
+    startCommand: pnpm --filter @rondo/backend start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: HOST
+        value: 0.0.0.0
+      # Set these to real values in the Render dashboard — never commit them.
+      - key: DATABASE_URL
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_CLERK_USER_ID
+        sync: false
+      - key: BOOTSTRAP_ADMIN_USERNAME
+        sync: false
