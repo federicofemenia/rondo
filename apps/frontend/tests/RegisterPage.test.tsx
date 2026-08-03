@@ -24,9 +24,26 @@ describe('RegisterPage', () => {
   it('requires accepting the terms before submitting', () => {
     render(<RegisterPage />);
 
+    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'unaClave123' } });
     expect(screen.getByRole('button', { name: /crear cuenta/i })).toHaveProperty('disabled', true);
 
     fireEvent.click(screen.getByRole('checkbox'));
+
+    expect(screen.getByRole('button', { name: /crear cuenta/i })).toHaveProperty('disabled', false);
+  });
+
+  it('requires a password of at least 8 characters before submitting, and shows the hint', () => {
+    render(<RegisterPage />);
+
+    expect(screen.getByText(/mínimo 8 caracteres/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'corta12' } });
+
+    expect(screen.getByRole('button', { name: /crear cuenta/i })).toHaveProperty('disabled', true);
+    expect(screen.getByText(/debe tener al menos 8 caracteres/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'ahoraSi123' } });
 
     expect(screen.getByRole('button', { name: /crear cuenta/i })).toHaveProperty('disabled', false);
   });

@@ -16,6 +16,8 @@ type RegisterPageProps = {
   onNavigateToLogin?: () => void;
 };
 
+const MIN_PASSWORD_LENGTH = 8;
+
 function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
   const { signUp } = useSignUp();
 
@@ -25,12 +27,19 @@ function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
+  const isPasswordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
+  const isPasswordValid = password.length >= MIN_PASSWORD_LENGTH;
+
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!signUp) {
+      return;
+    }
+    if (!isPasswordValid) {
+      setErrorMessage(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
     if (password !== confirmPassword) {
@@ -105,6 +114,8 @@ function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="new-password"
+            error={isPasswordTooShort}
+            helperText={isPasswordTooShort ? `Debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.` : `Mínimo ${MIN_PASSWORD_LENGTH} caracteres.`}
             fullWidth
           />
           <TextField
@@ -146,7 +157,7 @@ function RegisterPage({ onRegister, onNavigateToLogin }: RegisterPageProps) {
           fullWidth
           variant="contained"
           size="large"
-          disabled={!acceptedTerms || submitting || !signUp}
+          disabled={!acceptedTerms || !isPasswordValid || submitting || !signUp}
           sx={{ borderRadius: 999, py: 1.75 }}
         >
           {submitting ? 'Creando cuenta…' : 'Crear cuenta'}
