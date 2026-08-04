@@ -137,26 +137,43 @@ function resolveSchedule(input: ScheduleInput, modalityDurationMinutes: number):
   };
 }
 
+type VenueInput = {
+  venueType: CreateMatchInputDto['venueType'];
+  clubId?: string | null;
+  customVenueName?: string | null;
+};
+
+async function assertClubExists(venueType: VenueInput['venueType'], clubId: string | null | undefined): Promise<void> {
+  if (venueType === 'CLUB' && clubId) {
+    const club = await prisma.club.findUnique({ where: { id: clubId } });
+    if (!club) {
+      throw new MatchServiceError(422, 'CLUB_NOT_FOUND', 'El club indicado no existe.');
+    }
+  }
+}
+
+/** Same clubId/customVenueName-clearing rules as the venueType create/edit validation in @rondo/contracts, applied to the Prisma write. */
+function resolveVenueData(input: VenueInput): { clubId: string | null; venueType: VenueInput['venueType']; customVenueName: string | null } {
+  return {
+    clubId: input.venueType === 'CLUB' ? (input.clubId ?? null) : null,
+    venueType: input.venueType,
+    customVenueName: input.venueType === 'CUSTOM' ? (input.customVenueName?.trim() ?? null) : null,
+  };
+}
+
 export async function createMatch(organizerUserId: string, input: CreateMatchInputDto, now: Date = new Date()): Promise<MatchWithRelations> {
   const sportModality = await prisma.sportModality.findUnique({ where: { id: input.sportModalityId } });
   if (!sportModality) {
     throw new MatchServiceError(422, 'SPORT_MODALITY_NOT_FOUND', 'La modalidad deportiva indicada no existe.');
   }
 
-  if (input.venueType === 'CLUB' && input.clubId) {
-    const club = await prisma.club.findUnique({ where: { id: input.clubId } });
-    if (!club) {
-      throw new MatchServiceError(422, 'CLUB_NOT_FOUND', 'El club indicado no existe.');
-    }
-  }
+  await assertClubExists(input.venueType, input.clubId);
 
   const schedule = resolveSchedule(input, sportModality.durationMinutes);
 
   const created = await prisma.match.create({
     data: {
-      clubId: input.venueType === 'CLUB' ? (input.clubId ?? null) : null,
-      venueType: input.venueType,
-      customVenueName: input.venueType === 'CUSTOM' ? (input.customVenueName?.trim() ?? null) : null,
+      ...resolveVenueData(input),
       sportModalityId: input.sportModalityId,
       organizerUserId,
       minPlayers: input.minPlayers,
@@ -194,11 +211,14 @@ export async function updateMatchSchedule(
     throw new MatchServiceError(403, 'NOT_ORGANIZER', 'Solo el organizador puede editar el horario del partido.');
   }
 
+  await assertClubExists(input.venueType, input.clubId);
+
   const schedule = resolveSchedule(input, match.sportModality.durationMinutes);
 
   await prisma.match.update({
     where: { id: matchId },
     data: {
+      ...resolveVenueData(input),
       scheduledDate: schedule.scheduledDate,
       availabilityStartMinutes: schedule.availabilityStartMinutes,
       availabilityEndMinutes: schedule.availabilityEndMinutes,

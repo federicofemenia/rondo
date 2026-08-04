@@ -1,3 +1,5 @@
+import type { MatchVenueTypeDto } from '@rondo/contracts';
+
 const dateLabelFormatter = new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 
 /** Capitalized day label, e.g. "Sábado 8 de agosto", from a YYYY-MM-DD date. */
@@ -63,6 +65,9 @@ export function describeSchedule(match: MatchSchedule): ScheduleDescription {
 }
 
 export type ScheduleUpdateInput = {
+  venueType: MatchVenueTypeDto;
+  clubId: string | null;
+  customVenueName: string | null;
   scheduledDate: string;
   availabilityStartMinutes: number;
   availabilityEndMinutes: number;

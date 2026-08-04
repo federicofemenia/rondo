@@ -499,6 +499,8 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
       url: `/api/v1/matches/${match.id}/schedule`,
       headers: { authorization: 'Bearer juan' },
       payload: {
+        venueType: 'CLUB',
+        clubId: SEED_IDS.club.senorPato,
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 14 * 60,
         availabilityEndMinutes: 19 * 60,
@@ -529,6 +531,8 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
       url: `/api/v1/matches/${match.id}/schedule`,
       headers: { authorization: 'Bearer juan' },
       payload: {
+        venueType: 'CLUB',
+        clubId: SEED_IDS.club.senorPato,
         scheduledDate: dateStringDaysFromNow(5),
         availabilityStartMinutes: 10 * 60,
         availabilityEndMinutes: 22 * 60,
@@ -553,7 +557,13 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
       method: 'PATCH',
       url: `/api/v1/matches/${match.id}/schedule`,
       headers: { authorization: 'Bearer martin' },
-      payload: { scheduledDate: dateStringDaysFromNow(2), availabilityStartMinutes: 600, availabilityEndMinutes: 1200 },
+      payload: {
+        venueType: 'CLUB',
+        clubId: SEED_IDS.club.senorPato,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
     });
 
     expect(response.statusCode).toBe(403);
@@ -573,10 +583,129 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
       method: 'PATCH',
       url: `/api/v1/matches/${match.id}/schedule`,
       headers: { authorization: 'Bearer juan' },
-      payload: { scheduledDate: dateStringDaysFromNow(2), availabilityStartMinutes: 600, availabilityEndMinutes: 1200 },
+      payload: {
+        venueType: 'CLUB',
+        clubId: SEED_IDS.club.senorPato,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
     });
 
     expect(response.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it('lets the organizer change the venue from CLUB to a free-text sede', async () => {
+    const match = await createTestMatch({ organizerUserId: SEED_IDS.users.juan, status: 'ORGANIZING' });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        venueType: 'CUSTOM',
+        customVenueName: 'Cancha de Juan',
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: { venueType: string; clubId: string | null; clubName: string | null } };
+    expect(body.data.venueType).toBe('CUSTOM');
+    expect(body.data.clubId).toBeNull();
+    expect(body.data.clubName).toBe('Cancha de Juan');
+
+    await app.close();
+  });
+
+  it('lets the organizer change the venue to Sede a definir', async () => {
+    const match = await createTestMatch({ organizerUserId: SEED_IDS.users.juan, status: 'ORGANIZING' });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        venueType: 'TO_BE_DEFINED',
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: { venueType: string; clubId: string | null; clubName: string | null } };
+    expect(body.data.venueType).toBe('TO_BE_DEFINED');
+    expect(body.data.clubId).toBeNull();
+    expect(body.data.clubName).toBeNull();
+
+    await app.close();
+  });
+
+  it('rejects a non-organizer trying to change the venue', async () => {
+    const match = await createTestMatch({ organizerUserId: SEED_IDS.users.juan, status: 'ORGANIZING' });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer martin' },
+      payload: {
+        venueType: 'TO_BE_DEFINED',
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('rejects venueType CLUB without a clubId', async () => {
+    const match = await createTestMatch({ organizerUserId: SEED_IDS.users.juan, status: 'ORGANIZING' });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer juan' },
+      payload: { venueType: 'CLUB', scheduledDate: dateStringDaysFromNow(2), availabilityStartMinutes: 600, availabilityEndMinutes: 1200 },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects a nonexistent clubId when changing the venue', async () => {
+    const match = await createTestMatch({ organizerUserId: SEED_IDS.users.juan, status: 'ORGANIZING' });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        venueType: 'CLUB',
+        clubId: '00000000-0000-0000-0000-000000000000',
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+      },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error.code).toBe('CLUB_NOT_FOUND');
     await app.close();
   });
 });

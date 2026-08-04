@@ -14,7 +14,7 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
-import type { MatchInvitationStatusDto, MatchRatingsResponseDto } from '@rondo/contracts';
+import type { MatchInvitationStatusDto, MatchRatingsResponseDto, MatchVenueTypeDto } from '@rondo/contracts';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import { useApi } from './apiClient';
@@ -31,6 +31,9 @@ import { buildIsoDateTime, describeSchedule, isoTimeToMinutes } from './schedule
 import type { ScheduleUpdateInput } from './scheduleFormat';
 import TimeRangeInput from './TimeRangeInput';
 import type { MatchEntity, PlayerRating } from './types';
+import { useMyClubs } from './useMyClubs';
+
+const OTHER_CLUB_VALUE = '__other__';
 
 type MatchDetailPageProps = {
   match: MatchEntity;
@@ -94,11 +97,16 @@ function MatchDetailPage({
 }: MatchDetailPageProps) {
   const api = useApi();
   const dayOptions = useMemo(() => buildDayOptions(), []);
+  const { clubs, loading: clubsLoading } = useMyClubs();
   const [tab, setTab] = useState<Tab>(initialTab ?? 'datos');
   const [searchingPlayers, setSearchingPlayers] = useState(false);
   const [candidatesCollapsed, setCandidatesCollapsed] = useState(false);
   const [playersVersion, setPlayersVersion] = useState(0);
   const [associateOpen, setAssociateOpen] = useState(false);
+  const [clubSelectDraft, setClubSelectDraft] = useState(() =>
+    match.venueType === 'CLUB' ? (match.clubId ?? '') : match.venueType === 'CUSTOM' ? OTHER_CLUB_VALUE : '',
+  );
+  const [customVenueNameDraft, setCustomVenueNameDraft] = useState(match.customVenueName ?? '');
   const [dateDraft, setDateDraft] = useState(match.scheduledDate);
   const [availabilityRangeDraft, setAvailabilityRangeDraft] = useState<[number, number]>([
     match.availabilityStartMinutes / 60,
@@ -121,6 +129,11 @@ function MatchDetailPage({
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
   const schedule = describeSchedule(match);
 
+  const isOtherClubDraft = clubSelectDraft === OTHER_CLUB_VALUE;
+  const trimmedCustomVenueNameDraft = customVenueNameDraft.trim();
+  const venueTypeDraft: MatchVenueTypeDto = isOtherClubDraft ? 'CUSTOM' : clubSelectDraft ? 'CLUB' : 'TO_BE_DEFINED';
+  const isCustomVenueMissing = isOtherClubDraft && !trimmedCustomVenueNameDraft;
+
   const handleAvailabilityRangeDraftChange = (range: [number, number]) => {
     setAvailabilityRangeDraft(range);
     const [startMinutes, endMinutes] = [range[0] * 60, range[1] * 60];
@@ -128,10 +141,16 @@ function MatchDetailPage({
   };
 
   const handleSaveSchedule = async () => {
+    if (isCustomVenueMissing) {
+      return;
+    }
     setScheduleSaving(true);
     setScheduleError(null);
     try {
       await onEditSchedule?.({
+        venueType: venueTypeDraft,
+        clubId: venueTypeDraft === 'CLUB' ? clubSelectDraft || null : null,
+        customVenueName: venueTypeDraft === 'CUSTOM' ? trimmedCustomVenueNameDraft : null,
         scheduledDate: dateDraft,
         availabilityStartMinutes: availabilityRangeDraft[0] * 60,
         availabilityEndMinutes: availabilityRangeDraft[1] * 60,
@@ -320,6 +339,36 @@ function MatchDetailPage({
               <Stack spacing={3} sx={{ mt: 4 }}>
                 <TextField
                   select
+                  label="Editar sede"
+                  value={clubSelectDraft}
+                  onChange={(event) => setClubSelectDraft(event.target.value)}
+                  slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                  disabled={clubsLoading}
+                  fullWidth
+                >
+                  <option value="">Sede a definir</option>
+                  {clubs.map((club) => (
+                    <option key={club.id} value={club.id}>
+                      {club.name}
+                    </option>
+                  ))}
+                  <option value={OTHER_CLUB_VALUE}>Nombre del club</option>
+                </TextField>
+
+                {isOtherClubDraft ? (
+                  <TextField
+                    label="Nombre de la sede o club"
+                    value={customVenueNameDraft}
+                    onChange={(event) => setCustomVenueNameDraft(event.target.value)}
+                    placeholder="Ej: Club Atlético Central, Complejo La Canchita, Cancha de Juan"
+                    error={isCustomVenueMissing}
+                    helperText={isCustomVenueMissing ? 'Ingresá un nombre para la sede.' : undefined}
+                    fullWidth
+                  />
+                ) : null}
+
+                <TextField
+                  select
                   label="Editar día"
                   value={dateDraft}
                   onChange={(event) => setDateDraft(event.target.value)}
@@ -346,7 +395,7 @@ function MatchDetailPage({
                     {scheduleError}
                   </Typography>
                 ) : null}
-                <Button variant="outlined" onClick={() => void handleSaveSchedule()} disabled={scheduleSaving}>
+                <Button variant="outlined" onClick={() => void handleSaveSchedule()} disabled={scheduleSaving || isCustomVenueMissing}>
                   {scheduleSaving ? 'Guardando…' : 'Guardar cambios'}
                 </Button>
 

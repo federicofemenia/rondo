@@ -240,12 +240,18 @@ export type CreateMatchInputDto = z.infer<typeof createMatchInputSchema>;
 
 export const updateMatchScheduleInputSchema = z
   .object({
+    venueType: matchVenueTypeSchema,
+    clubId: z.string().uuid().nullable().optional(),
+    customVenueName: z.string().trim().min(1).max(MAX_CUSTOM_VENUE_NAME_LENGTH).nullable().optional(),
     scheduledDate: z.string().regex(scheduledDatePattern, 'scheduledDate debe tener el formato YYYY-MM-DD.'),
     availabilityStartMinutes: z.number().int().min(0).max(1439),
     availabilityEndMinutes: z.number().int().min(1).max(1440),
     startsAt: z.string().datetime().nullable().optional(),
   })
-  .superRefine(validateScheduleFields);
+  .superRefine((data, ctx) => {
+    validateVenueFields(data, ctx);
+    validateScheduleFields(data, ctx);
+  });
 
 export type UpdateMatchScheduleInputDto = z.infer<typeof updateMatchScheduleInputSchema>;
 

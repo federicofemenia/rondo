@@ -143,7 +143,54 @@ describe('MatchDetailPage', () => {
     expect(screen.queryByText(/gestión del partido/i)).toBeFalsy();
     expect(screen.queryByRole('button', { name: /cancelar partido/i })).toBeFalsy();
     expect(screen.queryByLabelText(/^editar día$/i)).toBeFalsy();
+    expect(screen.queryByLabelText(/^editar sede$/i)).toBeFalsy();
     expect(screen.queryByRole('button', { name: /^guardar cambios$/i })).toBeFalsy();
+  });
+
+  it('lets the organizer change the venue to a real club and sends venueType/clubId when saving', async () => {
+    const onEditSchedule = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MatchDetailPage
+        match={{ ...baseMatch, venueType: 'TO_BE_DEFINED', clubId: null, clubName: null }}
+        unlinkedBookings={[]}
+        onEditSchedule={onEditSchedule}
+      />,
+    );
+
+    const venueSelect = await screen.findByLabelText(/^editar sede$/i);
+    fireEvent.change(venueSelect, { target: { value: 'club-1' } });
+    fireEvent.click(screen.getByRole('button', { name: /^guardar cambios$/i }));
+
+    await waitFor(() =>
+      expect(onEditSchedule).toHaveBeenCalledWith(
+        expect.objectContaining({ venueType: 'CLUB', clubId: 'club-1', customVenueName: null }),
+      ),
+    );
+  });
+
+  it('lets the organizer pick Otro and type a free-text venue name', async () => {
+    const onEditSchedule = vi.fn().mockResolvedValue(undefined);
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} onEditSchedule={onEditSchedule} />);
+
+    const venueSelect = await screen.findByLabelText(/^editar sede$/i);
+    fireEvent.change(venueSelect, { target: { value: '__other__' } });
+    fireEvent.change(screen.getByLabelText(/nombre de la sede o club/i), { target: { value: 'Cancha de Juan' } });
+    fireEvent.click(screen.getByRole('button', { name: /^guardar cambios$/i }));
+
+    await waitFor(() =>
+      expect(onEditSchedule).toHaveBeenCalledWith(
+        expect.objectContaining({ venueType: 'CUSTOM', clubId: null, customVenueName: 'Cancha de Juan' }),
+      ),
+    );
+  });
+
+  it('disables Guardar cambios when Otro is selected but no venue name was typed', async () => {
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
+
+    const venueSelect = await screen.findByLabelText(/^editar sede$/i);
+    fireEvent.change(venueSelect, { target: { value: '__other__' } });
+
+    expect(screen.getByRole('button', { name: /^guardar cambios$/i })).toHaveProperty('disabled', true);
   });
 
   it('does not offer Cancelar partido once the match is already cancelled', () => {
@@ -235,6 +282,9 @@ describe('MatchDetailPage', () => {
 
     await waitFor(() =>
       expect(onEditSchedule).toHaveBeenCalledWith({
+        venueType: 'CLUB',
+        clubId: 'club-1',
+        customVenueName: null,
         scheduledDate: '2026-08-05',
         availabilityStartMinutes: 17 * 60,
         availabilityEndMinutes: 22 * 60,
