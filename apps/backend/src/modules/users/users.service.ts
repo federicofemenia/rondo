@@ -54,8 +54,8 @@ export async function syncUserFromClerk(profile: AuthenticatedClerkProfile, boot
 
   // seed_-prefixed identities are the deterministic dev/test fixtures from
   // seed.ts (never a real Clerk account, see SEED_TESTER... / seedAuthAdapter):
-  // their club membership and sport-profile state is precisely scripted by
-  // the seed and by individual tests, so login-time defaults are skipped for
+  // their sport-profile state is precisely scripted by the seed and by
+  // individual tests, so the default-availability backfill is skipped for
   // them entirely rather than organically mutating that fixture data.
   const isSeedFixture = profile.clerkUserId.startsWith('seed_');
 
@@ -64,36 +64,30 @@ export async function syncUserFromClerk(profile: AuthenticatedClerkProfile, boot
       (Boolean(bootstrapAdmin?.clerkUserId) && profile.clerkUserId === bootstrapAdmin?.clerkUserId) ||
       (Boolean(bootstrapAdmin?.username) && Boolean(profile.username) && profile.username === bootstrapAdmin?.username);
 
-    // Rondo is currently a single-club beta: every account is implicitly a
-    // member of Señor Pato (there is no "join a club" flow yet), so the
-    // create-match club picker (member-scoped, see useMyClubs) has something
-    // to show without a separate onboarding step. The bootstrap admin gets
-    // upgraded to CLUB_ADMIN on top of that; nobody else's role is touched.
-    await ensureSenorPatoMembership(user.id, isBootstrapAdmin ? 'CLUB_ADMIN' : 'MEMBER');
+    // No account is auto-enrolled in any club — there is no default club,
+    // and users only ever appear in useMyClubs once they've actually joined
+    // one (not implemented yet). The bootstrap admin is the sole exception,
+    // seeded in as Señor Pato's CLUB_ADMIN so there's an initial owner.
+    if (isBootstrapAdmin) {
+      await grantSenorPatoAdminMembership(user.id);
+    }
     await ensureDefaultSportProfiles(user.id);
   }
 
   return user;
 }
 
-async function ensureSenorPatoMembership(userId: string, role: 'MEMBER' | 'CLUB_ADMIN'): Promise<void> {
+async function grantSenorPatoAdminMembership(userId: string): Promise<void> {
   const club = await prisma.club.findUnique({ where: { id: SEED_IDS.club.senorPato } });
   if (!club) {
     return;
   }
 
-  const existing = await prisma.clubMembership.findUnique({ where: { clubId_userId: { clubId: club.id, userId } } });
-
-  if (!existing) {
-    await prisma.clubMembership.create({
-      data: { clubId: club.id, userId, role, status: 'ACTIVE', isFavorite: role === 'CLUB_ADMIN' },
-    });
-    return;
-  }
-
-  if (role === 'CLUB_ADMIN' && existing.role !== 'CLUB_ADMIN') {
-    await prisma.clubMembership.update({ where: { id: existing.id }, data: { role: 'CLUB_ADMIN', isFavorite: true } });
-  }
+  await prisma.clubMembership.upsert({
+    where: { clubId_userId: { clubId: club.id, userId } },
+    update: { role: 'CLUB_ADMIN', status: 'ACTIVE', isFavorite: true },
+    create: { clubId: club.id, userId, role: 'CLUB_ADMIN', status: 'ACTIVE', isFavorite: true },
+  });
 }
 
 const ALL_DAYS_OF_WEEK = [0, 1, 2, 3, 4, 5, 6];

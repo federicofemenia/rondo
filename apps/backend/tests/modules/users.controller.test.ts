@@ -127,14 +127,12 @@ describe('GET /api/v1/me', () => {
 });
 
 describe('GET /api/v1/me/clubs', () => {
-  it('auto-grants a MEMBER (non-admin) membership at Señor Pato for a user with no memberships', async () => {
+  it('returns an empty list for a user with no memberships', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
     const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer regular-user-token' } });
 
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { data: Array<{ id: string; role: string; isFavorite: boolean }> };
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]).toMatchObject({ id: SEED_IDS.club.senorPato, role: 'MEMBER', isFavorite: false });
+    expect(response.json()).toEqual({ data: [] });
 
     await app.close();
   });
@@ -144,9 +142,7 @@ describe('GET /api/v1/me/clubs', () => {
     const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
 
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { data: Array<{ role: string }> };
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]).toMatchObject({ role: 'MEMBER' });
+    expect(response.json()).toEqual({ data: [] });
 
     await app.close();
   });
@@ -221,12 +217,7 @@ describe('GET /api/v1/me/clubs', () => {
       const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer ordering-user-token' } });
       const body = response.json() as { data: Array<{ name: string }> };
 
-      // The sync flow auto-grants a Señor Pato membership too (see the
-      // dedicated tests above) — irrelevant to what this test actually
-      // checks, so it's excluded here rather than hardcoding where it
-      // happens to sort alphabetically among these fixture club names.
-      const orderedNames = body.data.map((club) => club.name).filter((name) => name !== 'Señor Pato');
-      expect(orderedNames).toEqual(['Mmm Club Favorito', 'Aaa Club', 'Zzz Club']);
+      expect(body.data.map((club) => club.name)).toEqual(['Mmm Club Favorito', 'Aaa Club', 'Zzz Club']);
 
       await app.close();
     } finally {

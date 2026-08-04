@@ -50,7 +50,6 @@ async function deleteCandidateUser(userId: string): Promise<void> {
   await prisma.userSportProfile.deleteMany({ where: { userId } });
   await prisma.matchInvitation.deleteMany({ where: { OR: [{ invitedUserId: userId }, { invitedById: userId }] } });
   await prisma.matchParticipant.deleteMany({ where: { userId } });
-  await prisma.clubMembership.deleteMany({ where: { userId } });
   await prisma.user.deleteMany({ where: { id: userId } });
 }
 
