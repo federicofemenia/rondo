@@ -32,6 +32,7 @@ import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import RegisterPage from './RegisterPage';
 import ReservationFlowPage from './ReservationFlowPage';
 import type { ConfirmedBooking } from './ReservationFlowPage';
+import OfflineScreen from './OfflineScreen';
 import { buildIsoDateTime, describeSchedule } from './scheduleFormat';
 import type { ScheduleUpdateInput } from './scheduleFormat';
 import SportProfilePage from './SportProfilePage';
@@ -39,6 +40,7 @@ import type { BookingEntity, MatchEntity, PendingAction } from './types';
 import { apiBaseUrl } from './runtimeConfig';
 import { retryWithBackoff } from './apiRetry';
 import { useMyClubs } from './useMyClubs';
+import { useOnlineStatus } from './useOnlineStatus';
 import { useVisiblePolling } from './useVisiblePolling';
 
 const HOME_POLL_INTERVAL_MS = 20_000;
@@ -77,6 +79,7 @@ function App() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { signOut } = useClerk();
   const api = useApi();
+  const isOnline = useOnlineStatus();
   const { clubs: myClubs } = useMyClubs();
   const myClub = myClubs[0] ?? null;
 
@@ -439,6 +442,12 @@ function App() {
     }
 
     if (isSignedIn && bootPhase !== 'ready') {
+      // Distinguish "no network at all" from "backend reachable but asleep"
+      // -- retrying a truly offline device against a sleeping Render
+      // instance would just show the wrong, more alarming message.
+      if (!isOnline) {
+        return <OfflineScreen onRetry={() => setBootRetryToken((token) => token + 1)} />;
+      }
       if (bootPhase === 'failed') {
         return (
           <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', px: 4, textAlign: 'center' }}>

@@ -299,4 +299,30 @@ describe('App', () => {
       vi.useRealTimers();
     }
   });
+
+  it('shows the offline screen (not the backend-waking-up message) when the device itself is offline, and recovers once back online', async () => {
+    clerkAuthMock.isSignedIn = true;
+    // Never resolves on its own within this test, so bootPhase stays
+    // 'pending' the whole time -- isolates the offline-screen assertions
+    // from a race against the boot's own retry/success timing.
+    mockMeState.failuresRemaining = 999;
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+
+    try {
+      render(<App />);
+
+      expect(await screen.findByText(/^sin conexión$/i)).toBeTruthy();
+      expect(screen.getByText(/rondo necesita conexión para actualizar partidos, invitaciones y mensajes/i)).toBeTruthy();
+      expect(screen.queryByText(/estamos iniciando el servidor de rondo/i)).toBeFalsy();
+      expect(screen.queryByText(/no pudimos conectar con rondo/i)).toBeFalsy();
+
+      mockMeState.failuresRemaining = 0;
+      Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: true });
+      fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+
+      await waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
+    } finally {
+      Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: true });
+    }
+  });
 });

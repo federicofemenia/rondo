@@ -8,6 +8,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import { ClerkProvider } from '@clerk/react';
 import App from './App';
+import PwaChrome from './PwaChrome';
 import { theme } from './theme';
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -21,6 +22,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ClerkProvider publishableKey={clerkPublishableKey}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
+        <PwaChrome />
         <App />
       </ThemeProvider>
     </ClerkProvider>

@@ -12,6 +12,41 @@ import type {
   UserSexDto,
 } from '@rondo/contracts';
 
+// Node 22+'s own built-in `localStorage` global throws/warns unless started
+// with `--localstorage-file`, and it shadows jsdom's real one in this
+// environment -- replace it with a plain in-memory Storage so
+// installDismissal.ts (and anything else using localStorage) works
+// deterministically in tests regardless of Node version or CLI flags.
+class InMemoryStorage implements Storage {
+  private store = new Map<string, string>();
+
+  get length(): number {
+    return this.store.size;
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.store.has(key) ? this.store.get(key)! : null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.store.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value));
+  }
+}
+
+Object.defineProperty(globalThis, 'localStorage', { value: new InMemoryStorage(), configurable: true, writable: true });
+
 type MockClerkError = { message: string; longMessage?: string };
 
 export const signInMock = {
