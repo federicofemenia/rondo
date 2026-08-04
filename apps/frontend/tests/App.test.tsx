@@ -88,6 +88,19 @@ describe('App', () => {
     expect(screen.getByRole('tab', { name: /^resumen$/i })).toBeTruthy();
     expect(screen.getByText(/sede pendiente de confirmación/i)).toBeTruthy();
     expect(screen.queryByText(/cancha pendiente/i)).toBeFalsy();
+
+    // Setting the club from the match detail's "Editar sede" form should
+    // clear the "todavía no tiene sede" pending action back on Home -- it's
+    // driven by the same `matches` state the bell reads from.
+    fireEvent.change(await screen.findByLabelText(/^editar sede$/i), { target: { value: 'club-1' } });
+    fireEvent.click(screen.getByRole('button', { name: /^guardar cambios$/i }));
+    await waitFor(() => expect(screen.getByText(/sede seleccionada/i)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
+    fireEvent.click(screen.getByLabelText(/notificaciones/i));
+    expect(screen.queryByText(/todavía no tiene sede/i)).toBeFalsy();
   });
 
   it('shows a full pending invitation card on Home, and accepting it removes it from Invitaciones pendientes', async () => {

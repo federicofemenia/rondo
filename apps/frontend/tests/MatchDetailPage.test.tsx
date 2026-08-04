@@ -272,7 +272,7 @@ describe('MatchDetailPage', () => {
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
     expect(screen.getByText(/horario confirmado/i)).toBeTruthy();
-    expect(screen.getAllByText('19:00 a 21:00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('16:00 a 18:00').length).toBeGreaterThan(0);
   });
 
   it('editing the schedule sends the updated day, franja and exact time, and recalculates the display', async () => {

@@ -116,6 +116,16 @@ export interface MatchSummaryDto {
 
 const scheduledDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
+// Rondo only operates in Argentina, which stays at UTC-3 year-round (no
+// DST) -- startsAt travels the wire as a real UTC instant, but scheduledDate
+// and availabilityStart/EndMinutes are always Argentina wall-clock
+// concepts, so startsAt must be converted before comparing against them.
+const ARGENTINA_UTC_OFFSET_MINUTES = 180;
+
+function toArgentinaWallClock(date: Date): Date {
+  return new Date(date.getTime() - ARGENTINA_UTC_OFFSET_MINUTES * 60_000);
+}
+
 type ScheduleFields = {
   scheduledDate: string;
   availabilityStartMinutes: number;
@@ -153,16 +163,16 @@ function validateScheduleFields(data: ScheduleFields, ctx: z.RefinementCtx): voi
   }
 
   if (data.startsAt) {
-    const startsAt = new Date(data.startsAt);
+    const startsAtLocal = toArgentinaWallClock(new Date(data.startsAt));
     const sameDay =
-      startsAt.getUTCFullYear() === scheduled.getUTCFullYear() &&
-      startsAt.getUTCMonth() === scheduled.getUTCMonth() &&
-      startsAt.getUTCDate() === scheduled.getUTCDate();
+      startsAtLocal.getUTCFullYear() === scheduled.getUTCFullYear() &&
+      startsAtLocal.getUTCMonth() === scheduled.getUTCMonth() &&
+      startsAtLocal.getUTCDate() === scheduled.getUTCDate();
     if (!sameDay) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'startsAt debe pertenecer al mismo día que scheduledDate.', path: ['startsAt'] });
     }
 
-    const startMinutes = startsAt.getUTCHours() * 60 + startsAt.getUTCMinutes();
+    const startMinutes = startsAtLocal.getUTCHours() * 60 + startsAtLocal.getUTCMinutes();
     if (startMinutes < data.availabilityStartMinutes || startMinutes >= data.availabilityEndMinutes) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

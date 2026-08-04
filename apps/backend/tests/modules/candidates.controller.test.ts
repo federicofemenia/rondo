@@ -5,6 +5,7 @@ import { buildServer } from '../../src/app/server.js';
 import { prisma } from '../../src/infrastructure/database/prisma.js';
 import { runSeed } from '../../src/infrastructure/database/seed.js';
 import { SEED_IDS } from '../../src/infrastructure/database/seedIds.js';
+import { ARGENTINA_UTC_OFFSET_MINUTES } from '../../src/modules/matches/argentinaTime.js';
 import { seedAuthAdapter } from '../support/seedAuthAdapter.js';
 import { createTestMatch, deleteTestMatch } from '../support/matchFactory.js';
 
@@ -18,8 +19,11 @@ beforeAll(async () => {
 const TEST_DAY = new Date(Date.UTC(2026, 7, 1));
 const TEST_DAY_OF_WEEK = TEST_DAY.getUTCDay();
 
+/** A real UTC instant for `hour:minute` Argentina local time on TEST_DAY. */
 function isoOnTestDay(hour: number, minute = 0): Date {
-  return new Date(Date.UTC(TEST_DAY.getUTCFullYear(), TEST_DAY.getUTCMonth(), TEST_DAY.getUTCDate(), hour, minute, 0, 0));
+  return new Date(
+    Date.UTC(TEST_DAY.getUTCFullYear(), TEST_DAY.getUTCMonth(), TEST_DAY.getUTCDate(), hour, minute + ARGENTINA_UTC_OFFSET_MINUTES, 0, 0),
+  );
 }
 
 async function createCandidateUser(firstName: string, lastName = 'Test'): Promise<User> {

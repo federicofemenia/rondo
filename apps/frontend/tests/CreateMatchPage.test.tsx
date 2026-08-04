@@ -21,7 +21,7 @@ describe('CreateMatchPage', () => {
     expect(screen.getByText(/información deportiva/i)).toBeTruthy();
     expect(screen.getByText(/lugar y horario/i)).toBeTruthy();
     expect(screen.getByLabelText(/^deporte$/i)).toBeTruthy();
-    expect(screen.getByLabelText(/modalidad/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/^modalidad$/i)).toBeFalsy();
     expect(screen.getByLabelText(/jugadores mínimo/i)).toBeTruthy();
     expect(screen.getByLabelText(/jugadores máximo/i)).toBeTruthy();
     expect(screen.getByLabelText(/^sede$/i)).toBeTruthy();
@@ -115,6 +115,9 @@ describe('CreateMatchPage', () => {
     const clubSelect = screen.getByLabelText(/^sede$/i);
 
     fireEvent.change(clubSelect, { target: { value: 'club-1' } });
+    // Picking a future day (not "hoy") makes the exact-time bounds
+    // deterministic (10:00-23:00) regardless of when the test runs.
+    fireEvent.change(screen.getByLabelText(/^día$/i), { target: { value: buildDayOptions()[1]!.value } });
     fireEvent.click(screen.getByRole('radio', { name: /^sí$/i }));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
@@ -123,10 +126,10 @@ describe('CreateMatchPage', () => {
         venueType: 'CLUB',
         clubId: 'club-1',
         clubName: 'Club Señor Pato',
-        availabilityStartMinutes: 13 * 60,
-        availabilityEndMinutes: 19 * 60,
+        availabilityStartMinutes: 10 * 60,
+        availabilityEndMinutes: 23 * 60,
         durationMinutes: 60,
-        startTimeMinutes: 13 * 60,
+        startTimeMinutes: 10 * 60,
       }),
     );
   });

@@ -16,6 +16,7 @@ import Button from '@mui/material/Button';
 import { buildDayOptions } from './dateOptions';
 import ExactStartTimeInput from './ExactStartTimeInput';
 import PageFooter from './PageFooter';
+import { computeExactTimeBounds } from './scheduleFormat';
 import TimeRangeInput, { DEFAULT_AVAILABILITY_RANGE } from './TimeRangeInput';
 import { useMyClubs } from './useMyClubs';
 import { useSports } from './useSports';
@@ -86,15 +87,27 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
 
   const availabilityStartMinutes = availabilityRange[0] * 60;
   const availabilityEndMinutes = availabilityRange[1] * 60;
+  const isToday = date === dayOptions[0]?.value;
+  const [exactStartBound, exactEndBound] = computeExactTimeBounds(isToday);
 
   const handleHasExactTimeChange = (next: boolean) => {
     setHasExactTime(next);
     if (next) {
       setStartTimeMinutes((current) =>
-        current !== null && current >= availabilityStartMinutes && current < availabilityEndMinutes ? current : availabilityStartMinutes,
+        current !== null && current >= exactStartBound && current < exactEndBound ? current : exactStartBound,
       );
     } else {
       setStartTimeMinutes(null);
+    }
+  };
+
+  const handleDateChange = (nextDate: string) => {
+    setDate(nextDate);
+    if (hasExactTime) {
+      const nextBounds = computeExactTimeBounds(nextDate === dayOptions[0]?.value);
+      setStartTimeMinutes((current) =>
+        current !== null && current >= nextBounds[0] && current < nextBounds[1] ? current : nextBounds[0],
+      );
     }
   };
 
@@ -105,14 +118,6 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
     setDurationMinutes(firstModality?.durationMinutes ?? 60);
     if (nextSport !== 'Fútbol') {
       setPositions([]);
-    }
-  };
-
-  const handleModalityChange = (nextModality: string) => {
-    setModality(nextModality);
-    const found = sportModalities[sport]?.find((option) => option.name === nextModality);
-    if (found) {
-      setDurationMinutes(found.durationMinutes);
     }
   };
 
@@ -141,8 +146,8 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
       clubName: venueType === 'CLUB' ? (selectedClub?.name ?? null) : venueType === 'CUSTOM' ? trimmedOtherClubName : null,
       courtName: null,
       date,
-      availabilityStartMinutes,
-      availabilityEndMinutes,
+      availabilityStartMinutes: hasExactTime ? exactStartBound : availabilityStartMinutes,
+      availabilityEndMinutes: hasExactTime ? exactEndBound : availabilityEndMinutes,
       durationMinutes,
       startTimeMinutes: hasExactTime ? startTimeMinutes : null,
     });
@@ -180,22 +185,6 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   {sportNames.map((option) => (
                     <option key={option} value={option}>
                       {option}
-                    </option>
-                  ))}
-                </TextField>
-
-                <TextField
-                  select
-                  label="Modalidad"
-                  value={modality}
-                  onChange={(event) => handleModalityChange(event.target.value)}
-                  slotProps={{ select: { native: true } }}
-                  disabled={sportsLoading || !sport}
-                  fullWidth
-                >
-                  {(sportModalities[sport] ?? []).map((option) => (
-                    <option key={option.id} value={option.name}>
-                      {option.name}
                     </option>
                   ))}
                 </TextField>
@@ -307,7 +296,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   select
                   label="Día"
                   value={date}
-                  onChange={(event) => setDate(event.target.value)}
+                  onChange={(event) => handleDateChange(event.target.value)}
                   slotProps={{ select: { native: true } }}
                   fullWidth
                 >
@@ -346,8 +335,8 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
 
                 {hasExactTime === true ? (
                   <ExactStartTimeInput
-                    availabilityStartMinutes={availabilityStartMinutes}
-                    availabilityEndMinutes={availabilityEndMinutes}
+                    availabilityStartMinutes={exactStartBound}
+                    availabilityEndMinutes={exactEndBound}
                     value={startTimeMinutes}
                     onChange={setStartTimeMinutes}
                     label="Horario exacto"

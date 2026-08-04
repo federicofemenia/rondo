@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { CreateMatchInputDto, MatchSummaryDto, UpdateMatchScheduleInputDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
+import { toArgentinaMinutesOfDay } from './argentinaTime.js';
 import { applyMatchLifecycle, isVisibleOnHome } from './matchLifecycle.js';
 import { MatchServiceError } from './errors.js';
 
@@ -125,7 +126,7 @@ function resolveSchedule(input: ScheduleInput): ResolvedSchedule {
   }
 
   const startsAt = new Date(input.startsAt);
-  const startMinutes = startsAt.getUTCHours() * 60 + startsAt.getUTCMinutes();
+  const startMinutes = toArgentinaMinutesOfDay(startsAt);
   const endMinutes = startMinutes + input.durationMinutes;
   if (endMinutes > input.availabilityEndMinutes) {
     throw new MatchServiceError(422, 'STARTS_AT_OUTSIDE_AVAILABILITY', 'El horario elegido no entra dentro de la franja disponible.');

@@ -32,7 +32,7 @@ import MatchChatPage from './MatchChatPage';
 import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import MatchPlayersPage from './MatchPlayersPage';
 import MatchRatingsPage from './MatchRatingsPage';
-import { buildIsoDateTime, describeSchedule, isoTimeToMinutes } from './scheduleFormat';
+import { buildIsoDateTime, computeExactTimeBounds, describeSchedule, isoTimeToMinutes } from './scheduleFormat';
 import type { ScheduleUpdateInput } from './scheduleFormat';
 import TimeRangeInput from './TimeRangeInput';
 import type { MatchEntity, PlayerRating } from './types';
@@ -143,6 +143,8 @@ function MatchDetailPage({
   const venueTypeDraft: MatchVenueTypeDto = isOtherClubDraft ? 'CUSTOM' : clubSelectDraft ? 'CLUB' : 'TO_BE_DEFINED';
   const isCustomVenueMissing = isOtherClubDraft && !trimmedCustomVenueNameDraft;
   const isDurationInvalid = !Number.isFinite(durationMinutesDraft) || durationMinutesDraft < 15 || durationMinutesDraft > 600;
+  const isDateDraftToday = dateDraft === dayOptions[0]?.value;
+  const [exactStartBoundDraft, exactEndBoundDraft] = computeExactTimeBounds(isDateDraftToday);
 
   const handleAvailabilityRangeDraftChange = (range: [number, number]) => {
     setAvailabilityRangeDraft(range);
@@ -153,10 +155,21 @@ function MatchDetailPage({
   const handleHasExactTimeDraftChange = (next: boolean) => {
     setHasExactTimeDraft(next);
     if (next) {
-      const [startMinutes, endMinutes] = [availabilityRangeDraft[0] * 60, availabilityRangeDraft[1] * 60];
-      setExactStartMinutesDraft((current) => (current !== null && current >= startMinutes && current < endMinutes ? current : startMinutes));
+      setExactStartMinutesDraft((current) =>
+        current !== null && current >= exactStartBoundDraft && current < exactEndBoundDraft ? current : exactStartBoundDraft,
+      );
     } else {
       setExactStartMinutesDraft(null);
+    }
+  };
+
+  const handleDateDraftChange = (nextDate: string) => {
+    setDateDraft(nextDate);
+    if (hasExactTimeDraft) {
+      const nextBounds = computeExactTimeBounds(nextDate === dayOptions[0]?.value);
+      setExactStartMinutesDraft((current) =>
+        current !== null && current >= nextBounds[0] && current < nextBounds[1] ? current : nextBounds[0],
+      );
     }
   };
 
@@ -172,8 +185,8 @@ function MatchDetailPage({
         clubId: venueTypeDraft === 'CLUB' ? clubSelectDraft || null : null,
         customVenueName: venueTypeDraft === 'CUSTOM' ? trimmedCustomVenueNameDraft : null,
         scheduledDate: dateDraft,
-        availabilityStartMinutes: availabilityRangeDraft[0] * 60,
-        availabilityEndMinutes: availabilityRangeDraft[1] * 60,
+        availabilityStartMinutes: hasExactTimeDraft ? exactStartBoundDraft : availabilityRangeDraft[0] * 60,
+        availabilityEndMinutes: hasExactTimeDraft ? exactEndBoundDraft : availabilityRangeDraft[1] * 60,
         startsAt: hasExactTimeDraft && exactStartMinutesDraft !== null ? buildIsoDateTime(dateDraft, exactStartMinutesDraft) : null,
         durationMinutes: durationMinutesDraft,
       });
@@ -392,7 +405,7 @@ function MatchDetailPage({
                   select
                   label="Editar día"
                   value={dateDraft}
-                  onChange={(event) => setDateDraft(event.target.value)}
+                  onChange={(event) => handleDateDraftChange(event.target.value)}
                   slotProps={{ select: { native: true } }}
                   fullWidth
                 >
@@ -431,8 +444,8 @@ function MatchDetailPage({
 
                 {hasExactTimeDraft ? (
                   <ExactStartTimeInput
-                    availabilityStartMinutes={availabilityRangeDraft[0] * 60}
-                    availabilityEndMinutes={availabilityRangeDraft[1] * 60}
+                    availabilityStartMinutes={exactStartBoundDraft}
+                    availabilityEndMinutes={exactEndBoundDraft}
                     value={exactStartMinutesDraft}
                     onChange={setExactStartMinutesDraft}
                     label="Editar horario exacto"

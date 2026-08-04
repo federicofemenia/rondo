@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { buildServer } from '../../src/app/server.js';
 import { runSeed } from '../../src/infrastructure/database/seed.js';
 import { SEED_IDS } from '../../src/infrastructure/database/seedIds.js';
+import { ARGENTINA_UTC_OFFSET_MINUTES } from '../../src/modules/matches/argentinaTime.js';
 import { seedAuthAdapter } from '../support/seedAuthAdapter.js';
 import { createTestMatch, deleteTestMatch } from '../support/matchFactory.js';
 
@@ -14,10 +15,12 @@ function dateStringDaysFromNow(days: number): string {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())).toISOString().slice(0, 10);
 }
 
-/** ISO datetime for `hour:minute` UTC on the day `days` from now (football-5 duration is 60 minutes). */
+/** ISO datetime (a real UTC instant) for `hour:minute` Argentina local time on the day `days` from now (football-5 duration is 60 minutes). */
 function isoAtHour(days: number, hour: number, minute = 0): string {
   const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, minute, 0, 0)).toISOString();
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, minute + ARGENTINA_UTC_OFFSET_MINUTES, 0, 0),
+  ).toISOString();
 }
 
 describe('POST /api/v1/matches', () => {

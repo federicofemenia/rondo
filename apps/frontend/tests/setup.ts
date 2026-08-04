@@ -338,14 +338,16 @@ beforeEach(() => {
     if (method === 'PATCH' && /\/api\/v1\/matches\/[^/]+\/schedule$/.test(url)) {
       const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
       const now = new Date().toISOString();
+      const venueType = (body.venueType as string | undefined) ?? 'TO_BE_DEFINED';
+      const club = venueType === 'CLUB' ? mockClubs.find((candidate) => candidate.id === body.clubId) : undefined;
       return json({
         data: {
           id: 'match-created-1',
           status: 'ORGANIZING',
-          clubId: null,
-          clubName: null,
-          venueType: 'TO_BE_DEFINED',
-          customVenueName: null,
+          clubId: venueType === 'CLUB' ? ((body.clubId as string | undefined) ?? null) : null,
+          clubName: venueType === 'CLUB' ? (club?.name ?? null) : null,
+          venueType,
+          customVenueName: venueType === 'CUSTOM' ? ((body.customVenueName as string | undefined) ?? null) : null,
           sportModalityId: 'modality-football-5',
           sportName: 'Fútbol',
           modalityName: 'Fútbol 5',

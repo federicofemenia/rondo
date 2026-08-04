@@ -1,6 +1,7 @@
 import type { PlayerAvailability, User, UserSportProfile } from '@prisma/client';
 import type { CandidateDto, RatingsSummaryDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
+import { toArgentinaMinutesOfDay } from './argentinaTime.js';
 import { displayName, getConfirmedParticipantIds, getInvitedUserIds, requireMatchWithRelations } from './matches.service.js';
 import { emptyRatingsSummary, getRatingsSummaries } from './ratings.service.js';
 
@@ -21,16 +22,17 @@ type AvailabilityWindow = {
   endMinutes: number;
 };
 
-function minutesOfDay(date: Date): number {
-  return date.getUTCHours() * 60 + date.getUTCMinutes();
-}
-
 /** Resolves the day/time window a candidate's weekly availability must satisfy for a given match. */
 function resolveAvailabilityWindow(match: MatchScheduleFields): AvailabilityWindow {
   const dayOfWeek = match.scheduledDate.getUTCDay();
 
   if (match.startsAt && match.endsAt) {
-    return { dayOfWeek, hasExactTime: true, startMinutes: minutesOfDay(match.startsAt), endMinutes: minutesOfDay(match.endsAt) };
+    return {
+      dayOfWeek,
+      hasExactTime: true,
+      startMinutes: toArgentinaMinutesOfDay(match.startsAt),
+      endMinutes: toArgentinaMinutesOfDay(match.endsAt),
+    };
   }
 
   return { dayOfWeek, hasExactTime: false, startMinutes: match.availabilityStartMinutes, endMinutes: match.availabilityEndMinutes };
