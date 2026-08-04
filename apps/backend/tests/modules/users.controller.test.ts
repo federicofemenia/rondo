@@ -236,6 +236,28 @@ describe('GET /api/v1/me/clubs', () => {
     await app.close();
   });
 
+  it('does not include an INACTIVE membership: the user is treated as having no club', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
+    const user = await prisma.user.findUnique({ where: { clerkUserId: TEST_CLERK_USER_ID } });
+
+    await prisma.clubMembership.upsert({
+      where: { clubId_userId: { clubId: SEED_IDS.club.senorPato, userId: user!.id } },
+      update: { status: 'INACTIVE' },
+      create: { clubId: SEED_IDS.club.senorPato, userId: user!.id, status: 'INACTIVE' },
+    });
+
+    try {
+      const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer regular-user-token' } });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ data: [] });
+    } finally {
+      await prisma.clubMembership.deleteMany({ where: { userId: user!.id } });
+      await app.close();
+    }
+  });
+
   it('does not grant admin membership when no BOOTSTRAP_ADMIN_* is configured', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
     const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });

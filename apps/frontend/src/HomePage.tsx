@@ -16,6 +16,7 @@ import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
 import PercentRoundedIcon from '@mui/icons-material/PercentRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import PlaceRoundedIcon from '@mui/icons-material/PlaceRounded';
+import NoClubMembershipCard from './NoClubMembershipCard';
 import { describeSchedule } from './scheduleFormat';
 
 export type UpcomingEventItem = {
@@ -269,7 +270,11 @@ function HomePage({
             </Box>
           </Card>
         </Box>
-      ) : null}
+      ) : (
+        <Box>
+          <NoClubMembershipCard />
+        </Box>
+      )}
     </Box>
   );
 }

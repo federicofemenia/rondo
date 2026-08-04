@@ -51,13 +51,16 @@ describe('ReservationFlowPage', () => {
     expect(screen.getByText(/para tu partido de fútbol/i)).toBeTruthy();
   });
 
-  it('shows a not-associated-with-a-club message instead of the booking flow when there is no club', () => {
+  it('shows a not-associated-with-a-club message instead of the booking flow when there is no club, with no empty court selectors and a disabled Buscar club action', () => {
     const onConfirm = vi.fn();
     render(<ReservationFlowPage clubName={null} onConfirm={onConfirm} />);
 
     expect(screen.getByText(/no estás asociado a ningún club/i)).toBeTruthy();
+    expect(screen.getByText(/para reservar una cancha primero necesitás pertenecer a un club/i)).toBeTruthy();
     expect(screen.queryByText(/elegí día y horario/i)).toBeFalsy();
     expect(screen.queryByRole('button', { name: /continuar/i })).toBeFalsy();
+    expect(screen.queryByText(/cancha 1|cancha 2|cancha 3/i)).toBeFalsy();
+    expect(screen.getByRole('button', { name: /buscar club/i })).toHaveProperty('disabled', true);
   });
 
   it('still lets the user go back when there is no club', () => {

@@ -142,9 +142,14 @@ export async function updateProfile(userId: string, input: UpdateProfileInputDto
   });
 }
 
+/**
+ * Only ACTIVE memberships count as "belonging to a club" anywhere in the
+ * app (club selection when creating a match, the Home club badge,
+ * reservations). An INACTIVE membership is treated the same as having none.
+ */
 export function getUserClubMemberships(userId: string) {
   return prisma.clubMembership.findMany({
-    where: { userId },
+    where: { userId, status: 'ACTIVE' },
     include: { club: true },
     orderBy: [{ isFavorite: 'desc' }, { club: { name: 'asc' } }],
   });

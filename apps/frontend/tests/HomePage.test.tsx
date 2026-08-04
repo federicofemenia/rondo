@@ -36,7 +36,7 @@ describe('HomePage', () => {
 
     expect(screen.getByText(/invitaciones pendientes/i)).toBeTruthy();
     expect(screen.getByText(/federico te invitó a fútbol fútbol 5/i)).toBeTruthy();
-    expect(screen.getByText(/sede a definir/i)).toBeTruthy();
+    expect(screen.getByText('Sede a definir')).toBeTruthy();
     expect(screen.getByRole('button', { name: /^aceptar$/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^rechazar$/i })).toBeTruthy();
   });
@@ -45,7 +45,7 @@ describe('HomePage', () => {
     render(<HomePage pendingInvitations={[{ ...pendingInvitation, clubName: 'Club Señor Pato' }]} />);
 
     expect(screen.getByText('Club Señor Pato')).toBeTruthy();
-    expect(screen.queryByText(/sede a definir/i)).toBeFalsy();
+    expect(screen.queryByText('Sede a definir')).toBeFalsy();
   });
 
   it('calls onAcceptInvitation / onRejectInvitation with the invitation id', () => {
@@ -73,5 +73,35 @@ describe('HomePage', () => {
     render(<HomePage pendingInvitations={[pendingInvitation]} invitationRespondErrors={{ 'invitation-1': 'No pudimos procesar tu respuesta.' }} />);
 
     expect(screen.getByText(/no pudimos procesar tu respuesta/i)).toBeTruthy();
+  });
+
+  it('shows the informational Clubes card when the user has no active club membership', () => {
+    render(<HomePage clubName={null} />);
+
+    expect(screen.getByText('Clubes')).toBeTruthy();
+    expect(screen.getByText(/todavía no estás asociado a ningún club/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /buscar club/i })).toBeTruthy();
+  });
+
+  it('does not show club novedades/banner/club-selector content when the user has no active club', () => {
+    render(<HomePage clubName={null} />);
+
+    expect(screen.queryByText(/novedades de/i)).toBeFalsy();
+    expect(screen.queryByText(/% off/i)).toBeFalsy();
+    expect(screen.queryByRole('button', { name: /club señor pato/i })).toBeFalsy();
+  });
+
+  it('does not show the Clubes card when the user has an active club membership', () => {
+    render(<HomePage clubName="Club Señor Pato" />);
+
+    expect(screen.queryByText('Clubes')).toBeFalsy();
+    expect(screen.queryByText(/todavía no estás asociado a ningún club/i)).toBeFalsy();
+  });
+
+  it('keeps showing the club badge and novedades for a user with an active club membership', () => {
+    render(<HomePage clubName="Club Señor Pato" />);
+
+    expect(screen.getByRole('button', { name: /club señor pato/i })).toBeTruthy();
+    expect(screen.getByText(/novedades de club señor pato/i)).toBeTruthy();
   });
 });

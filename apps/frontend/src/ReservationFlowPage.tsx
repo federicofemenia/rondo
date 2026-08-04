@@ -18,6 +18,7 @@ import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import RemoveRoundedIcon from '@mui/icons-material/RemoveRounded';
 import SportsTennisRoundedIcon from '@mui/icons-material/SportsTennisRounded';
+import NoClubMembershipCard from './NoClubMembershipCard';
 import PageFooter from './PageFooter';
 
 export type ConfirmedBooking = {
@@ -134,14 +135,10 @@ function ReservationFlowPage({ clubName, onBack, onConfirm, contextLabel }: Rese
           <IconButton aria-label="Volver" onClick={onBack} sx={{ mb: 4, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
             <ArrowBackRoundedIcon />
           </IconButton>
-          <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', textAlign: 'center' }}>
-            <Typography variant="h3" component="h1" sx={{ mb: 2 }}>
-              No estás asociado a ningún club
-            </Typography>
-            <Typography color="text.secondary">
-              Necesitás ser miembro de un club para poder reservar una cancha.
-            </Typography>
-          </Card>
+          <NoClubMembershipCard
+            title="No estás asociado a ningún club"
+            description="Para reservar una cancha primero necesitás pertenecer a un club."
+          />
         </Box>
       </Box>
     );

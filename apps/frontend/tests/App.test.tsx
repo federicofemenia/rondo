@@ -223,16 +223,26 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /asociar partido existente/i })).toBeTruthy();
   });
 
-  it('hides the club button and novedades on Home, and blocks reservations, when the user has no club', async () => {
+  it('shows the Clubes informational card, hides club button and novedades, blocks reservations, and never nags about it in the bell, when the user has no club', async () => {
     const backup = mockClubs.splice(0, mockClubs.length);
     try {
       await loginAndReachHome();
 
       expect(screen.queryByRole('button', { name: /club señor pato/i })).toBeFalsy();
       expect(screen.queryByText(/novedades de/i)).toBeFalsy();
+      expect(screen.getByText('Clubes')).toBeTruthy();
+      expect(screen.getByText(/todavía no estás asociado a ningún club/i)).toBeTruthy();
+
+      // Lacking a club is never itself a pending action / red bell trigger.
+      expect(screen.getByLabelText('Notificaciones')).toBeTruthy();
+      fireEvent.click(screen.getByLabelText('Notificaciones'));
+      expect(screen.getByText(/no tenés acciones pendientes/i)).toBeTruthy();
+      fireEvent.keyDown(screen.getByText(/no tenés acciones pendientes/i), { key: 'Escape', code: 'Escape' });
+      await waitFor(() => expect(screen.queryByText(/no tenés acciones pendientes/i)).toBeFalsy());
 
       fireEvent.click(screen.getByRole('button', { name: /reservar cancha/i }));
       expect(await screen.findByText(/no estás asociado a ningún club/i)).toBeTruthy();
+      expect(screen.getByText(/para reservar una cancha primero necesitás pertenecer a un club/i)).toBeTruthy();
     } finally {
       mockClubs.push(...backup);
     }
