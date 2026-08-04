@@ -28,7 +28,7 @@ export async function findMatchWithRelations(matchId: string, now: Date = new Da
   if (!match) {
     return null;
   }
-  return applyMatchLifecycle(match, now);
+  return applyMatchLifecycle(match, match._count.participants, now);
 }
 
 export async function requireMatchWithRelations(matchId: string, now: Date = new Date()): Promise<MatchWithRelations> {
@@ -46,7 +46,7 @@ export async function listUserMatches(userId: string, now: Date = new Date()): P
     orderBy: [{ scheduledDate: 'asc' }, { startsAt: 'asc' }],
   });
 
-  const resolved = await Promise.all(matches.map((match) => applyMatchLifecycle(match, now)));
+  const resolved = await Promise.all(matches.map((match) => applyMatchLifecycle(match, match._count.participants, now)));
   return resolved.filter((match) => isVisibleOnHome(match, now));
 }
 

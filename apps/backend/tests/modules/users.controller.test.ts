@@ -126,6 +126,105 @@ describe('GET /api/v1/me', () => {
   });
 });
 
+describe('PUT /api/v1/me/profile', () => {
+  it('rejects unauthenticated requests', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    const response = await app.inject({ method: 'PUT', url: '/api/v1/me/profile', payload: { sex: null, biography: null } });
+
+    expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('persists sex and a trimmed biography, returned on the next GET /api/v1/me', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+
+    const putResponse = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/me/profile',
+      headers: { authorization: 'Bearer regular-user-token' },
+      payload: { sex: 'MALE', biography: '  Juego todos los martes.  ' },
+    });
+
+    expect(putResponse.statusCode).toBe(200);
+    const putBody = putResponse.json() as { data: { sex: string | null; biography: string | null } };
+    expect(putBody.data.sex).toBe('MALE');
+    expect(putBody.data.biography).toBe('Juego todos los martes.');
+
+    const getResponse = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
+    const getBody = getResponse.json() as { data: { sex: string | null; biography: string | null } };
+    expect(getBody.data.sex).toBe('MALE');
+    expect(getBody.data.biography).toBe('Juego todos los martes.');
+
+    await app.close();
+  });
+
+  it('clears sex and biography when both are set to null', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    await app.inject({
+      method: 'PUT',
+      url: '/api/v1/me/profile',
+      headers: { authorization: 'Bearer regular-user-token' },
+      payload: { sex: 'FEMALE', biography: 'Algo.' },
+    });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/me/profile',
+      headers: { authorization: 'Bearer regular-user-token' },
+      payload: { sex: null, biography: null },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: { sex: string | null; biography: string | null } };
+    expect(body.data.sex).toBeNull();
+    expect(body.data.biography).toBeNull();
+
+    await app.close();
+  });
+
+  it('rejects an invalid sex value', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/me/profile',
+      headers: { authorization: 'Bearer regular-user-token' },
+      payload: { sex: 'OTHER', biography: null },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects a biography longer than 300 characters', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/me/profile',
+      headers: { authorization: 'Bearer regular-user-token' },
+      payload: { sex: null, biography: 'a'.repeat(301) },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('ignores an avatarUrl in the body -- avatar is Clerk-sourced only, never client-supplied', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/me/profile',
+      headers: { authorization: 'Bearer regular-user-token' },
+      payload: { sex: null, biography: null, avatarUrl: 'https://evil.example.com/x.png' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: { avatarUrl: string | null } };
+    expect(body.data.avatarUrl).not.toBe('https://evil.example.com/x.png');
+
+    await app.close();
+  });
+});
+
 describe('GET /api/v1/me/clubs', () => {
   it('returns an empty list for a user with no memberships', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });

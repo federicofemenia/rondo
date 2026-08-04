@@ -78,6 +78,7 @@ describe('MatchDetailPage', () => {
       sportId: 'sport-football',
       positions: [],
       matchingAvailability: 'Disponible',
+      ratings: { gameplayAverage: null, conductAverage: null, count: 0 },
     });
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 

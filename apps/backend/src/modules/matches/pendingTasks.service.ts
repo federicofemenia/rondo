@@ -17,7 +17,9 @@ export async function getPendingTasks(userId: string, now: Date = new Date()): P
   const tasks: PendingTaskDto[] = [];
 
   for (const rawMatch of completedMatches) {
-    const match = await applyMatchLifecycle(rawMatch, now);
+    // participantsCount only matters for the ORGANIZING branch; this query
+    // only ever returns already-COMPLETED (terminal) matches, so it's unused.
+    const match = await applyMatchLifecycle(rawMatch, 0, now);
     const ratings = await getMatchRatings(match.id, userId, now);
 
     if (ratings.closed || ratings.pendingCount === 0) {

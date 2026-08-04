@@ -4,9 +4,12 @@ import type {
   MatchChatResponseDto,
   MatchInvitationDto,
   MatchParticipantsResponseDto,
+  PublicProfileDto,
+  RatingCommentDto,
   SportDto,
   SportProfileDto,
   UserClubDto,
+  UserSexDto,
 } from '@rondo/contracts';
 
 type MockClerkError = { message: string; longMessage?: string };
@@ -37,12 +40,38 @@ export const clerkAuthMock = {
 
 export const clerkSignOutMock = vi.fn(async () => {});
 
+/** Mutable GET /api/v1/me fixture; PUT /api/v1/me/profile and the Clerk avatar mock below both write into it. */
+export const mockMeProfile = {
+  id: 'user-test',
+  username: 'federico',
+  email: 'federico@rondo.dev',
+  firstName: 'Federico',
+  lastName: 'Femenia',
+  displayName: 'Federico Femenia',
+  avatarUrl: null as string | null,
+  sex: null as UserSexDto | null,
+  biography: null as string | null,
+};
+
+/**
+ * user.setProfileImage — mirrors the real Clerk flow closely enough for
+ * EditProfilePage's tests: it "uploads" by setting a fixed URL, exactly
+ * like the real backend would re-sync avatarUrl from Clerk on the next
+ * authenticated request.
+ */
+export const clerkUserMock = {
+  setProfileImage: vi.fn(async () => {
+    mockMeProfile.avatarUrl = 'https://img.clerk.test/mock-avatar.png';
+    return { id: 'img_test', publicUrl: mockMeProfile.avatarUrl };
+  }),
+};
+
 vi.mock('@clerk/react', () => ({
   useSignIn: () => ({ signIn: signInMock, errors: null, fetchStatus: 'idle' }),
   useSignUp: () => ({ signUp: signUpMock, errors: null, fetchStatus: 'idle' }),
   useAuth: () => clerkAuthMock,
   useClerk: () => ({ signOut: clerkSignOutMock }),
-  useUser: () => ({ isLoaded: true, isSignedIn: true, user: null }),
+  useUser: () => ({ isLoaded: true, isSignedIn: true, user: clerkUserMock }),
   ClerkProvider: ({ children }: { children: unknown }) => children,
 }));
 
@@ -63,6 +92,11 @@ function resetClerkMocks() {
   clerkAuthMock.getToken.mockReset().mockResolvedValue('test-token');
 
   clerkSignOutMock.mockReset().mockResolvedValue(undefined);
+
+  mockMeProfile.avatarUrl = null;
+  mockMeProfile.sex = null;
+  mockMeProfile.biography = null;
+  clerkUserMock.setProfileImage.mockClear();
 }
 
 beforeEach(() => {
@@ -97,6 +131,16 @@ export const mockSportProfileFailingSportIds = new Set<string>();
 export const mockCandidates: CandidateDto[] = [];
 /** matchIds added here make the candidates request for that match respond with a 500, to exercise error states. */
 export const mockCandidatesFailingMatchIds = new Set<string>();
+
+/** Mutable per-test fixture for GET /api/v1/users/:id/public-profile, keyed by user id; cleared before every test. */
+export const mockPublicProfiles = new Map<string, PublicProfileDto>();
+/** userIds added here make the public-profile request for that user respond with a 500. */
+export const mockPublicProfileFailingIds = new Set<string>();
+
+/** Mutable per-test fixture for GET /api/v1/users/:id/rating-comments, keyed by user id; cleared before every test. */
+export const mockRatingCommentsByUserId = new Map<string, RatingCommentDto[]>();
+/** userIds added here make the rating-comments request for that user respond with a 500. */
+export const mockRatingCommentsFailingIds = new Set<string>();
 
 /** Mutable per-test fixture for GET /api/v1/me/invitations, also mutated in place by the accept/reject mock handlers below. */
 export const mockMyInvitations: MatchInvitationDto[] = [];
@@ -144,6 +188,10 @@ beforeEach(() => {
   mockSportProfileFailingSportIds.clear();
   mockCandidates.length = 0;
   mockCandidatesFailingMatchIds.clear();
+  mockPublicProfiles.clear();
+  mockPublicProfileFailingIds.clear();
+  mockRatingCommentsByUserId.clear();
+  mockRatingCommentsFailingIds.clear();
   mockMyInvitations.length = 0;
   mockInvitationsListState.failing = false;
   mockMeState.failuresRemaining = 0;
@@ -173,24 +221,21 @@ beforeEach(() => {
       return json({ data: mockClubs });
     }
 
+    if (method === 'PUT' && url.endsWith('/api/v1/me/profile')) {
+      const body = init?.body
+        ? (JSON.parse(init.body as string) as { sex: UserSexDto | null; biography: string | null })
+        : { sex: null, biography: null };
+      mockMeProfile.sex = body.sex;
+      mockMeProfile.biography = body.biography;
+      return json({ data: { ...mockMeProfile, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+    }
+
     if (url.endsWith('/api/v1/me')) {
       if (mockMeState.failuresRemaining > 0) {
         mockMeState.failuresRemaining -= 1;
         return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
       }
-      return json({
-        data: {
-          id: 'user-test',
-          username: 'federico',
-          email: 'federico@rondo.dev',
-          firstName: 'Federico',
-          lastName: 'Femenia',
-          displayName: 'Federico Femenia',
-          avatarUrl: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      });
+      return json({ data: { ...mockMeProfile, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
     }
 
     if (url.endsWith('/api/v1/me/matches')) {
@@ -390,6 +435,28 @@ beforeEach(() => {
         return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
       }
       return json({ data: mockCandidates });
+    }
+
+    const publicProfileMatch = url.match(/\/api\/v1\/users\/([^/]+)\/public-profile$/);
+    if (method === 'GET' && publicProfileMatch) {
+      const userId = publicProfileMatch[1]!;
+      if (mockPublicProfileFailingIds.has(userId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      const profile = mockPublicProfiles.get(userId);
+      if (!profile) {
+        return json({ error: { code: 'USER_NOT_FOUND', message: 'El usuario indicado no existe.' } }, 404);
+      }
+      return json({ data: profile });
+    }
+
+    const ratingCommentsMatch = url.match(/\/api\/v1\/users\/([^/]+)\/rating-comments$/);
+    if (method === 'GET' && ratingCommentsMatch) {
+      const userId = ratingCommentsMatch[1]!;
+      if (mockRatingCommentsFailingIds.has(userId)) {
+        return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+      }
+      return json({ data: mockRatingCommentsByUserId.get(userId) ?? [] });
     }
 
     const createInvitationMatch = url.match(/\/api\/v1\/matches\/([^/]+)\/invitations$/);

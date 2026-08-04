@@ -6,14 +6,17 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
+import Rating from '@mui/material/Rating';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
+import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import { ApiError, useApi } from './apiClient';
 import PageFooter from './PageFooter';
+import PlayerProfileCardDialog from './PlayerProfileCardDialog';
 
 export type CandidateMatchSummary = {
   sport: string;
@@ -39,6 +42,50 @@ function describeError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
 
+function CandidateRatingsSummary({ ratings }: { ratings: CandidateDto['ratings'] }) {
+  if (ratings.count === 0) {
+    return (
+      <Typography variant="caption" color="text.secondary">
+        Sin valoraciones
+      </Typography>
+    );
+  }
+
+  return (
+    <Stack spacing={0.5}>
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <Rating
+          value={ratings.gameplayAverage ?? 0}
+          precision={0.5}
+          readOnly
+          size="small"
+          icon={<StarRoundedIcon fontSize="inherit" sx={{ color: 'primary.main' }} />}
+          emptyIcon={<StarRoundedIcon fontSize="inherit" sx={{ color: 'divider' }} />}
+        />
+        <Typography variant="caption" color="text.secondary">
+          Juego
+        </Typography>
+      </Stack>
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <Rating
+          value={ratings.conductAverage ?? 0}
+          precision={0.5}
+          readOnly
+          size="small"
+          icon={<StarRoundedIcon fontSize="inherit" sx={{ color: 'primary.main' }} />}
+          emptyIcon={<StarRoundedIcon fontSize="inherit" sx={{ color: 'divider' }} />}
+        />
+        <Typography variant="caption" color="text.secondary">
+          Conducta
+        </Typography>
+      </Stack>
+      <Typography variant="caption" color="text.secondary">
+        {ratings.count} {ratings.count === 1 ? 'valoración' : 'valoraciones'}
+      </Typography>
+    </Stack>
+  );
+}
+
 function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps) {
   const api = useApi();
   const [candidates, setCandidates] = useState<CandidateDto[] | null>(null);
@@ -48,6 +95,8 @@ function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({});
+
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,7 +178,16 @@ function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps
               const inviteError = inviteErrors[candidate.id];
 
               return (
-                <Card key={candidate.id} variant="outlined" sx={{ p: 4, bgcolor: 'background.default', borderColor: 'divider' }}>
+                // Deliberately no role="button"/tabIndex here: the card
+                // already contains a real, independently focusable button
+                // (Invitar), and ARIA disallows nesting interactive
+                // controls inside one another.
+                <Card
+                  key={candidate.id}
+                  variant="outlined"
+                  onClick={() => setSelectedCandidateId(candidate.id)}
+                  sx={{ p: 4, bgcolor: 'background.default', borderColor: 'divider', cursor: 'pointer' }}
+                >
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
                     <Stack direction="row" spacing={2} alignItems="center">
                       <Avatar
@@ -160,6 +218,10 @@ function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps
                     />
                   </Stack>
 
+                  <Box sx={{ mt: 2 }}>
+                    <CandidateRatingsSummary ratings={candidate.ratings} />
+                  </Box>
+
                   {inviteError ? (
                     <Alert severity="error" sx={{ mt: 2 }}>
                       {inviteError}
@@ -172,7 +234,10 @@ function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps
                     fullWidth
                     disabled={isSent || isInviting}
                     startIcon={isInviting ? <CircularProgress size={16} color="inherit" /> : isSent ? <CheckCircleRoundedIcon /> : null}
-                    onClick={() => void handleInvite(candidate)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleInvite(candidate);
+                    }}
                     sx={{ mt: 3 }}
                   >
                     {isSent ? 'Invitación enviada' : isInviting ? 'Enviando…' : 'Invitar'}
@@ -191,6 +256,13 @@ function CandidatesPage({ matchId, matchSummary, onFinish }: CandidatesPageProps
           </Button>
         </PageFooter>
       ) : null}
+
+      <PlayerProfileCardDialog
+        open={selectedCandidateId !== null}
+        userId={selectedCandidateId}
+        sportName={matchSummary?.sport}
+        onClose={() => setSelectedCandidateId(null)}
+      />
     </Box>
   );
 }

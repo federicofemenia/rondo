@@ -9,7 +9,7 @@ export const CHAT_POST_MATCH_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const CHAT_WRITABLE_STATUSES: readonly MatchStatus[] = ['ORGANIZING', 'FULL', 'IN_PROGRESS', 'COMPLETED'];
 
-type LifecycleMatch = Pick<Match, 'status' | 'scheduledDate' | 'startsAt' | 'endsAt'>;
+type LifecycleMatch = Pick<Match, 'status' | 'scheduledDate' | 'startsAt' | 'endsAt' | 'minPlayers'>;
 
 /** Midnight (UTC) of the day after `date`, i.e. the exclusive end of that calendar day. */
 export function endOfScheduledDay(date: Date): Date {
@@ -23,8 +23,14 @@ export function endOfScheduledDay(date: Date): Date {
  * or completes automatically: it stays ORGANIZING/FULL until either a time
  * is set, or the scheduled day is over, at which point it expires so it
  * cannot linger forever without a time.
+ *
+ * An ORGANIZING match that never reaches maxPlayers still counts as played
+ * once it has at least minPlayers confirmed: it rides the same clock as a
+ * FULL match (IN_PROGRESS at startsAt, COMPLETED at endsAt) instead of just
+ * expiring, so ratings can open for it. Below minPlayers it still expires at
+ * endsAt as before.
  */
-export function resolveMatchStatus(match: LifecycleMatch, now: Date): MatchStatus {
+export function resolveMatchStatus(match: LifecycleMatch, participantsCount: number, now: Date): MatchStatus {
   if (TERMINAL_STATUSES.includes(match.status)) {
     return match.status;
   }
@@ -38,7 +44,12 @@ export function resolveMatchStatus(match: LifecycleMatch, now: Date): MatchStatu
   const endsAtMs = match.endsAt.getTime();
 
   if (match.status === 'ORGANIZING') {
-    return nowMs >= endsAtMs ? 'EXPIRED' : 'ORGANIZING';
+    if (participantsCount < match.minPlayers) {
+      return nowMs >= endsAtMs ? 'EXPIRED' : 'ORGANIZING';
+    }
+    if (nowMs >= endsAtMs) return 'COMPLETED';
+    if (nowMs >= startsAtMs) return 'IN_PROGRESS';
+    return 'ORGANIZING';
   }
 
   if (match.status === 'FULL') {
@@ -59,8 +70,8 @@ export function resolveMatchStatus(match: LifecycleMatch, now: Date): MatchStatu
  * changed. Idempotent: calling it repeatedly with the same or a later `now`
  * converges and stops mutating once a terminal status is reached.
  */
-export async function applyMatchLifecycle<T extends Match>(match: T, now: Date = new Date()): Promise<T> {
-  const resolvedStatus = resolveMatchStatus(match, now);
+export async function applyMatchLifecycle<T extends Match>(match: T, participantsCount: number, now: Date = new Date()): Promise<T> {
+  const resolvedStatus = resolveMatchStatus(match, participantsCount, now);
   if (resolvedStatus === match.status) {
     return match;
   }

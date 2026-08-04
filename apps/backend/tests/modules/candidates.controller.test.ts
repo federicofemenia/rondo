@@ -510,4 +510,50 @@ describe('GET /api/v1/matches/:matchId/candidates', () => {
 
     await app.close();
   });
+
+  it("includes each candidate's ratings summary, computed with a single grouped query, with a null/zero shape for one with no ratings", async () => {
+    const rated = await createCandidateUser('Marcos');
+    const unrated = await createCandidateUser('Nadia');
+    createdUserIds.push(rated.id, unrated.id);
+
+    for (const candidate of [rated, unrated]) {
+      const profile = await createSportProfile(candidate.id, SEED_IDS.sports.football);
+      await addAvailability(profile.id, TEST_DAY_OF_WEEK, 14 * 60, 19 * 60);
+    }
+
+    const ratingMatch = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      participantUserIds: [SEED_IDS.users.juan, rated.id],
+      status: 'COMPLETED',
+      endsAt: new Date(Date.now() - 3600_000),
+      statusChangedAt: new Date(Date.now() - 3600_000),
+    });
+    createdMatchIds.push(ratingMatch.id);
+    await prisma.playerRating.create({
+      data: { matchId: ratingMatch.id, authorUserId: SEED_IDS.users.juan, targetUserId: rated.id, gameplayScore: 5, conductScore: 4 },
+    });
+
+    const match = await createTestMatch({
+      scheduledDate: TEST_DAY,
+      availabilityStartMinutes: 14 * 60,
+      availabilityEndMinutes: 19 * 60,
+      startsAt: null,
+      endsAt: null,
+    });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/candidates`, headers: { authorization: 'Bearer juan' } });
+
+    const body = response.json() as {
+      data: Array<{ id: string; ratings: { gameplayAverage: number | null; conductAverage: number | null; count: number } }>;
+    };
+    const ratedCandidate = body.data.find((candidate) => candidate.id === rated.id);
+    const unratedCandidate = body.data.find((candidate) => candidate.id === unrated.id);
+
+    expect(ratedCandidate?.ratings).toEqual({ gameplayAverage: 5, conductAverage: 4, count: 1 });
+    expect(unratedCandidate?.ratings).toEqual({ gameplayAverage: null, conductAverage: null, count: 0 });
+
+    await app.close();
+  });
 });

@@ -1,4 +1,5 @@
 import type { User } from '@prisma/client';
+import type { UpdateProfileInputDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
 import { SEED_IDS } from '../../infrastructure/database/seedIds.js';
 import type { AuthenticatedClerkProfile } from '../../infrastructure/auth/authAdapter.js';
@@ -125,6 +126,20 @@ async function ensureDefaultSportProfiles(userId: string): Promise<void> {
       })),
     });
   }
+}
+
+/**
+ * avatarUrl is deliberately not settable here — Clerk stays the sole
+ * source of truth for it. The frontend uploads directly to Clerk (see
+ * EditProfilePage.tsx), and the very next authenticated request re-syncs
+ * avatarUrl from Clerk automatically (syncUserFromClerk runs on every
+ * request), so there is nothing left for this endpoint to persist.
+ */
+export async function updateProfile(userId: string, input: UpdateProfileInputDto): Promise<User> {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { sex: input.sex, biography: input.biography },
+  });
 }
 
 export function getUserClubMemberships(userId: string) {

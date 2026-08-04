@@ -1,7 +1,8 @@
 import type { PlayerAvailability, User, UserSportProfile } from '@prisma/client';
-import type { CandidateDto } from '@rondo/contracts';
+import type { CandidateDto, RatingsSummaryDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
 import { displayName, getConfirmedParticipantIds, getInvitedUserIds, requireMatchWithRelations } from './matches.service.js';
+import { emptyRatingsSummary, getRatingsSummaries } from './ratings.service.js';
 
 type MatchScheduleFields = {
   scheduledDate: Date;
@@ -68,19 +69,9 @@ function formatMinutes(minutes: number): string {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 }
 
-function describeMatchingAvailability(window: AvailabilityWindow, slot: PlayerAvailability): string {
-  if (window.hasExactTime) {
-    return 'Disponible';
-  }
-
-  const overlapStart = Math.max(slot.startMinutes, window.startMinutes);
-  const overlapEnd = Math.min(slot.endMinutes, window.endMinutes);
-  return `Disponible entre ${formatMinutes(overlapStart)} y ${formatMinutes(overlapEnd)}`;
-}
-
 type ProfileWithRelations = UserSportProfile & { user: User; availability: PlayerAvailability[] };
 
-function toCandidateDto(profile: ProfileWithRelations, matchingAvailability: string): CandidateDto {
+function toCandidateDto(profile: ProfileWithRelations, matchingAvailability: string, ratings: RatingsSummaryDto): CandidateDto {
   return {
     id: profile.user.id,
     displayName: displayName(profile.user),
@@ -88,6 +79,7 @@ function toCandidateDto(profile: ProfileWithRelations, matchingAvailability: str
     sportId: profile.sportId,
     positions: profile.positions,
     matchingAvailability,
+    ratings,
   };
 }
 
@@ -131,10 +123,20 @@ export async function getMatchCandidates(matchId: string): Promise<CandidateDto[
       continue;
     }
 
-    matches.push({ profile, matchingAvailability: describeMatchingAvailability(window, slot) });
+    const matchingAvailability = window.hasExactTime
+      ? 'Disponible'
+      : `Disponible entre ${formatMinutes(slot.startMinutes)} y ${formatMinutes(slot.endMinutes)}`;
+
+    matches.push({ profile, matchingAvailability });
   }
 
   matches.sort((a, b) => displayName(a.profile.user).localeCompare(displayName(b.profile.user), 'es'));
 
-  return matches.map(({ profile, matchingAvailability }) => toCandidateDto(profile, matchingAvailability));
+  // One grouped query for every matched candidate's ratings, never one per
+  // candidate — see ratings.service.ts's getRatingsSummaries.
+  const ratingsSummaries = await getRatingsSummaries(matches.map(({ profile }) => profile.user.id));
+
+  return matches.map(({ profile, matchingAvailability }) =>
+    toCandidateDto(profile, matchingAvailability, ratingsSummaries.get(profile.user.id) ?? emptyRatingsSummary()),
+  );
 }

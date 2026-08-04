@@ -1,4 +1,11 @@
-import type { MatchRatingsResponseDto, RateParticipantInputDto, RatingDto, RatingsParticipantDto } from '@rondo/contracts';
+import type {
+  MatchRatingsResponseDto,
+  RateParticipantInputDto,
+  RatingCommentDto,
+  RatingDto,
+  RatingsParticipantDto,
+  RatingsSummaryDto,
+} from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
 import { isRatingsEnabled, isRatingsOpen, ratingsCloseAt } from './matchLifecycle.js';
 import { displayName, getConfirmedParticipantIds, requireMatchWithRelations } from './matches.service.js';
@@ -109,4 +116,89 @@ export async function rateParticipant(
   });
 
   return toRatingDto(rating);
+}
+
+function roundToOneDecimal(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+export function emptyRatingsSummary(): RatingsSummaryDto {
+  return { gameplayAverage: null, conductAverage: null, count: 0 };
+}
+
+/**
+ * One grouped query for every requested user, never one query per user --
+ * used by the candidates list (all candidates at once) and the public
+ * profile (a single-element list) alike, so neither ever N+1s.
+ */
+export async function getRatingsSummaries(userIds: string[]): Promise<Map<string, RatingsSummaryDto>> {
+  if (userIds.length === 0) {
+    return new Map();
+  }
+
+  const grouped = await prisma.playerRating.groupBy({
+    by: ['targetUserId'],
+    where: { targetUserId: { in: userIds } },
+    _avg: { gameplayScore: true, conductScore: true },
+    _count: { _all: true },
+  });
+
+  const summaries = new Map<string, RatingsSummaryDto>();
+  for (const group of grouped) {
+    summaries.set(group.targetUserId, {
+      gameplayAverage: group._avg.gameplayScore !== null ? roundToOneDecimal(group._avg.gameplayScore) : null,
+      conductAverage: group._avg.conductScore !== null ? roundToOneDecimal(group._avg.conductScore) : null,
+      count: group._count._all,
+    });
+  }
+  return summaries;
+}
+
+export async function getRatingsSummary(userId: string): Promise<RatingsSummaryDto> {
+  const summaries = await getRatingsSummaries([userId]);
+  return summaries.get(userId) ?? emptyRatingsSummary();
+}
+
+const MAX_RATING_COMMENTS = 20;
+
+function toRatingCommentDto(rating: {
+  id: string;
+  gameplayScore: number;
+  conductScore: number;
+  comment: string | null;
+  createdAt: Date;
+  author: { displayName: string | null; firstName: string | null; lastName: string | null; username: string | null; email: string | null };
+  match: { sportModality: { name: string; sport: { name: string } } };
+}): RatingCommentDto {
+  return {
+    id: rating.id,
+    authorDisplayName: displayName(rating.author),
+    gameplayScore: rating.gameplayScore,
+    conductScore: rating.conductScore,
+    // Guaranteed non-null/non-empty by the query's where clause below.
+    comment: rating.comment!,
+    sportName: rating.match.sportModality.sport.name,
+    modalityName: rating.match.sportModality.name,
+    createdAt: rating.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Most recent MAX_RATING_COMMENTS ratings that actually carry written
+ * feedback for this user, newest first. Deliberately not paginated or
+ * unbounded -- this is the "Ver comentarios" on-demand fetch, never loaded
+ * as part of a list of many players at once.
+ */
+export async function getRatingComments(userId: string): Promise<RatingCommentDto[]> {
+  const ratings = await prisma.playerRating.findMany({
+    where: {
+      targetUserId: userId,
+      AND: [{ comment: { not: null } }, { comment: { not: '' } }],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: MAX_RATING_COMMENTS,
+    include: { author: true, match: { include: { sportModality: { include: { sport: true } } } } },
+  });
+
+  return ratings.map(toRatingCommentDto);
 }

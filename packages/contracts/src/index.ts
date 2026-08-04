@@ -6,6 +6,8 @@ export interface HealthResponse {
   timestamp: string;
 }
 
+export type UserSexDto = 'MALE' | 'FEMALE';
+
 export interface UserDto {
   id: string;
   username: string | null;
@@ -14,9 +16,27 @@ export interface UserDto {
   lastName: string | null;
   displayName: string;
   avatarUrl: string | null;
+  sex: UserSexDto | null;
+  biography: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+const userSexSchema = z.enum(['MALE', 'FEMALE']);
+
+const MAX_BIOGRAPHY_LENGTH = 300;
+
+/**
+ * PUT semantics: both fields are always required, null clears them. The
+ * user resource itself is always the authenticated caller (never taken from
+ * this body) -- see users.controller.ts's requireAuth-scoped handler.
+ */
+export const updateProfileInputSchema = z.object({
+  sex: userSexSchema.nullable(),
+  biography: z.string().trim().max(MAX_BIOGRAPHY_LENGTH).nullable(),
+});
+
+export type UpdateProfileInputDto = z.infer<typeof updateProfileInputSchema>;
 
 export type ClubMembershipRoleDto = 'MEMBER' | 'CLUB_ADMIN';
 export type ClubMembershipStatusDto = 'ACTIVE' | 'INACTIVE';
@@ -219,6 +239,29 @@ export const rateParticipantInputSchema = z.object({
 
 export type RateParticipantInputDto = z.infer<typeof rateParticipantInputSchema>;
 
+/**
+ * Aggregated across every match a user has ever been rated in (not scoped
+ * to one match, unlike RatingDto above). Averages are null — not 0 — when
+ * count is 0, so the frontend can render "Sin valoraciones" instead of a
+ * misleading zero-star average.
+ */
+export interface RatingsSummaryDto {
+  gameplayAverage: number | null;
+  conductAverage: number | null;
+  count: number;
+}
+
+export interface RatingCommentDto {
+  id: string;
+  authorDisplayName: string;
+  gameplayScore: number;
+  conductScore: number;
+  comment: string;
+  sportName: string;
+  modalityName: string;
+  createdAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Pending tasks
 // ---------------------------------------------------------------------------
@@ -331,6 +374,7 @@ export interface CandidateDto {
   sportId: string;
   positions: string[];
   matchingAvailability: string;
+  ratings: RatingsSummaryDto;
 }
 
 // ---------------------------------------------------------------------------
@@ -432,3 +476,25 @@ export const sendMatchChatMessageInputSchema = z.object({
 });
 
 export type SendMatchChatMessageInputDto = z.infer<typeof sendMatchChatMessageInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Public player profile
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/v1/users/:id/public-profile. Deliberately excludes email,
+ * username, clerkUserId, club memberships and anything else private --
+ * this is what any authenticated user can see about another player, shown
+ * on the player card opened from a candidate. Biography and comments are
+ * never bundled into CandidateDto itself; both are fetched on demand only
+ * once this endpoint (or rating-comments below) is actually requested.
+ */
+export interface PublicProfileDto {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  sex: UserSexDto | null;
+  biography: string | null;
+  positions: string[];
+  ratings: RatingsSummaryDto;
+}

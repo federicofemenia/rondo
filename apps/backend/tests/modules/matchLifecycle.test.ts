@@ -15,6 +15,7 @@ type FakeMatch = {
   startsAt: Date | null;
   endsAt: Date | null;
   statusChangedAt: Date;
+  minPlayers: number;
 };
 
 function fakeMatch(overrides: Partial<FakeMatch> = {}): FakeMatch {
@@ -25,16 +26,53 @@ function fakeMatch(overrides: Partial<FakeMatch> = {}): FakeMatch {
     startsAt: new Date(now.getTime() - 3600_000),
     endsAt: new Date(now.getTime() + 3600_000),
     statusChangedAt: now,
+    minPlayers: 1,
     ...overrides,
   };
 }
 
 describe('resolveMatchStatus', () => {
-  it('moves an expired ORGANIZING match to EXPIRED, never to COMPLETED', () => {
+  it('moves an expired ORGANIZING match below minPlayers to EXPIRED, never to COMPLETED', () => {
     const now = new Date('2026-01-01T12:00:00Z');
-    const match = fakeMatch({ status: 'ORGANIZING', endsAt: new Date('2026-01-01T11:00:00Z') });
+    const match = fakeMatch({ status: 'ORGANIZING', endsAt: new Date('2026-01-01T11:00:00Z'), minPlayers: 10 });
 
-    expect(resolveMatchStatus(match, now)).toBe('EXPIRED');
+    expect(resolveMatchStatus(match, 4, now)).toBe('EXPIRED');
+  });
+
+  it('moves an expired ORGANIZING match that already reached minPlayers to COMPLETED, just like FULL', () => {
+    const now = new Date('2026-01-01T12:00:00Z');
+    const match = fakeMatch({
+      status: 'ORGANIZING',
+      startsAt: new Date('2026-01-01T09:00:00Z'),
+      endsAt: new Date('2026-01-01T11:00:00Z'),
+      minPlayers: 10,
+    });
+
+    expect(resolveMatchStatus(match, 10, now)).toBe('COMPLETED');
+  });
+
+  it('moves an ORGANIZING match that reached minPlayers into IN_PROGRESS once startsAt has passed, even below maxPlayers', () => {
+    const now = new Date('2026-01-01T10:30:00Z');
+    const match = fakeMatch({
+      status: 'ORGANIZING',
+      startsAt: new Date('2026-01-01T10:00:00Z'),
+      endsAt: new Date('2026-01-01T11:00:00Z'),
+      minPlayers: 10,
+    });
+
+    expect(resolveMatchStatus(match, 10, now)).toBe('IN_PROGRESS');
+  });
+
+  it('keeps an ORGANIZING match that reached minPlayers as ORGANIZING before startsAt', () => {
+    const now = new Date('2026-01-01T08:00:00Z');
+    const match = fakeMatch({
+      status: 'ORGANIZING',
+      startsAt: new Date('2026-01-01T10:00:00Z'),
+      endsAt: new Date('2026-01-01T11:00:00Z'),
+      minPlayers: 10,
+    });
+
+    expect(resolveMatchStatus(match, 10, now)).toBe('ORGANIZING');
   });
 
   it('moves an expired FULL match to COMPLETED', () => {
@@ -45,7 +83,7 @@ describe('resolveMatchStatus', () => {
       endsAt: new Date('2026-01-01T11:00:00Z'),
     });
 
-    expect(resolveMatchStatus(match, now)).toBe('COMPLETED');
+    expect(resolveMatchStatus(match, 0, now)).toBe('COMPLETED');
   });
 
   it('moves a FULL match into IN_PROGRESS once startsAt has passed', () => {
@@ -56,7 +94,7 @@ describe('resolveMatchStatus', () => {
       endsAt: new Date('2026-01-01T11:00:00Z'),
     });
 
-    expect(resolveMatchStatus(match, now)).toBe('IN_PROGRESS');
+    expect(resolveMatchStatus(match, 0, now)).toBe('IN_PROGRESS');
   });
 
   it('moves an expired IN_PROGRESS match to COMPLETED', () => {
@@ -67,14 +105,14 @@ describe('resolveMatchStatus', () => {
       endsAt: new Date('2026-01-01T11:00:00Z'),
     });
 
-    expect(resolveMatchStatus(match, now)).toBe('COMPLETED');
+    expect(resolveMatchStatus(match, 0, now)).toBe('COMPLETED');
   });
 
   it.each<MatchStatus>(['COMPLETED', 'CANCELLED', 'EXPIRED'])('never transitions out of the terminal status %s', (status) => {
     const farFuture = new Date('2099-01-01T00:00:00Z');
     const match = fakeMatch({ status, endsAt: new Date('2020-01-01T00:00:00Z') });
 
-    expect(resolveMatchStatus(match, farFuture)).toBe(status);
+    expect(resolveMatchStatus(match, 0, farFuture)).toBe(status);
   });
 
   it.each<MatchStatus>(['ORGANIZING', 'FULL'])('never auto-transitions %s to IN_PROGRESS/COMPLETED while startsAt/endsAt are undefined', (status) => {
@@ -82,7 +120,7 @@ describe('resolveMatchStatus', () => {
     const stillSameDay = new Date('2026-03-10T18:00:00Z');
     const match = fakeMatch({ status, scheduledDate, startsAt: null, endsAt: null });
 
-    expect(resolveMatchStatus(match, stillSameDay)).toBe(status);
+    expect(resolveMatchStatus(match, 0, stillSameDay)).toBe(status);
   });
 
   it.each<MatchStatus>(['ORGANIZING', 'FULL'])('expires %s once the scheduled day is over and no time was ever set', (status) => {
@@ -90,7 +128,7 @@ describe('resolveMatchStatus', () => {
     const dayOver = new Date('2026-03-11T00:00:00Z');
     const match = fakeMatch({ status, scheduledDate, startsAt: null, endsAt: null });
 
-    expect(resolveMatchStatus(match, dayOver)).toBe('EXPIRED');
+    expect(resolveMatchStatus(match, 0, dayOver)).toBe('EXPIRED');
   });
 
   it('endOfScheduledDay returns midnight UTC of the following day', () => {

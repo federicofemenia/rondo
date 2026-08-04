@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import CandidatesPage from '../src/CandidatesPage';
-import { mockCandidates, mockCandidatesFailingMatchIds, mockInvitationCreateFailingMatchIds } from './setup';
+import { mockCandidates, mockCandidatesFailingMatchIds, mockInvitationCreateFailingMatchIds, mockPublicProfiles } from './setup';
 
 const bruno = {
   id: 'candidate-bruno',
@@ -10,6 +10,17 @@ const bruno = {
   sportId: 'sport-football',
   positions: ['Delantero'],
   matchingAvailability: 'Disponible entre 15:00 y 18:00',
+  ratings: { gameplayAverage: 4.5, conductAverage: 5, count: 18 },
+};
+
+const unratedCandidate = {
+  id: 'candidate-nadia',
+  displayName: 'Nadia',
+  avatarUrl: null,
+  sportId: 'sport-football',
+  positions: [],
+  matchingAvailability: 'Disponible',
+  ratings: { gameplayAverage: null, conductAverage: null, count: 0 },
 };
 
 describe('CandidatesPage', () => {
@@ -32,13 +43,32 @@ describe('CandidatesPage', () => {
     expect(await screen.findByText(/no encontramos jugadores compatibles para este partido/i)).toBeTruthy();
   });
 
-  it('renders the real candidates returned by the backend', async () => {
+  it('renders the real candidates returned by the backend, including their ratings summary', async () => {
     mockCandidates.push(bruno);
     render(<CandidatesPage matchId="match-1" />);
 
     expect(await screen.findByText('Bruno Silva')).toBeTruthy();
     expect(screen.getByText('Disponible entre 15:00 y 18:00')).toBeTruthy();
     expect(screen.getByText('DEL')).toBeTruthy();
+    expect(screen.getByText('Juego')).toBeTruthy();
+    expect(screen.getByText('Conducta')).toBeTruthy();
+    expect(screen.getByText('18 valoraciones')).toBeTruthy();
+  });
+
+  it('shows "Sin valoraciones" for a candidate with no ratings yet', async () => {
+    mockCandidates.push(unratedCandidate);
+    render(<CandidatesPage matchId="match-1" />);
+
+    expect(await screen.findByText('Nadia')).toBeTruthy();
+    expect(screen.getByText(/sin valoraciones/i)).toBeTruthy();
+  });
+
+  it('never shows biography or comments directly on the candidate card', async () => {
+    mockCandidates.push(bruno);
+    render(<CandidatesPage matchId="match-1" />);
+
+    await screen.findByText('Bruno Silva');
+    expect(screen.queryByText(/comentarios/i)).toBeFalsy();
   });
 
   it('sends a real invitation to the backend and disables the button once sent', async () => {
@@ -75,14 +105,48 @@ describe('CandidatesPage', () => {
     expect(onFinish).toHaveBeenCalled();
   });
 
-  it('never shows the old mock candidates or the retired reputation UI', async () => {
+  it('never shows the old mock candidate names', async () => {
     mockCandidates.push(bruno);
     render(<CandidatesPage matchId="match-1" />);
 
     await screen.findByText('Bruno Silva');
     expect(screen.queryByText('Mauro')).toBeFalsy();
     expect(screen.queryByText('Lina')).toBeFalsy();
-    expect(screen.queryByText(/conducta/i)).toBeFalsy();
-    expect(screen.queryByText(/comentarios/i)).toBeFalsy();
+  });
+
+  it('opens the player profile card when the card itself is clicked', async () => {
+    mockCandidates.push(bruno);
+    mockPublicProfiles.set(bruno.id, {
+      id: bruno.id,
+      displayName: bruno.displayName,
+      avatarUrl: null,
+      sex: null,
+      biography: 'Juego todos los martes.',
+      positions: ['Delantero'],
+      ratings: bruno.ratings,
+    });
+    render(<CandidatesPage matchId="match-1" />);
+
+    fireEvent.click(await screen.findByText('Bruno Silva'));
+
+    expect(await screen.findByText(/juego todos los martes/i)).toBeTruthy();
+  });
+
+  it('clicking Invitar does not open the player profile card (stopPropagation)', async () => {
+    mockCandidates.push(bruno);
+    mockPublicProfiles.set(bruno.id, {
+      id: bruno.id,
+      displayName: bruno.displayName,
+      avatarUrl: null,
+      sex: null,
+      biography: 'No debería verse.',
+      positions: ['Delantero'],
+      ratings: bruno.ratings,
+    });
+    render(<CandidatesPage matchId="match-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /^invitar$/i }));
+
+    expect(screen.queryByRole('dialog')).toBeFalsy();
   });
 });
