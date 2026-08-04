@@ -11,6 +11,7 @@ type CreateTestMatchInput = {
   scheduledDate?: Date;
   availabilityStartMinutes?: number;
   availabilityEndMinutes?: number;
+  durationMinutes?: number;
   startsAt?: Date | null;
   endsAt?: Date | null;
   status?: MatchStatus;
@@ -44,6 +45,7 @@ export async function createTestMatch(input: CreateTestMatchInput = {}): Promise
       scheduledDate: input.scheduledDate ?? startOfUtcDay(startsAt ?? now),
       availabilityStartMinutes: input.availabilityStartMinutes ?? 0,
       availabilityEndMinutes: input.availabilityEndMinutes ?? 1440,
+      durationMinutes: input.durationMinutes ?? 60,
       startsAt,
       endsAt,
       status: input.status ?? 'ORGANIZING',

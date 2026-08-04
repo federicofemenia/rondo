@@ -71,6 +71,7 @@ export type ScheduleUpdateInput = {
   scheduledDate: string;
   availabilityStartMinutes: number;
   availabilityEndMinutes: number;
+  durationMinutes: number;
   startsAt: string | null;
 };
 

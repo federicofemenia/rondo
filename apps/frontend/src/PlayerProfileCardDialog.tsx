@@ -213,7 +213,7 @@ function PlayerProfileCardDialog({ open, userId, sportName, onClose }: PlayerPro
               onClick={() => void handleShowComments()}
               sx={{ mt: 2, borderColor: 'rgba(255,255,255,0.4)', color: '#fff', borderRadius: 999, '&:hover': { borderColor: '#fff' } }}
             >
-              Ver comentarios
+              {profile.ratings.commentsCount > 0 ? `Ver comentarios (${profile.ratings.commentsCount})` : 'Ver comentarios'}
             </Button>
 
             {showComments ? (

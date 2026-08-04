@@ -64,6 +64,7 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText(/jugadores mínimo/i), { target: { value: '4' } });
     fireEvent.change(screen.getByLabelText(/jugadores máximo/i), { target: { value: '10' } });
     fireEvent.click(screen.getByText('Delantero'));
+    fireEvent.click(screen.getByRole('radio', { name: /^no$/i }));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     expect(await screen.findByRole('heading', { name: /candidatos compatibles/i })).toBeTruthy();

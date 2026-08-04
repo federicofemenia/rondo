@@ -69,6 +69,7 @@ export function toMatchSummaryDto(match: MatchWithRelations, currentUserId: stri
     scheduledDate: match.scheduledDate.toISOString().slice(0, 10),
     availabilityStartMinutes: match.availabilityStartMinutes,
     availabilityEndMinutes: match.availabilityEndMinutes,
+    durationMinutes: match.durationMinutes,
     startsAt: match.startsAt ? match.startsAt.toISOString() : null,
     endsAt: match.endsAt ? match.endsAt.toISOString() : null,
     organizerUserId: match.organizerUserId,
@@ -88,6 +89,7 @@ type ResolvedSchedule = {
   scheduledDate: Date;
   availabilityStartMinutes: number;
   availabilityEndMinutes: number;
+  durationMinutes: number;
   startsAt: Date | null;
   endsAt: Date | null;
 };
@@ -96,18 +98,19 @@ type ScheduleInput = {
   scheduledDate: string;
   availabilityStartMinutes: number;
   availabilityEndMinutes: number;
+  durationMinutes: number;
   startsAt?: string | null;
 };
 
 /**
  * Computes the persisted schedule from a create/edit payload. The frontend
  * never sends endsAt: when a startsAt is chosen, endsAt is derived here from
- * the sport modality's duration, and duration-aware bounds (the confirmed
- * time must both start and end within the chosen availability window) are
- * enforced here because they require the modality lookup — the zod schema
- * only validates the structural rules that do not need a DB round trip.
+ * the organizer-chosen durationMinutes (no longer the sport modality's fixed
+ * duration), and duration-aware bounds (the confirmed time must both start
+ * and end within the chosen availability window) are enforced here because
+ * validating them requires this arithmetic, not just the payload's shape.
  */
-function resolveSchedule(input: ScheduleInput, modalityDurationMinutes: number): ResolvedSchedule {
+function resolveSchedule(input: ScheduleInput): ResolvedSchedule {
   const scheduledDate = new Date(`${input.scheduledDate}T00:00:00.000Z`);
 
   if (!input.startsAt) {
@@ -115,6 +118,7 @@ function resolveSchedule(input: ScheduleInput, modalityDurationMinutes: number):
       scheduledDate,
       availabilityStartMinutes: input.availabilityStartMinutes,
       availabilityEndMinutes: input.availabilityEndMinutes,
+      durationMinutes: input.durationMinutes,
       startsAt: null,
       endsAt: null,
     };
@@ -122,16 +126,17 @@ function resolveSchedule(input: ScheduleInput, modalityDurationMinutes: number):
 
   const startsAt = new Date(input.startsAt);
   const startMinutes = startsAt.getUTCHours() * 60 + startsAt.getUTCMinutes();
-  const endMinutes = startMinutes + modalityDurationMinutes;
+  const endMinutes = startMinutes + input.durationMinutes;
   if (endMinutes > input.availabilityEndMinutes) {
     throw new MatchServiceError(422, 'STARTS_AT_OUTSIDE_AVAILABILITY', 'El horario elegido no entra dentro de la franja disponible.');
   }
 
-  const endsAt = new Date(startsAt.getTime() + modalityDurationMinutes * 60_000);
+  const endsAt = new Date(startsAt.getTime() + input.durationMinutes * 60_000);
   return {
     scheduledDate,
     availabilityStartMinutes: input.availabilityStartMinutes,
     availabilityEndMinutes: input.availabilityEndMinutes,
+    durationMinutes: input.durationMinutes,
     startsAt,
     endsAt,
   };
@@ -169,7 +174,7 @@ export async function createMatch(organizerUserId: string, input: CreateMatchInp
 
   await assertClubExists(input.venueType, input.clubId);
 
-  const schedule = resolveSchedule(input, sportModality.durationMinutes);
+  const schedule = resolveSchedule(input);
 
   const created = await prisma.match.create({
     data: {
@@ -182,6 +187,7 @@ export async function createMatch(organizerUserId: string, input: CreateMatchInp
       scheduledDate: schedule.scheduledDate,
       availabilityStartMinutes: schedule.availabilityStartMinutes,
       availabilityEndMinutes: schedule.availabilityEndMinutes,
+      durationMinutes: schedule.durationMinutes,
       startsAt: schedule.startsAt,
       endsAt: schedule.endsAt,
       status: 'ORGANIZING',
@@ -213,7 +219,7 @@ export async function updateMatchSchedule(
 
   await assertClubExists(input.venueType, input.clubId);
 
-  const schedule = resolveSchedule(input, match.sportModality.durationMinutes);
+  const schedule = resolveSchedule(input);
 
   await prisma.match.update({
     where: { id: matchId },
@@ -222,6 +228,7 @@ export async function updateMatchSchedule(
       scheduledDate: schedule.scheduledDate,
       availabilityStartMinutes: schedule.availabilityStartMinutes,
       availabilityEndMinutes: schedule.availabilityEndMinutes,
+      durationMinutes: schedule.durationMinutes,
       startsAt: schedule.startsAt,
       endsAt: schedule.endsAt,
     },

@@ -92,7 +92,7 @@ describe('GET /api/v1/users/:id/public-profile', () => {
       biography: 'Juego todos los martes.',
     });
     expect((body.data.positions as string[]).sort()).toEqual(['Delantero', 'Mediocampista']);
-    expect(body.data.ratings).toEqual({ gameplayAverage: null, conductAverage: null, count: 0 });
+    expect(body.data.ratings).toEqual({ gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 });
 
     expect(body.data.email).toBeUndefined();
     expect(body.data.username).toBeUndefined();
@@ -152,8 +152,29 @@ describe('GET /api/v1/users/:id/public-profile', () => {
       headers: { authorization: 'Bearer juan' },
     });
 
-    const body = response.json() as { data: { ratings: { gameplayAverage: number; conductAverage: number; count: number } } };
-    expect(body.data.ratings).toEqual({ gameplayAverage: 3, conductAverage: 4, count: 2 });
+    const body = response.json() as {
+      data: { ratings: { gameplayAverage: number; conductAverage: number; count: number; commentsCount: number } };
+    };
+    expect(body.data.ratings).toEqual({ gameplayAverage: 3, conductAverage: 4, count: 2, commentsCount: 0 });
+
+    await app.close();
+  });
+
+  it('counts only ratings with actual written text towards commentsCount, computed with a single grouped query', async () => {
+    const target = await createBareUser();
+    await rateTarget(target.id, SEED_IDS.users.juan, 4, 5, 'Excelente compañero.');
+    await rateTarget(target.id, SEED_IDS.users.martin, 2, 3);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${target.id}/public-profile`,
+      headers: { authorization: 'Bearer juan' },
+    });
+
+    const body = response.json() as { data: { ratings: { count: number; commentsCount: number } } };
+    expect(body.data.ratings.count).toBe(2);
+    expect(body.data.ratings.commentsCount).toBe(1);
 
     await app.close();
   });

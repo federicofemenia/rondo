@@ -228,6 +228,8 @@ model Match {
   scheduledDate            DateTime  @map("scheduled_date") @db.Date
   availabilityStartMinutes Int       @map("availability_start_minutes")
   availabilityEndMinutes   Int       @map("availability_end_minutes")
+  // Organizer-chosen duration used to compute endsAt from startsAt once an exact time is set -- no longer derived from the sport modality's fixed duration.
+  durationMinutes          Int       @default(60) @map("duration_minutes")
   startsAt                 DateTime? @map("starts_at")
   endsAt                   DateTime? @map("ends_at")
 

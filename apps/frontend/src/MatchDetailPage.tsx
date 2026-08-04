@@ -3,7 +3,12 @@ import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import FormLabel from '@mui/material/FormLabel';
 import IconButton from '@mui/material/IconButton';
+import Radio from '@mui/material/Radio';
+import RadioGroup from '@mui/material/RadioGroup';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
@@ -115,6 +120,10 @@ function MatchDetailPage({
   const [exactStartMinutesDraft, setExactStartMinutesDraft] = useState<number | null>(
     match.startsAt ? isoTimeToMinutes(match.startsAt) : null,
   );
+  // Pre-filled from whether the match already has a confirmed startsAt, but
+  // the organizer can still flip it (e.g. once they've got a concrete time).
+  const [hasExactTimeDraft, setHasExactTimeDraft] = useState(match.startsAt !== null);
+  const [durationMinutesDraft, setDurationMinutesDraft] = useState(match.durationMinutes);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
 
@@ -133,6 +142,7 @@ function MatchDetailPage({
   const trimmedCustomVenueNameDraft = customVenueNameDraft.trim();
   const venueTypeDraft: MatchVenueTypeDto = isOtherClubDraft ? 'CUSTOM' : clubSelectDraft ? 'CLUB' : 'TO_BE_DEFINED';
   const isCustomVenueMissing = isOtherClubDraft && !trimmedCustomVenueNameDraft;
+  const isDurationInvalid = !Number.isFinite(durationMinutesDraft) || durationMinutesDraft < 15 || durationMinutesDraft > 600;
 
   const handleAvailabilityRangeDraftChange = (range: [number, number]) => {
     setAvailabilityRangeDraft(range);
@@ -140,8 +150,18 @@ function MatchDetailPage({
     setExactStartMinutesDraft((current) => (current !== null && (current < startMinutes || current >= endMinutes) ? null : current));
   };
 
+  const handleHasExactTimeDraftChange = (next: boolean) => {
+    setHasExactTimeDraft(next);
+    if (next) {
+      const [startMinutes, endMinutes] = [availabilityRangeDraft[0] * 60, availabilityRangeDraft[1] * 60];
+      setExactStartMinutesDraft((current) => (current !== null && current >= startMinutes && current < endMinutes ? current : startMinutes));
+    } else {
+      setExactStartMinutesDraft(null);
+    }
+  };
+
   const handleSaveSchedule = async () => {
-    if (isCustomVenueMissing) {
+    if (isCustomVenueMissing || isDurationInvalid) {
       return;
     }
     setScheduleSaving(true);
@@ -154,7 +174,8 @@ function MatchDetailPage({
         scheduledDate: dateDraft,
         availabilityStartMinutes: availabilityRangeDraft[0] * 60,
         availabilityEndMinutes: availabilityRangeDraft[1] * 60,
-        startsAt: exactStartMinutesDraft !== null ? buildIsoDateTime(dateDraft, exactStartMinutesDraft) : null,
+        startsAt: hasExactTimeDraft && exactStartMinutesDraft !== null ? buildIsoDateTime(dateDraft, exactStartMinutesDraft) : null,
+        durationMinutes: durationMinutesDraft,
       });
     } catch (error) {
       setScheduleError(error instanceof Error ? error.message : 'No pudimos guardar el horario. Reintentá.');
@@ -382,20 +403,47 @@ function MatchDetailPage({
                     </option>
                   ))}
                 </TextField>
-                <TimeRangeInput value={availabilityRangeDraft} onChange={handleAvailabilityRangeDraftChange} label="Editar franja horaria disponible" />
-                <ExactStartTimeInput
-                  availabilityStartMinutes={availabilityRangeDraft[0] * 60}
-                  availabilityEndMinutes={availabilityRangeDraft[1] * 60}
-                  value={exactStartMinutesDraft}
-                  onChange={setExactStartMinutesDraft}
-                  label="Editar horario exacto (opcional)"
+                <TextField
+                  label="Duración del partido (minutos)"
+                  type="number"
+                  value={durationMinutesDraft}
+                  onChange={(event) => setDurationMinutesDraft(Number(event.target.value))}
+                  slotProps={{ htmlInput: { min: 15, max: 600, step: 15 } }}
+                  fullWidth
                 />
+
+                <FormControl>
+                  <FormLabel id="has-exact-time-draft-label">¿Tenés un horario exacto?</FormLabel>
+                  <RadioGroup
+                    row
+                    aria-labelledby="has-exact-time-draft-label"
+                    value={hasExactTimeDraft ? 'yes' : 'no'}
+                    onChange={(event) => handleHasExactTimeDraftChange(event.target.value === 'yes')}
+                  >
+                    <FormControlLabel value="yes" control={<Radio />} label="Sí" />
+                    <FormControlLabel value="no" control={<Radio />} label="No" />
+                  </RadioGroup>
+                </FormControl>
+
+                {!hasExactTimeDraft ? (
+                  <TimeRangeInput value={availabilityRangeDraft} onChange={handleAvailabilityRangeDraftChange} label="Editar franja horaria disponible" />
+                ) : null}
+
+                {hasExactTimeDraft ? (
+                  <ExactStartTimeInput
+                    availabilityStartMinutes={availabilityRangeDraft[0] * 60}
+                    availabilityEndMinutes={availabilityRangeDraft[1] * 60}
+                    value={exactStartMinutesDraft}
+                    onChange={setExactStartMinutesDraft}
+                    label="Editar horario exacto"
+                  />
+                ) : null}
                 {scheduleError ? (
                   <Typography variant="body2" color="error.main">
                     {scheduleError}
                   </Typography>
                 ) : null}
-                <Button variant="outlined" onClick={() => void handleSaveSchedule()} disabled={scheduleSaving || isCustomVenueMissing}>
+                <Button variant="outlined" onClick={() => void handleSaveSchedule()} disabled={scheduleSaving || isCustomVenueMissing || isDurationInvalid}>
                   {scheduleSaving ? 'Guardando…' : 'Guardar cambios'}
                 </Button>
 

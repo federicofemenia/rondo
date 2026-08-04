@@ -123,25 +123,36 @@ function roundToOneDecimal(value: number): number {
 }
 
 export function emptyRatingsSummary(): RatingsSummaryDto {
-  return { gameplayAverage: null, conductAverage: null, count: 0 };
+  return { gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 };
 }
 
 /**
- * One grouped query for every requested user, never one query per user --
- * used by the candidates list (all candidates at once) and the public
- * profile (a single-element list) alike, so neither ever N+1s.
+ * Two grouped queries total (never one per user): one for the score
+ * averages/count, one for how many of those ratings carry actual written
+ * text -- same "has real text" rule as getRatingComments below. Used by the
+ * candidates list (all candidates at once) and the public profile (a
+ * single-element list) alike, so neither ever N+1s.
  */
 export async function getRatingsSummaries(userIds: string[]): Promise<Map<string, RatingsSummaryDto>> {
   if (userIds.length === 0) {
     return new Map();
   }
 
-  const grouped = await prisma.playerRating.groupBy({
-    by: ['targetUserId'],
-    where: { targetUserId: { in: userIds } },
-    _avg: { gameplayScore: true, conductScore: true },
-    _count: { _all: true },
-  });
+  const [grouped, commentGroups] = await Promise.all([
+    prisma.playerRating.groupBy({
+      by: ['targetUserId'],
+      where: { targetUserId: { in: userIds } },
+      _avg: { gameplayScore: true, conductScore: true },
+      _count: { _all: true },
+    }),
+    prisma.playerRating.groupBy({
+      by: ['targetUserId'],
+      where: { targetUserId: { in: userIds }, AND: [{ comment: { not: null } }, { comment: { not: '' } }] },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const commentsCounts = new Map(commentGroups.map((group) => [group.targetUserId, group._count._all]));
 
   const summaries = new Map<string, RatingsSummaryDto>();
   for (const group of grouped) {
@@ -149,6 +160,7 @@ export async function getRatingsSummaries(userIds: string[]): Promise<Map<string
       gameplayAverage: group._avg.gameplayScore !== null ? roundToOneDecimal(group._avg.gameplayScore) : null,
       conductAverage: group._avg.conductScore !== null ? roundToOneDecimal(group._avg.conductScore) : null,
       count: group._count._all,
+      commentsCount: commentsCounts.get(group.targetUserId) ?? 0,
     });
   }
   return summaries;

@@ -26,6 +26,7 @@ export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntit
     scheduledDate: dto.scheduledDate,
     availabilityStartMinutes: dto.availabilityStartMinutes,
     availabilityEndMinutes: dto.availabilityEndMinutes,
+    durationMinutes: dto.durationMinutes,
     startsAt: dto.startsAt,
     endsAt: dto.endsAt,
     organizerUserId: dto.organizerUserId,

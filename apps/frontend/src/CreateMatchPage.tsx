@@ -4,6 +4,11 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
+import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import FormLabel from '@mui/material/FormLabel';
+import Radio from '@mui/material/Radio';
+import RadioGroup from '@mui/material/RadioGroup';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -29,6 +34,7 @@ export type MatchDraft = {
   date: string;
   availabilityStartMinutes: number;
   availabilityEndMinutes: number;
+  durationMinutes: number;
   startTimeMinutes: number | null;
 };
 
@@ -49,9 +55,13 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const { clubs, loading: clubsLoading } = useMyClubs();
 
   const sportModalities = useMemo(() => {
-    const record: Record<string, { id: string; name: string }[]> = {};
+    const record: Record<string, { id: string; name: string; durationMinutes: number }[]> = {};
     sports.forEach((sportOption) => {
-      record[sportOption.name] = sportOption.modalities.map((modality) => ({ id: modality.id, name: modality.name }));
+      record[sportOption.name] = sportOption.modalities.map((modality) => ({
+        id: modality.id,
+        name: modality.name,
+        durationMinutes: modality.durationMinutes,
+      }));
     });
     return record;
   }, [sports]);
@@ -67,21 +77,42 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const [date, setDate] = useState(dayOptions[0]!.value);
   const [availabilityRange, setAvailabilityRange] = useState<[number, number]>(DEFAULT_AVAILABILITY_RANGE);
   const [startTimeMinutes, setStartTimeMinutes] = useState<number | null>(null);
+  // Defaults to the chosen modality's typical duration (see handleSportChange
+  // / handleModalityChange below), but stays fully editable by the organizer.
+  const [durationMinutes, setDurationMinutes] = useState(60);
+  // Neither the franja slider nor the exact-time combo shows until this is
+  // answered -- they're mutually exclusive, not two optional extras.
+  const [hasExactTime, setHasExactTime] = useState<boolean | null>(null);
 
   const availabilityStartMinutes = availabilityRange[0] * 60;
   const availabilityEndMinutes = availabilityRange[1] * 60;
 
-  const handleAvailabilityRangeChange = (range: [number, number]) => {
-    setAvailabilityRange(range);
-    const [startMinutes, endMinutes] = [range[0] * 60, range[1] * 60];
-    setStartTimeMinutes((current) => (current !== null && (current < startMinutes || current >= endMinutes) ? null : current));
+  const handleHasExactTimeChange = (next: boolean) => {
+    setHasExactTime(next);
+    if (next) {
+      setStartTimeMinutes((current) =>
+        current !== null && current >= availabilityStartMinutes && current < availabilityEndMinutes ? current : availabilityStartMinutes,
+      );
+    } else {
+      setStartTimeMinutes(null);
+    }
   };
 
   const handleSportChange = (nextSport: string) => {
     setSport(nextSport);
-    setModality(sportModalities[nextSport]?.[0]?.name ?? '');
+    const firstModality = sportModalities[nextSport]?.[0];
+    setModality(firstModality?.name ?? '');
+    setDurationMinutes(firstModality?.durationMinutes ?? 60);
     if (nextSport !== 'Fútbol') {
       setPositions([]);
+    }
+  };
+
+  const handleModalityChange = (nextModality: string) => {
+    setModality(nextModality);
+    const found = sportModalities[sport]?.find((option) => option.name === nextModality);
+    if (found) {
+      setDurationMinutes(found.durationMinutes);
     }
   };
 
@@ -89,11 +120,12 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const trimmedOtherClubName = otherClubName.trim();
   const venueType: MatchVenueTypeDto = isOtherClub ? 'CUSTOM' : clubId ? 'CLUB' : 'TO_BE_DEFINED';
   const isCustomVenueMissing = isOtherClub && !trimmedOtherClubName;
+  const isDurationInvalid = !Number.isFinite(durationMinutes) || durationMinutes < 15 || durationMinutes > 600;
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const sportModalityId = sportModalities[sport]?.find((option) => option.name === modality)?.id;
-    if (!sportModalityId || isCustomVenueMissing) {
+    if (!sportModalityId || isCustomVenueMissing || isDurationInvalid) {
       return;
     }
     const selectedClub = isOtherClub ? undefined : clubs.find((club) => club.id === clubId);
@@ -111,7 +143,8 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
       date,
       availabilityStartMinutes,
       availabilityEndMinutes,
-      startTimeMinutes,
+      durationMinutes,
+      startTimeMinutes: hasExactTime ? startTimeMinutes : null,
     });
   };
 
@@ -155,7 +188,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   select
                   label="Modalidad"
                   value={modality}
-                  onChange={(event) => setModality(event.target.value)}
+                  onChange={(event) => handleModalityChange(event.target.value)}
                   slotProps={{ select: { native: true } }}
                   disabled={sportsLoading || !sport}
                   fullWidth
@@ -285,14 +318,41 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   ))}
                 </TextField>
 
-                <TimeRangeInput value={availabilityRange} onChange={handleAvailabilityRangeChange} label="Franja horaria disponible" />
-
-                <ExactStartTimeInput
-                  availabilityStartMinutes={availabilityStartMinutes}
-                  availabilityEndMinutes={availabilityEndMinutes}
-                  value={startTimeMinutes}
-                  onChange={setStartTimeMinutes}
+                <TextField
+                  label="Duración del partido (minutos)"
+                  type="number"
+                  value={durationMinutes}
+                  onChange={(event) => setDurationMinutes(Number(event.target.value))}
+                  slotProps={{ htmlInput: { min: 15, max: 600, step: 15 } }}
+                  fullWidth
                 />
+
+                <FormControl>
+                  <FormLabel id="has-exact-time-label">¿Tenés un horario exacto?</FormLabel>
+                  <RadioGroup
+                    row
+                    aria-labelledby="has-exact-time-label"
+                    value={hasExactTime === null ? '' : hasExactTime ? 'yes' : 'no'}
+                    onChange={(event) => handleHasExactTimeChange(event.target.value === 'yes')}
+                  >
+                    <FormControlLabel value="yes" control={<Radio />} label="Sí" />
+                    <FormControlLabel value="no" control={<Radio />} label="No" />
+                  </RadioGroup>
+                </FormControl>
+
+                {hasExactTime === false ? (
+                  <TimeRangeInput value={availabilityRange} onChange={setAvailabilityRange} label="Franja horaria disponible" />
+                ) : null}
+
+                {hasExactTime === true ? (
+                  <ExactStartTimeInput
+                    availabilityStartMinutes={availabilityStartMinutes}
+                    availabilityEndMinutes={availabilityEndMinutes}
+                    value={startTimeMinutes}
+                    onChange={setStartTimeMinutes}
+                    label="Horario exacto"
+                  />
+                ) : null}
               </Stack>
             </Box>
           </Stack>
@@ -305,7 +365,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
           fullWidth
           variant="contained"
           size="large"
-          disabled={sportsLoading || !sport || !minPlayers || !maxPlayers || isCustomVenueMissing}
+          disabled={sportsLoading || !sport || !minPlayers || !maxPlayers || isCustomVenueMissing || hasExactTime === null || isDurationInvalid}
           sx={{ borderRadius: 999 }}
         >
           Armar partido

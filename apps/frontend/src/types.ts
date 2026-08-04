@@ -27,6 +27,7 @@ export type MatchEntity = {
   scheduledDate: string;
   availabilityStartMinutes: number;
   availabilityEndMinutes: number;
+  durationMinutes: number;
   startsAt: string | null;
   endsAt: string | null;
   organizerUserId: string;

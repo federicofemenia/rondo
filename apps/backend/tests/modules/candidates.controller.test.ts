@@ -546,13 +546,16 @@ describe('GET /api/v1/matches/:matchId/candidates', () => {
     const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/candidates`, headers: { authorization: 'Bearer juan' } });
 
     const body = response.json() as {
-      data: Array<{ id: string; ratings: { gameplayAverage: number | null; conductAverage: number | null; count: number } }>;
+      data: Array<{
+        id: string;
+        ratings: { gameplayAverage: number | null; conductAverage: number | null; count: number; commentsCount: number };
+      }>;
     };
     const ratedCandidate = body.data.find((candidate) => candidate.id === rated.id);
     const unratedCandidate = body.data.find((candidate) => candidate.id === unrated.id);
 
-    expect(ratedCandidate?.ratings).toEqual({ gameplayAverage: 5, conductAverage: 4, count: 1 });
-    expect(unratedCandidate?.ratings).toEqual({ gameplayAverage: null, conductAverage: null, count: 0 });
+    expect(ratedCandidate?.ratings).toEqual({ gameplayAverage: 5, conductAverage: 4, count: 1, commentsCount: 0 });
+    expect(unratedCandidate?.ratings).toEqual({ gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 });
 
     await app.close();
   });

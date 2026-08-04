@@ -55,6 +55,7 @@ export interface SportModalityDto {
   code: string;
   name: string;
   playersCount: number;
+  durationMinutes: number;
   displayOrder: number;
 }
 
@@ -100,6 +101,7 @@ export interface MatchSummaryDto {
   scheduledDate: string;
   availabilityStartMinutes: number;
   availabilityEndMinutes: number;
+  durationMinutes: number;
   startsAt: string | null;
   endsAt: string | null;
   organizerUserId: string;
@@ -226,6 +228,7 @@ export const createMatchInputSchema = z
     scheduledDate: z.string().regex(scheduledDatePattern, 'scheduledDate debe tener el formato YYYY-MM-DD.'),
     availabilityStartMinutes: z.number().int().min(0).max(1439),
     availabilityEndMinutes: z.number().int().min(1).max(1440),
+    durationMinutes: z.number().int().min(15).max(600),
     startsAt: z.string().datetime().nullable().optional(),
   })
   .superRefine((data, ctx) => {
@@ -246,6 +249,7 @@ export const updateMatchScheduleInputSchema = z
     scheduledDate: z.string().regex(scheduledDatePattern, 'scheduledDate debe tener el formato YYYY-MM-DD.'),
     availabilityStartMinutes: z.number().int().min(0).max(1439),
     availabilityEndMinutes: z.number().int().min(1).max(1440),
+    durationMinutes: z.number().int().min(15).max(600),
     startsAt: z.string().datetime().nullable().optional(),
   })
   .superRefine((data, ctx) => {
@@ -306,6 +310,8 @@ export interface RatingsSummaryDto {
   gameplayAverage: number | null;
   conductAverage: number | null;
   count: number;
+  /** How many of those ratings have actual written text -- same "has real text" rule as GET .../rating-comments (not null, not empty after trim). */
+  commentsCount: number;
 }
 
 export interface RatingCommentDto {

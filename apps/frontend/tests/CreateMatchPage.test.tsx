@@ -56,7 +56,7 @@ describe('CreateMatchPage', () => {
     expect(screen.queryByText(/posiciones requeridas/i)).toBeFalsy();
   });
 
-  it('keeps armar partido disabled until sport, jugadores mínimo and jugadores máximo are all filled', async () => {
+  it('keeps armar partido disabled until sport, jugadores mínimo, jugadores máximo and horario exacto are all answered', async () => {
     render(<CreateMatchPage />);
     await screen.findByRole('option', { name: 'Fútbol' });
 
@@ -69,16 +69,20 @@ describe('CreateMatchPage', () => {
     expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
 
     fireEvent.change(screen.getByLabelText(/jugadores máximo/i), { target: { value: '10' } });
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByRole('radio', { name: /^no$/i }));
     expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', false);
   });
 
-  it('submits the match draft with venueType TO_BE_DEFINED by default, and no exact time by default', async () => {
+  it('submits the match draft with venueType TO_BE_DEFINED by default, the modality duration, and no exact time when "No" is chosen', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
     await selectFootball();
     fillPlayerCounts();
     fireEvent.click(screen.getByText('Delantero'));
+    fireEvent.click(screen.getByRole('radio', { name: /^no$/i }));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     const expectedDate = buildDayOptions()[0]!.value;
@@ -97,11 +101,12 @@ describe('CreateMatchPage', () => {
       date: expectedDate,
       availabilityStartMinutes: 13 * 60,
       availabilityEndMinutes: 19 * 60,
+      durationMinutes: 60,
       startTimeMinutes: null,
     });
   });
 
-  it('includes venueType CLUB and the club when one is selected, and the exact start time when it is enabled', async () => {
+  it('includes venueType CLUB and the club when one is selected, and the exact start time when "Sí" is chosen', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
@@ -110,7 +115,7 @@ describe('CreateMatchPage', () => {
     const clubSelect = screen.getByLabelText(/^sede$/i);
 
     fireEvent.change(clubSelect, { target: { value: 'club-1' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /horario exacto \(opcional\)/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /^sí$/i }));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     expect(onCreateMatch).toHaveBeenCalledWith(
@@ -120,6 +125,7 @@ describe('CreateMatchPage', () => {
         clubName: 'Club Señor Pato',
         availabilityStartMinutes: 13 * 60,
         availabilityEndMinutes: 19 * 60,
+        durationMinutes: 60,
         startTimeMinutes: 13 * 60,
       }),
     );
@@ -135,6 +141,7 @@ describe('CreateMatchPage', () => {
 
     fireEvent.change(clubSelect, { target: { value: '__other__' } });
     fireEvent.change(screen.getByLabelText(/nombre de la sede o club/i), { target: { value: 'Cancha del barrio' } });
+    fireEvent.click(screen.getByRole('radio', { name: /^no$/i }));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     expect(onCreateMatch).toHaveBeenCalledWith(
@@ -152,6 +159,7 @@ describe('CreateMatchPage', () => {
     await selectFootball();
     fillPlayerCounts();
     fireEvent.change(screen.getByLabelText(/^sede$/i), { target: { value: '__other__' } });
+    fireEvent.click(screen.getByRole('radio', { name: /^no$/i }));
 
     expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
 
@@ -159,13 +167,44 @@ describe('CreateMatchPage', () => {
     expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', false);
   });
 
-  it('requires a franja horaria: the slider always has a value and cannot be turned off', async () => {
+  it('hides both the franja slider and the exact-time selector until the horario exacto question is answered', async () => {
     render(<CreateMatchPage />);
 
     await screen.findByRole('option', { name: 'Fútbol' });
 
+    expect(screen.getByText(/¿tenés un horario exacto\?/i)).toBeTruthy();
+    expect(screen.queryByText(/franja horaria disponible/i)).toBeFalsy();
+    expect(screen.queryByLabelText(/^horario exacto$/i)).toBeFalsy();
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
+  });
+
+  it('shows only the franja slider when "No" is chosen, and only the exact-time selector when "Sí" is chosen', async () => {
+    render(<CreateMatchPage />);
+
+    await screen.findByRole('option', { name: 'Fútbol' });
+
+    fireEvent.click(screen.getByRole('radio', { name: /^no$/i }));
     expect(screen.getByText(/franja horaria disponible/i)).toBeTruthy();
     expect(screen.getByText('13:00 - 19:00')).toBeTruthy();
-    expect(screen.queryByRole('checkbox', { name: /franja horaria disponible/i })).toBeFalsy();
+    expect(screen.queryByLabelText(/^horario exacto$/i)).toBeFalsy();
+
+    fireEvent.click(screen.getByRole('radio', { name: /^sí$/i }));
+    expect(screen.queryByText(/franja horaria disponible/i)).toBeFalsy();
+    expect(screen.getByLabelText(/^horario exacto$/i)).toBeTruthy();
+  });
+
+  it('pre-fills the duration from the selected modality, and disables submit for an out-of-bounds duration', async () => {
+    render(<CreateMatchPage />);
+
+    await selectFootball();
+    fillPlayerCounts();
+    fireEvent.click(screen.getByRole('radio', { name: /^no$/i }));
+    expect((screen.getByLabelText(/duración del partido/i) as HTMLInputElement).value).toBe('60');
+
+    fireEvent.change(screen.getByLabelText(/^deporte$/i), { target: { value: 'Pádel' } });
+    expect((screen.getByLabelText(/duración del partido/i) as HTMLInputElement).value).toBe('90');
+
+    fireEvent.change(screen.getByLabelText(/duración del partido/i), { target: { value: '5' } });
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
   });
 });

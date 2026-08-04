@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { CandidateDto, MatchInvitationDto } from '@rondo/contracts';
+import type { MouseEvent } from 'react';
+import type { CandidateDto, MatchInvitationDto, RatingCommentDto } from '@rondo/contracts';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
@@ -80,7 +81,8 @@ function CandidateRatingsSummary({ ratings }: { ratings: CandidateDto['ratings']
         </Typography>
       </Stack>
       <Typography variant="caption" color="text.secondary">
-        {ratings.count} {ratings.count === 1 ? 'valoración' : 'valoraciones'}
+        {ratings.count} {ratings.count === 1 ? 'valoración' : 'valoraciones'} · {ratings.commentsCount}{' '}
+        {ratings.commentsCount === 1 ? 'comentario' : 'comentarios'}
       </Typography>
     </Stack>
   );
@@ -104,6 +106,11 @@ function MatchCandidatesSection({ matchId, matchSummary, onInvited }: MatchCandi
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({});
 
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+
+  const [expandedCommentsId, setExpandedCommentsId] = useState<string | null>(null);
+  const [commentsByCandidate, setCommentsByCandidate] = useState<Record<string, RatingCommentDto[]>>({});
+  const [commentsLoadingId, setCommentsLoadingId] = useState<string | null>(null);
+  const [commentsErrorByCandidate, setCommentsErrorByCandidate] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +157,35 @@ function MatchCandidatesSection({ matchId, matchSummary, onInvited }: MatchCandi
     }
   };
 
+  const handleToggleComments = async (event: MouseEvent, candidate: CandidateDto) => {
+    event.stopPropagation();
+
+    if (expandedCommentsId === candidate.id) {
+      setExpandedCommentsId(null);
+      return;
+    }
+
+    setExpandedCommentsId(candidate.id);
+    if (commentsByCandidate[candidate.id] || commentsLoadingId === candidate.id) {
+      return;
+    }
+
+    setCommentsLoadingId(candidate.id);
+    setCommentsErrorByCandidate((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== candidate.id)));
+
+    try {
+      const response = await api.get<{ data: RatingCommentDto[] }>(`/api/v1/users/${candidate.id}/rating-comments`);
+      setCommentsByCandidate((current) => ({ ...current, [candidate.id]: response.data }));
+    } catch (caught) {
+      setCommentsErrorByCandidate((current) => ({
+        ...current,
+        [candidate.id]: describeError(caught, 'No pudimos cargar los comentarios. Reintentá más tarde.'),
+      }));
+    } finally {
+      setCommentsLoadingId(null);
+    }
+  };
+
   const candidateList = candidates ?? [];
 
   return (
@@ -180,39 +216,66 @@ function MatchCandidatesSection({ matchId, matchSummary, onInvited }: MatchCandi
                 onClick={() => setSelectedCandidateId(candidate.id)}
                 sx={{ p: 4, bgcolor: 'background.default', borderColor: 'divider', cursor: 'pointer' }}
               >
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Avatar
-                      src={candidate.avatarUrl ?? undefined}
-                      sx={{ width: 40, height: 40, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}
-                    >
-                      {!candidate.avatarUrl ? <PersonRoundedIcon sx={{ color: 'text.secondary', fontSize: '1.2rem' }} /> : null}
-                    </Avatar>
-                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                      <Typography variant="h3" component="h2">
-                        {candidate.displayName}
-                      </Typography>
-                      {candidate.positions.map((position) => (
-                        <Tooltip key={position} title={position}>
-                          <Chip
-                            label={positionAbbreviations[position] ?? position}
-                            size="small"
-                            sx={{ bgcolor: 'background.paper', color: 'text.secondary', fontWeight: 700 }}
-                          />
-                        </Tooltip>
-                      ))}
-                    </Stack>
+                <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+                  <Avatar
+                    src={candidate.avatarUrl ?? undefined}
+                    sx={{ width: 40, height: 40, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}
+                  >
+                    {!candidate.avatarUrl ? <PersonRoundedIcon sx={{ color: 'text.secondary', fontSize: '1.2rem' }} /> : null}
+                  </Avatar>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Typography variant="h3" component="h2">
+                      {candidate.displayName}
+                    </Typography>
+                    {candidate.positions.map((position) => (
+                      <Tooltip key={position} title={position}>
+                        <Chip
+                          label={positionAbbreviations[position] ?? position}
+                          size="small"
+                          sx={{ bgcolor: 'background.paper', color: 'text.secondary', fontWeight: 700 }}
+                        />
+                      </Tooltip>
+                    ))}
                   </Stack>
-                  <Chip
-                    label={candidate.matchingAvailability}
-                    size="small"
-                    sx={{ bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main', fontWeight: 700 }}
-                  />
                 </Stack>
 
                 <Box sx={{ mt: 2 }}>
                   <CandidateRatingsSummary ratings={candidate.ratings} />
                 </Box>
+
+                {candidate.ratings.commentsCount > 0 ? (
+                  <Button
+                    variant="text"
+                    size="small"
+                    onClick={(event) => void handleToggleComments(event, candidate)}
+                    sx={{ mt: 0.5, px: 0, minWidth: 0 }}
+                  >
+                    {expandedCommentsId === candidate.id ? 'Ocultar comentarios' : `Ver comentarios (${candidate.ratings.commentsCount})`}
+                  </Button>
+                ) : null}
+
+                {expandedCommentsId === candidate.id ? (
+                  <Box sx={{ mt: 1 }}>
+                    {commentsLoadingId === candidate.id ? (
+                      <Stack alignItems="center" sx={{ py: 2 }}>
+                        <CircularProgress size={20} />
+                      </Stack>
+                    ) : commentsErrorByCandidate[candidate.id] ? (
+                      <Alert severity="error">{commentsErrorByCandidate[candidate.id]}</Alert>
+                    ) : (
+                      <Stack spacing={1}>
+                        {(commentsByCandidate[candidate.id] ?? []).map((comment) => (
+                          <Box key={comment.id} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.paper' }}>
+                            <Typography variant="caption" sx={{ fontWeight: 700 }} display="block">
+                              {comment.authorDisplayName}
+                            </Typography>
+                            <Typography variant="body2">"{comment.comment}"</Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                ) : null}
 
                 {inviteError ? (
                   <Alert severity="error" sx={{ mt: 2 }}>

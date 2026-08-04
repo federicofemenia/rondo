@@ -246,6 +246,7 @@ function App() {
         scheduledDate: draft.date,
         availabilityStartMinutes: draft.availabilityStartMinutes,
         availabilityEndMinutes: draft.availabilityEndMinutes,
+        durationMinutes: draft.durationMinutes,
         startsAt: draft.startTimeMinutes !== null ? buildIsoDateTime(draft.date, draft.startTimeMinutes) : null,
       });
       setMatches((current) => [...current, matchSummaryToEntity(response.data)]);

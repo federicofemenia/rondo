@@ -43,6 +43,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 14 * 60,
         availabilityEndMinutes: 19 * 60,
+        durationMinutes: 60,
       },
     });
 
@@ -92,6 +93,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 14 * 60,
         availabilityEndMinutes: 19 * 60,
+        durationMinutes: 60,
         startsAt,
       },
     });
@@ -123,6 +125,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 14 * 60,
         availabilityEndMinutes: 19 * 60,
+        durationMinutes: 60,
         startsAt,
       },
     });
@@ -151,6 +154,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 14 * 60,
         availabilityEndMinutes: 19 * 60,
+        durationMinutes: 60,
         startsAt,
       },
     });
@@ -173,6 +177,7 @@ describe('POST /api/v1/matches', () => {
         maxPlayers: 10,
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -194,6 +199,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(-1),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -215,6 +221,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 1200,
         availabilityEndMinutes: 600,
+        durationMinutes: 60,
       },
     });
 
@@ -236,6 +243,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 14 * 60,
         availabilityEndMinutes: 19 * 60,
+        durationMinutes: 60,
         startsAt: isoAtHour(3, 17),
       },
     });
@@ -258,6 +266,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -279,6 +288,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -298,6 +308,7 @@ describe('POST /api/v1/matches', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -321,6 +332,7 @@ describe('POST /api/v1/matches — venue (club/sede/cancha)', () => {
       scheduledDate: dateStringDaysFromNow(2),
       availabilityStartMinutes: 14 * 60,
       availabilityEndMinutes: 19 * 60,
+      durationMinutes: 60,
     };
   }
 
@@ -471,6 +483,39 @@ describe('POST /api/v1/matches — venue (club/sede/cancha)', () => {
 
     await app.close();
   });
+
+  it('uses the organizer-chosen durationMinutes (not the modality default) to compute endsAt', async () => {
+    const startsAt = isoAtHour(2, 17);
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'TO_BE_DEFINED', durationMinutes: 90, startsAt },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { data: { id: string; durationMinutes: number; startsAt: string | null; endsAt: string | null } };
+    createdMatchIds.push(body.data.id);
+    expect(body.data.durationMinutes).toBe(90);
+    // 17:00 + 90 minutes, not the football-5 default of 60.
+    expect(body.data.endsAt).toBe(isoAtHour(2, 18, 30));
+
+    await app.close();
+  });
+
+  it('rejects a duration outside the 15-600 minute bounds', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'TO_BE_DEFINED', durationMinutes: 5 },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
 });
 
 describe('PATCH /api/v1/matches/:matchId/schedule', () => {
@@ -487,6 +532,7 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
       scheduledDate: new Date(dateStringDaysFromNow(2)),
       availabilityStartMinutes: 14 * 60,
       availabilityEndMinutes: 19 * 60,
+      durationMinutes: 60,
       startsAt: null,
       endsAt: null,
     });
@@ -504,6 +550,7 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 14 * 60,
         availabilityEndMinutes: 19 * 60,
+        durationMinutes: 60,
         startsAt,
       },
     });
@@ -536,6 +583,7 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
         scheduledDate: dateStringDaysFromNow(5),
         availabilityStartMinutes: 10 * 60,
         availabilityEndMinutes: 22 * 60,
+        durationMinutes: 60,
       },
     });
 
@@ -563,6 +611,7 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -589,6 +638,7 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -611,6 +661,7 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -637,6 +688,7 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -663,6 +715,7 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
@@ -679,7 +732,13 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
       method: 'PATCH',
       url: `/api/v1/matches/${match.id}/schedule`,
       headers: { authorization: 'Bearer juan' },
-      payload: { venueType: 'CLUB', scheduledDate: dateStringDaysFromNow(2), availabilityStartMinutes: 600, availabilityEndMinutes: 1200 },
+      payload: {
+        venueType: 'CLUB',
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 600,
+        availabilityEndMinutes: 1200,
+        durationMinutes: 60,
+      },
     });
 
     expect(response.statusCode).toBe(400);
@@ -701,11 +760,49 @@ describe('PATCH /api/v1/matches/:matchId/schedule', () => {
         scheduledDate: dateStringDaysFromNow(2),
         availabilityStartMinutes: 600,
         availabilityEndMinutes: 1200,
+        durationMinutes: 60,
       },
     });
 
     expect(response.statusCode).toBe(422);
     expect(response.json().error.code).toBe('CLUB_NOT_FOUND');
+    await app.close();
+  });
+
+  it('lets the organizer change durationMinutes, recalculating endsAt for the existing startsAt', async () => {
+    const startsAt = isoAtHour(2, 17);
+    const match = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      status: 'ORGANIZING',
+      scheduledDate: new Date(dateStringDaysFromNow(2)),
+      availabilityStartMinutes: 14 * 60,
+      availabilityEndMinutes: 21 * 60,
+      startsAt: new Date(startsAt),
+      endsAt: new Date(new Date(startsAt).getTime() + 60 * 60_000),
+    });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/matches/${match.id}/schedule`,
+      headers: { authorization: 'Bearer juan' },
+      payload: {
+        venueType: 'CLUB',
+        clubId: SEED_IDS.club.senorPato,
+        scheduledDate: dateStringDaysFromNow(2),
+        availabilityStartMinutes: 14 * 60,
+        availabilityEndMinutes: 21 * 60,
+        durationMinutes: 120,
+        startsAt,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { data: { durationMinutes: number; endsAt: string | null } };
+    expect(body.data.durationMinutes).toBe(120);
+    expect(body.data.endsAt).toBe(isoAtHour(2, 19));
+
     await app.close();
   });
 });

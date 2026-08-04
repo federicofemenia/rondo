@@ -22,6 +22,7 @@ const baseMatch: MatchEntity = {
   scheduledDate: '2026-08-05',
   availabilityStartMinutes: 17 * 60,
   availabilityEndMinutes: 22 * 60,
+  durationMinutes: 60,
   startsAt: '2026-08-05T19:00:00.000Z',
   endsAt: '2026-08-05T21:00:00.000Z',
   organizerUserId: 'user-organizer',
@@ -87,7 +88,7 @@ describe('MatchDetailPage', () => {
       sportId: 'sport-football',
       positions: [],
       matchingAvailability: 'Disponible',
-      ratings: { gameplayAverage: null, conductAverage: null, count: 0 },
+      ratings: { gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 },
     });
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
@@ -288,6 +289,7 @@ describe('MatchDetailPage', () => {
         scheduledDate: '2026-08-05',
         availabilityStartMinutes: 17 * 60,
         availabilityEndMinutes: 22 * 60,
+        durationMinutes: 60,
         startsAt: null,
       }),
     );

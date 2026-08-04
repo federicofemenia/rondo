@@ -10,7 +10,7 @@ const bruno = {
   sex: null,
   biography: 'Juego todos los martes.',
   positions: ['Delantero'],
-  ratings: { gameplayAverage: 4.5, conductAverage: 5, count: 18 },
+  ratings: { gameplayAverage: 4.5, conductAverage: 5, count: 18, commentsCount: 1 },
 };
 
 describe('PlayerProfileCardDialog', () => {
@@ -47,7 +47,7 @@ describe('PlayerProfileCardDialog', () => {
   });
 
   it('shows "Sin valoraciones" for a player with no ratings yet', async () => {
-    mockPublicProfiles.set(bruno.id, { ...bruno, ratings: { gameplayAverage: null, conductAverage: null, count: 0 } });
+    mockPublicProfiles.set(bruno.id, { ...bruno, ratings: { gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 } });
     render(<PlayerProfileCardDialog open userId={bruno.id} onClose={() => {}} />);
 
     expect(await screen.findByText('Bruno Silva')).toBeTruthy();

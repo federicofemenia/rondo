@@ -9,6 +9,7 @@ function toSportModalityDto(modality: SportModality): SportModalityDto {
     code: modality.code,
     name: modality.name,
     playersCount: modality.playersCount,
+    durationMinutes: modality.durationMinutes,
     displayOrder: modality.displayOrder,
   };
 }
