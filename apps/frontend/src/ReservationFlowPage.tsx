@@ -21,6 +21,7 @@ import SportsTennisRoundedIcon from '@mui/icons-material/SportsTennisRounded';
 import PageFooter from './PageFooter';
 
 export type ConfirmedBooking = {
+  clubName: string;
   courtName: string;
   courtSubtitle: string;
   dateLabel: string;
@@ -28,6 +29,7 @@ export type ConfirmedBooking = {
 };
 
 type ReservationFlowPageProps = {
+  clubName: string | null;
   onBack?: () => void;
   onConfirm?: (booking: ConfirmedBooking) => void;
   contextLabel?: string;
@@ -97,7 +99,7 @@ const legendItems: { status: SlotStatus; label: string; dotColor: string }[] = [
   { status: 'no-disponible', label: 'No disponible', dotColor: '#4B5563' },
 ];
 
-function ReservationFlowPage({ onBack, onConfirm, contextLabel }: ReservationFlowPageProps) {
+function ReservationFlowPage({ clubName, onBack, onConfirm, contextLabel }: ReservationFlowPageProps) {
   const [selectedDay, setSelectedDay] = useState('mie28');
   const [selectedSlot, setSelectedSlot] = useState<{ hour: string; courtKey: string } | null>({ hour: '10:00', courtKey: 'cancha2' });
 
@@ -113,16 +115,37 @@ function ReservationFlowPage({ onBack, onConfirm, contextLabel }: ReservationFlo
   };
 
   const handleConfirm = () => {
-    if (!selectedSlot || !selectedCourt) {
+    if (!selectedSlot || !selectedCourt || !clubName) {
       return;
     }
     onConfirm?.({
+      clubName,
       courtName: selectedCourt.name,
       courtSubtitle: selectedCourt.subtitle,
       dateLabel: `${selectedDayInfo.label} ${selectedDayInfo.date} ${selectedDayInfo.month}`,
       time: selectedSlot.hour,
     });
   };
+
+  if (!clubName) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+        <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pt: 5, width: '100%' }}>
+          <IconButton aria-label="Volver" onClick={onBack} sx={{ mb: 4, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
+            <ArrowBackRoundedIcon />
+          </IconButton>
+          <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', textAlign: 'center' }}>
+            <Typography variant="h3" component="h1" sx={{ mb: 2 }}>
+              No estás asociado a ningún club
+            </Typography>
+            <Typography color="text.secondary">
+              Necesitás ser miembro de un club para poder reservar una cancha.
+            </Typography>
+          </Card>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', flexDirection: 'column' }}>

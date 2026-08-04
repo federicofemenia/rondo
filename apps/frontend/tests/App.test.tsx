@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
-import { clerkAuthMock, mockMeState, mockMyInvitations } from './setup';
+import { clerkAuthMock, mockClubs, mockMeState, mockMyInvitations } from './setup';
 
 async function loginAndReachHome() {
   render(<App />);
@@ -59,7 +59,11 @@ describe('App', () => {
     await loginAndReachHome();
 
     fireEvent.click(screen.getByRole('button', { name: /armar partido/i }));
-    await screen.findByText('Delantero');
+    await screen.findByRole('option', { name: 'Fútbol' });
+    fireEvent.change(screen.getByLabelText(/^deporte$/i), { target: { value: 'Fútbol' } });
+    fireEvent.change(screen.getByLabelText(/jugadores mínimo/i), { target: { value: '4' } });
+    fireEvent.change(screen.getByLabelText(/jugadores máximo/i), { target: { value: '10' } });
+    fireEvent.click(screen.getByText('Delantero'));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     expect(await screen.findByRole('heading', { name: /candidatos compatibles/i })).toBeTruthy();
@@ -131,6 +135,21 @@ describe('App', () => {
     expect(screen.getByText(/sin partido asociado/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /^crear partido$/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /asociar partido existente/i })).toBeTruthy();
+  });
+
+  it('hides the club button and novedades on Home, and blocks reservations, when the user has no club', async () => {
+    const backup = mockClubs.splice(0, mockClubs.length);
+    try {
+      await loginAndReachHome();
+
+      expect(screen.queryByRole('button', { name: /club señor pato/i })).toBeFalsy();
+      expect(screen.queryByText(/novedades de/i)).toBeFalsy();
+
+      fireEvent.click(screen.getByRole('button', { name: /reservar cancha/i }));
+      expect(await screen.findByText(/no estás asociado a ningún club/i)).toBeTruthy();
+    } finally {
+      mockClubs.push(...backup);
+    }
   });
 
   it('shows a waking-up screen, then reaches Home once transient failures stop', async () => {

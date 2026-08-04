@@ -27,7 +27,7 @@ export type UpcomingEventItem = {
 
 type HomePageProps = {
   playerName?: string;
-  clubName?: string;
+  clubName?: string | null;
   connectionStatus?: string;
   upcomingEvents?: UpcomingEventItem[];
   onReserveCourt?: () => void;
@@ -56,7 +56,7 @@ function SectionHeader({ title, action }: { title: string; action?: string }) {
 
 function HomePage({
   playerName = 'Federico',
-  clubName = 'Club Señor Pato',
+  clubName = null,
   connectionStatus,
   upcomingEvents = [],
   onReserveCourt,
@@ -81,14 +81,16 @@ function HomePage({
         Hola, {playerName} 👋
       </Typography>
 
-      <Button
-        variant="outlined"
-        startIcon={<Avatar sx={{ width: 24, height: 24, fontSize: '0.9rem', bgcolor: 'warning.main' }}>🍍</Avatar>}
-        endIcon={<ExpandMoreRoundedIcon />}
-        sx={{ mb: 8, borderRadius: 999, borderColor: 'divider', color: 'text.primary', justifyContent: 'flex-start', py: 1.5, px: 2 }}
-      >
-        {clubName}
-      </Button>
+      {clubName ? (
+        <Button
+          variant="outlined"
+          startIcon={<Avatar sx={{ width: 24, height: 24, fontSize: '0.9rem', bgcolor: 'warning.main' }}>🍍</Avatar>}
+          endIcon={<ExpandMoreRoundedIcon />}
+          sx={{ mb: 8, borderRadius: 999, borderColor: 'divider', color: 'text.primary', justifyContent: 'flex-start', py: 1.5, px: 2 }}
+        >
+          {clubName}
+        </Button>
+      ) : null}
 
       <Box sx={{ mb: 8 }}>
         <SectionHeader title="Acciones rápidas" />
@@ -181,22 +183,24 @@ function HomePage({
         )}
       </Box>
 
-      <Box>
-        <SectionHeader title={`Novedades de ${clubName}`} />
-        <Card variant="outlined" sx={{ p: 4, display: 'flex', gap: 3, alignItems: 'center', borderColor: 'divider', bgcolor: 'background.paper' }}>
-          <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
-            <PercentRoundedIcon sx={{ color: 'background.default' }} />
-          </Avatar>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              20% OFF en todas las canchas de lunes a viernes
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Válido para socios
-            </Typography>
-          </Box>
-        </Card>
-      </Box>
+      {clubName ? (
+        <Box>
+          <SectionHeader title={`Novedades de ${clubName}`} />
+          <Card variant="outlined" sx={{ p: 4, display: 'flex', gap: 3, alignItems: 'center', borderColor: 'divider', bgcolor: 'background.paper' }}>
+            <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
+              <PercentRoundedIcon sx={{ color: 'background.default' }} />
+            </Avatar>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                20% OFF en todas las canchas de lunes a viernes
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Válido para socios
+              </Typography>
+            </Box>
+          </Card>
+        </Box>
+      ) : null}
     </Box>
   );
 }

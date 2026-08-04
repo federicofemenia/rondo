@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -57,8 +57,8 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
 
   const [sport, setSport] = useState('');
   const [modality, setModality] = useState('');
-  const [minPlayers, setMinPlayers] = useState('4');
-  const [maxPlayers, setMaxPlayers] = useState('10');
+  const [minPlayers, setMinPlayers] = useState('');
+  const [maxPlayers, setMaxPlayers] = useState('');
   const [positions, setPositions] = useState<string[]>([]);
   const [clubId, setClubId] = useState('');
   const [otherClubName, setOtherClubName] = useState('');
@@ -74,22 +74,6 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
     const [startMinutes, endMinutes] = [range[0] * 60, range[1] * 60];
     setStartTimeMinutes((current) => (current !== null && (current < startMinutes || current >= endMinutes) ? null : current));
   };
-
-  useEffect(() => {
-    if (!sport && sportNames.length > 0) {
-      const firstSport = sportNames[0]!;
-      setSport(firstSport);
-      setModality(sportModalities[firstSport]?.[0]?.name ?? '');
-    }
-  }, [sport, sportNames, sportModalities]);
-
-  const clubDefaultAppliedRef = useRef(false);
-  useEffect(() => {
-    if (!clubDefaultAppliedRef.current && clubs.length > 0) {
-      setClubId(clubs[0]!.id);
-      clubDefaultAppliedRef.current = true;
-    }
-  }, [clubs]);
 
   const handleSportChange = (nextSport: string) => {
     setSport(nextSport);
@@ -152,6 +136,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   helperText={sportsError ? 'No pudimos cargar los deportes. Reintentá más tarde.' : undefined}
                   fullWidth
                 >
+                  <option value="">Seleccione un deporte</option>
                   {sportNames.map((option) => (
                     <option key={option} value={option}>
                       {option}
@@ -232,7 +217,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
                   onChange={(event) => setClubId(event.target.value)}
                   slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
                   disabled={clubsLoading}
-                  helperText="Se preseleccionó el club del que sos miembro. Podés cambiarlo o elegir Otro."
+                  helperText="Podés armar el partido sin definir club todavía. Solo se listan los clubes de los que sos miembro."
                   fullWidth
                 >
                   <option value="">Sin definir</option>
@@ -306,7 +291,14 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
       </Box>
 
       <PageFooter>
-        <Button type="submit" fullWidth variant="contained" size="large" disabled={sportsLoading || !sport} sx={{ borderRadius: 999 }}>
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          size="large"
+          disabled={sportsLoading || !sport || !minPlayers || !maxPlayers}
+          sx={{ borderRadius: 999 }}
+        >
           Armar partido
         </Button>
       </PageFooter>

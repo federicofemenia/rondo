@@ -4,7 +4,7 @@ import ReservationFlowPage from '../src/ReservationFlowPage';
 
 describe('ReservationFlowPage', () => {
   it('renders the day and time agenda with a default selection', () => {
-    render(<ReservationFlowPage />);
+    render(<ReservationFlowPage clubName="Club Señor Pato" />);
 
     expect(screen.getByText(/elegí día y horario/i)).toBeTruthy();
     expect(screen.getByText(/elegí un horario/i)).toBeTruthy();
@@ -15,7 +15,7 @@ describe('ReservationFlowPage', () => {
 
   it('calls onBack when the back button is clicked', () => {
     const onBack = vi.fn();
-    render(<ReservationFlowPage onBack={onBack} />);
+    render(<ReservationFlowPage clubName="Club Señor Pato" onBack={onBack} />);
 
     fireEvent.click(screen.getByRole('button', { name: /volver/i }));
 
@@ -23,20 +23,21 @@ describe('ReservationFlowPage', () => {
   });
 
   it('updates the selected slot when an available cell is clicked', () => {
-    render(<ReservationFlowPage />);
+    render(<ReservationFlowPage clubName="Club Señor Pato" />);
 
     fireEvent.click(screen.getByRole('button', { name: /cancha 1 09:00 disponible/i }));
 
     expect(screen.getByText(/cancha 1 • panorámica/i)).toBeTruthy();
   });
 
-  it('calls onConfirm with the selected slot when continuar is clicked', () => {
+  it('calls onConfirm with the selected slot and club when continuar is clicked', () => {
     const onConfirm = vi.fn();
-    render(<ReservationFlowPage onConfirm={onConfirm} />);
+    render(<ReservationFlowPage clubName="Club Señor Pato" onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
 
     expect(onConfirm).toHaveBeenCalledWith({
+      clubName: 'Club Señor Pato',
       courtName: 'Cancha 2',
       courtSubtitle: 'Vidrio',
       dateLabel: 'Mié 28 May',
@@ -45,8 +46,26 @@ describe('ReservationFlowPage', () => {
   });
 
   it('shows the contextLabel when launched from a match', () => {
-    render(<ReservationFlowPage contextLabel="Para tu partido de Fútbol" />);
+    render(<ReservationFlowPage clubName="Club Señor Pato" contextLabel="Para tu partido de Fútbol" />);
 
     expect(screen.getByText(/para tu partido de fútbol/i)).toBeTruthy();
+  });
+
+  it('shows a not-associated-with-a-club message instead of the booking flow when there is no club', () => {
+    const onConfirm = vi.fn();
+    render(<ReservationFlowPage clubName={null} onConfirm={onConfirm} />);
+
+    expect(screen.getByText(/no estás asociado a ningún club/i)).toBeTruthy();
+    expect(screen.queryByText(/elegí día y horario/i)).toBeFalsy();
+    expect(screen.queryByRole('button', { name: /continuar/i })).toBeFalsy();
+  });
+
+  it('still lets the user go back when there is no club', () => {
+    const onBack = vi.fn();
+    render(<ReservationFlowPage clubName={null} onBack={onBack} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    expect(onBack).toHaveBeenCalled();
   });
 });

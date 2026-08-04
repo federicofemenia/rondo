@@ -38,6 +38,7 @@ import SportProfilePage from './SportProfilePage';
 import type { BookingEntity, MatchEntity, PendingAction } from './types';
 import { apiBaseUrl } from './runtimeConfig';
 import { retryWithBackoff } from './apiRetry';
+import { useMyClubs } from './useMyClubs';
 import { useVisiblePolling } from './useVisiblePolling';
 
 const HOME_POLL_INTERVAL_MS = 20_000;
@@ -76,6 +77,8 @@ function App() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { signOut } = useClerk();
   const api = useApi();
+  const { clubs: myClubs } = useMyClubs();
+  const myClub = myClubs[0] ?? null;
 
   const [status, setStatus] = useState('Verificando conexión…');
   const [currentView, setCurrentView] = useState<View>('login');
@@ -265,7 +268,7 @@ function App() {
     const bookingId = crypto.randomUUID();
     const newBooking: BookingEntity = {
       id: bookingId,
-      clubName: 'Club Señor Pato',
+      clubName: confirmed.clubName,
       courtName: confirmed.courtName,
       courtSubtitle: confirmed.courtSubtitle,
       dateLabel: confirmed.dateLabel,
@@ -531,6 +534,7 @@ function App() {
       const contextMatch = reservationMatchContext ? matches.find((match) => match.id === reservationMatchContext) : null;
       return (
         <ReservationFlowPage
+          clubName={myClub?.name ?? null}
           onBack={() => setCurrentView('home')}
           onConfirm={handleConfirmBooking}
           contextLabel={contextMatch ? `Para tu partido de ${contextMatch.sport}` : undefined}
@@ -581,6 +585,7 @@ function App() {
           <HomePage
             connectionStatus={status}
             playerName={playerName || undefined}
+            clubName={myClub?.name ?? null}
             upcomingEvents={upcomingEvents}
             onReserveCourt={openReservationFlow}
             onCreateMatch={openCreateFlow}

@@ -3,8 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import CreateMatchPage from '../src/CreateMatchPage';
 import { buildDayOptions } from '../src/dateOptions';
 
+async function selectFootball() {
+  await screen.findByRole('option', { name: 'Fútbol' });
+  fireEvent.change(screen.getByLabelText(/^deporte$/i), { target: { value: 'Fútbol' } });
+}
+
+function fillPlayerCounts(min = '4', max = '10') {
+  fireEvent.change(screen.getByLabelText(/jugadores mínimo/i), { target: { value: min } });
+  fireEvent.change(screen.getByLabelText(/jugadores máximo/i), { target: { value: max } });
+}
+
 describe('CreateMatchPage', () => {
-  it('renders the deportiva and logistica blocks', async () => {
+  it('renders the deportiva and logistica blocks, with the sport combo starting unselected', async () => {
     render(<CreateMatchPage />);
 
     expect(screen.getByRole('heading', { name: /armar partido/i })).toBeTruthy();
@@ -18,25 +28,57 @@ describe('CreateMatchPage', () => {
     expect(screen.getByLabelText(/^día$/i)).toBeTruthy();
     expect(screen.getAllByText(/sin definir/i).length).toBeGreaterThan(0);
 
-    await screen.findByText('Delantero');
+    expect((screen.getByLabelText(/^deporte$/i) as HTMLSelectElement).value).toBe('');
+    expect(screen.getByText(/seleccione un deporte/i)).toBeTruthy();
+    expect((screen.getByLabelText(/jugadores mínimo/i) as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText(/jugadores máximo/i) as HTMLInputElement).value).toBe('');
+
+    await screen.findByRole('option', { name: 'Fútbol' });
+    await screen.findByRole('option', { name: 'Pádel' });
   });
 
-  it('only shows posiciones requeridas for fútbol', async () => {
+  it('does not preselect any club', async () => {
     render(<CreateMatchPage />);
 
-    await screen.findByText(/posiciones requeridas/i);
+    await screen.findByRole('option', { name: 'Fútbol' });
+    expect((screen.getByLabelText(/^club \(opcional\)$/i) as HTMLSelectElement).value).toBe('');
+  });
+
+  it('shows posiciones requeridas only once fútbol is selected, and hides it again for pádel', async () => {
+    render(<CreateMatchPage />);
+
+    expect(screen.queryByText(/posiciones requeridas/i)).toBeFalsy();
+
+    await selectFootball();
+    expect(screen.getByText(/posiciones requeridas/i)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText(/^deporte$/i), { target: { value: 'Pádel' } });
-
     expect(screen.queryByText(/posiciones requeridas/i)).toBeFalsy();
   });
 
-  it('submits the match draft with a required day and franja, and no exact time by default', async () => {
+  it('keeps armar partido disabled until sport, jugadores mínimo and jugadores máximo are all filled', async () => {
+    render(<CreateMatchPage />);
+    await screen.findByRole('option', { name: 'Fútbol' });
+
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
+
+    await selectFootball();
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
+
+    fireEvent.change(screen.getByLabelText(/jugadores mínimo/i), { target: { value: '4' } });
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
+
+    fireEvent.change(screen.getByLabelText(/jugadores máximo/i), { target: { value: '10' } });
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', false);
+  });
+
+  it('submits the match draft with no club by default, and no exact time by default', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
-    fireEvent.click(await screen.findByText('Delantero'));
-    await screen.findByDisplayValue('Club Señor Pato');
+    await selectFootball();
+    fillPlayerCounts();
+    fireEvent.click(screen.getByText('Delantero'));
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     const expectedDate = buildDayOptions()[0]!.value;
@@ -48,8 +90,8 @@ describe('CreateMatchPage', () => {
       minPlayers: '4',
       maxPlayers: '10',
       positions: ['Delantero'],
-      clubId: 'club-1',
-      clubName: 'Club Señor Pato',
+      clubId: null,
+      clubName: null,
       courtName: null,
       date: expectedDate,
       availabilityStartMinutes: 13 * 60,
@@ -58,19 +100,13 @@ describe('CreateMatchPage', () => {
     });
   });
 
-  it('preselects the club the user is a member of', async () => {
-    render(<CreateMatchPage />);
-
-    const clubSelect = (await screen.findByDisplayValue('Club Señor Pato')) as HTMLSelectElement;
-    expect(clubSelect.value).toBe('club-1');
-  });
-
   it('includes the club when one is selected, and the exact start time when it is enabled', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
-    await screen.findByText('Delantero');
-    const clubSelect = await screen.findByLabelText(/^club \(opcional\)$/i);
+    await selectFootball();
+    fillPlayerCounts();
+    const clubSelect = screen.getByLabelText(/^club \(opcional\)$/i);
 
     fireEvent.change(clubSelect, { target: { value: 'club-1' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /horario exacto \(opcional\)/i }));
@@ -91,8 +127,9 @@ describe('CreateMatchPage', () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
-    await screen.findByText('Delantero');
-    const clubSelect = await screen.findByLabelText(/^club \(opcional\)$/i);
+    await selectFootball();
+    fillPlayerCounts();
+    const clubSelect = screen.getByLabelText(/^club \(opcional\)$/i);
 
     fireEvent.change(clubSelect, { target: { value: '__other__' } });
     fireEvent.change(screen.getByLabelText(/nombre del club/i), { target: { value: 'Cancha del barrio' } });
@@ -109,7 +146,7 @@ describe('CreateMatchPage', () => {
   it('requires a franja horaria: the slider always has a value and cannot be turned off', async () => {
     render(<CreateMatchPage />);
 
-    await screen.findByText('Delantero');
+    await screen.findByRole('option', { name: 'Fútbol' });
 
     expect(screen.getByText(/franja horaria disponible/i)).toBeTruthy();
     expect(screen.getByText('13:00 - 19:00')).toBeTruthy();
