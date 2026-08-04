@@ -59,4 +59,15 @@ describe('AppHeader', () => {
 
     expect(screen.getByText(/no tenés acciones pendientes/i)).toBeTruthy();
   });
+
+  it('does not show Mis invitaciones in the menu; invitations are managed from Home', () => {
+    render(<AppHeader />);
+
+    fireEvent.click(screen.getByLabelText('Menú'));
+
+    expect(screen.queryByText(/mis invitaciones/i)).toBeFalsy();
+    expect(screen.getByText(/editar perfil/i)).toBeTruthy();
+    expect(screen.getByText(/perfil deportivo/i)).toBeTruthy();
+    expect(screen.getByText(/cerrar sesión/i)).toBeTruthy();
+  });
 });

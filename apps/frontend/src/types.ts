@@ -1,4 +1,4 @@
-import type { MatchStatusDto, RateParticipantInputDto, StatusChangedByTypeDto } from '@rondo/contracts';
+import type { MatchStatusDto, MatchVenueTypeDto, RateParticipantInputDto, StatusChangedByTypeDto } from '@rondo/contracts';
 
 export type PlayerRating = RateParticipantInputDto;
 
@@ -21,6 +21,8 @@ export type MatchEntity = {
   participantsCount: number;
   clubId: string | null;
   clubName: string | null;
+  venueType: MatchVenueTypeDto;
+  customVenueName: string | null;
   courtName: string | null;
   scheduledDate: string;
   availabilityStartMinutes: number;

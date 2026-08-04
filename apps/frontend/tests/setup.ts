@@ -259,14 +259,18 @@ beforeEach(() => {
       const sport = mockSportsCatalog.find((candidate) => candidate.modalities.some((modality) => modality.id === modalityId));
       const modality = sport?.modalities.find((candidate) => candidate.id === modalityId);
       const club = mockClubs.find((candidate) => candidate.id === body.clubId);
+      const venueType = (body.venueType as string | undefined) ?? 'TO_BE_DEFINED';
+      const customVenueName = (body.customVenueName as string | null | undefined) ?? null;
       const now = new Date().toISOString();
       return json(
         {
           data: {
             id: 'match-created-1',
             status: 'ORGANIZING',
-            clubId: (body.clubId as string | null | undefined) ?? null,
-            clubName: club?.name ?? null,
+            clubId: venueType === 'CLUB' ? ((body.clubId as string | null | undefined) ?? null) : null,
+            clubName: club?.name ?? customVenueName,
+            venueType,
+            customVenueName: venueType === 'CUSTOM' ? customVenueName : null,
             sportModalityId: modalityId ?? '',
             sportName: sport?.name ?? '',
             modalityName: modality?.name ?? '',
@@ -302,6 +306,8 @@ beforeEach(() => {
           status: 'CANCELLED',
           clubId: null,
           clubName: null,
+          venueType: 'TO_BE_DEFINED',
+          customVenueName: null,
           sportModalityId: 'modality-football-5',
           sportName: 'Fútbol',
           modalityName: 'Fútbol 5',
@@ -336,6 +342,8 @@ beforeEach(() => {
           status: 'ORGANIZING',
           clubId: null,
           clubName: null,
+          venueType: 'TO_BE_DEFINED',
+          customVenueName: null,
           sportModalityId: 'modality-football-5',
           sportName: 'Fútbol',
           modalityName: 'Fútbol 5',

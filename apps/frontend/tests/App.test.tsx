@@ -72,16 +72,102 @@ describe('App', () => {
     await screen.findByRole('heading', { name: /hola, federico/i });
     expect(screen.queryByText(/tenés una reserva sin partido asociado/i)).toBeFalsy();
 
+    // No club was selected while creating the match (venueType TO_BE_DEFINED):
+    // the pending nudge is about the venue, never about a court -- a court
+    // can't be booked without a club, so it must never appear as a "pending
+    // task" in that case.
     fireEvent.click(screen.getByLabelText(/notificaciones/i));
-    expect(screen.getByText(/todavía no tiene cancha/i)).toBeTruthy();
-    fireEvent.keyDown(screen.getByText(/todavía no tiene cancha/i), { key: 'Escape', code: 'Escape' });
-    await waitFor(() => expect(screen.queryByText(/todavía no tiene cancha/i)).toBeFalsy());
+    expect(screen.getByText(/todavía no tiene sede/i)).toBeTruthy();
+    expect(screen.queryByText(/todavía no tiene cancha/i)).toBeFalsy();
+    fireEvent.keyDown(screen.getByText(/todavía no tiene sede/i), { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(screen.queryByText(/todavía no tiene sede/i)).toBeFalsy());
 
     fireEvent.click(screen.getByRole('button', { name: /fútbol • fútbol 5/i }));
 
     expect(screen.getByRole('tab', { name: /^resumen$/i })).toBeTruthy();
-    expect(screen.getByText(/cancha pendiente/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /realizar una reserva/i })).toBeTruthy();
+    expect(screen.getByText(/sede pendiente de confirmación/i)).toBeTruthy();
+    expect(screen.queryByText(/cancha pendiente/i)).toBeFalsy();
+  });
+
+  it('shows a full pending invitation card on Home, and accepting it removes it from Invitaciones pendientes', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+      await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
+
+      mockMyInvitations.push({
+        id: 'invitation-home-1',
+        matchId: 'match-home-1',
+        status: 'PENDING',
+        position: null,
+        invitedUserId: 'user-test',
+        invitedUserDisplayName: 'Federico Femenia',
+        invitedById: 'organizer-1',
+        organizerDisplayName: 'Juan Pérez',
+        sportName: 'Fútbol',
+        modalityName: 'Fútbol 5',
+        clubName: null,
+        scheduledDate: '2026-08-07',
+        availabilityStartMinutes: 20 * 60,
+        availabilityEndMinutes: 21 * 60,
+        startsAt: '2026-08-07T20:00:00.000Z',
+        endsAt: '2026-08-07T21:00:00.000Z',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        respondedAt: null,
+      });
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.waitFor(() => expect(screen.getByText(/invitaciones pendientes/i)).toBeTruthy());
+      expect(screen.getByText(/juan pérez te invitó a fútbol fútbol 5/i)).toBeTruthy();
+      expect(screen.getByText(/sede a definir/i)).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: /^aceptar$/i }));
+
+      await vi.waitFor(() => expect(screen.queryByText(/invitaciones pendientes/i)).toBeFalsy());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets the user reject a pending invitation from Home, which drops it without touching Próximos eventos', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+      await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
+
+      mockMyInvitations.push({
+        id: 'invitation-home-2',
+        matchId: 'match-home-2',
+        status: 'PENDING',
+        position: null,
+        invitedUserId: 'user-test',
+        invitedUserDisplayName: 'Federico Femenia',
+        invitedById: 'organizer-1',
+        organizerDisplayName: 'Juan Pérez',
+        sportName: 'Pádel',
+        modalityName: 'Dobles',
+        clubName: 'Club Señor Pato',
+        scheduledDate: '2026-08-07',
+        availabilityStartMinutes: 20 * 60,
+        availabilityEndMinutes: 21 * 60,
+        startsAt: null,
+        endsAt: null,
+        createdAt: '2026-08-01T00:00:00.000Z',
+        respondedAt: null,
+      });
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.waitFor(() => expect(screen.getByText(/invitaciones pendientes/i)).toBeTruthy());
+
+      fireEvent.click(screen.getByRole('button', { name: /^rechazar$/i }));
+
+      await vi.waitFor(() => expect(screen.queryByText(/invitaciones pendientes/i)).toBeFalsy());
+      expect(screen.getByText(/todavía no tenés partidos ni reservas/i)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows a new pending-invitation action on Home automatically after a background refresh', async () => {

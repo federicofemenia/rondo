@@ -35,6 +35,7 @@ export async function createTestMatch(input: CreateTestMatchInput = {}): Promise
     data: {
       id: randomUUID(),
       clubId: SEED_IDS.club.senorPato,
+      venueType: 'CLUB',
       sportModalityId: SEED_IDS.modalities.football5,
       courtId: SEED_IDS.courts.football5,
       organizerUserId: input.organizerUserId ?? SEED_IDS.users.juan,

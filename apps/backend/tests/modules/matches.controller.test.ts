@@ -35,6 +35,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'CLUB',
         clubId: SEED_IDS.club.senorPato,
         minPlayers: 4,
         maxPlayers: 10,
@@ -85,6 +86,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 4,
         maxPlayers: 10,
         scheduledDate: dateStringDaysFromNow(2),
@@ -115,6 +117,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 4,
         maxPlayers: 10,
         scheduledDate: dateStringDaysFromNow(2),
@@ -142,6 +145,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 4,
         maxPlayers: 10,
         scheduledDate: dateStringDaysFromNow(2),
@@ -164,6 +168,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 4,
         maxPlayers: 10,
         availabilityStartMinutes: 600,
@@ -183,6 +188,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 4,
         maxPlayers: 10,
         scheduledDate: dateStringDaysFromNow(-1),
@@ -203,6 +209,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 4,
         maxPlayers: 10,
         scheduledDate: dateStringDaysFromNow(2),
@@ -223,6 +230,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 4,
         maxPlayers: 10,
         scheduledDate: dateStringDaysFromNow(2),
@@ -244,6 +252,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: SEED_IDS.modalities.football5,
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 10,
         maxPlayers: 4,
         scheduledDate: dateStringDaysFromNow(2),
@@ -264,6 +273,7 @@ describe('POST /api/v1/matches', () => {
       headers: { authorization: 'Bearer juan' },
       payload: {
         sportModalityId: '00000000-0000-0000-0000-000000000000',
+        venueType: 'TO_BE_DEFINED',
         minPlayers: 4,
         maxPlayers: 10,
         scheduledDate: dateStringDaysFromNow(2),
@@ -292,6 +302,173 @@ describe('POST /api/v1/matches', () => {
     });
 
     expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+});
+
+describe('POST /api/v1/matches — venue (club/sede/cancha)', () => {
+  const createdMatchIds: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(createdMatchIds.splice(0).map(deleteTestMatch));
+  });
+
+  function baseVenuePayload() {
+    return {
+      sportModalityId: SEED_IDS.modalities.football5,
+      minPlayers: 4,
+      maxPlayers: 10,
+      scheduledDate: dateStringDaysFromNow(2),
+      availabilityStartMinutes: 14 * 60,
+      availabilityEndMinutes: 19 * 60,
+    };
+  }
+
+  it('persists a real club and reflects it in clubId/clubName', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'CLUB', clubId: SEED_IDS.club.senorPato },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { data: { id: string; venueType: string; clubId: string | null; clubName: string | null } };
+    createdMatchIds.push(body.data.id);
+    expect(body.data.venueType).toBe('CLUB');
+    expect(body.data.clubId).toBe(SEED_IDS.club.senorPato);
+    expect(body.data.clubName).toBe('Señor Pato');
+
+    await app.close();
+  });
+
+  it('creates a match with "Sede a definir", leaving clubId/clubName/customVenueName null', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'TO_BE_DEFINED' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as {
+      data: { id: string; venueType: string; clubId: string | null; clubName: string | null; customVenueName: string | null };
+    };
+    createdMatchIds.push(body.data.id);
+    expect(body.data.venueType).toBe('TO_BE_DEFINED');
+    expect(body.data.clubId).toBeNull();
+    expect(body.data.clubName).toBeNull();
+    expect(body.data.customVenueName).toBeNull();
+
+    await app.close();
+  });
+
+  it('creates a match with a free-text venue name and reflects it in clubName', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'CUSTOM', customVenueName: '  Plaza del barrio  ' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as {
+      data: { id: string; venueType: string; clubId: string | null; clubName: string | null; customVenueName: string | null };
+    };
+    createdMatchIds.push(body.data.id);
+    expect(body.data.venueType).toBe('CUSTOM');
+    expect(body.data.clubId).toBeNull();
+    expect(body.data.customVenueName).toBe('Plaza del barrio');
+    // clubName resolves to the custom name too, so every surface that already
+    // displays clubName (Home, invitations, chat, cards) shows it for free.
+    expect(body.data.clubName).toBe('Plaza del barrio');
+
+    await app.close();
+  });
+
+  it('rejects venueType CUSTOM without a customVenueName', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'CUSTOM' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects venueType CUSTOM with a blank/whitespace-only customVenueName', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'CUSTOM', customVenueName: '   ' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects venueType CLUB without a clubId', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'CLUB' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects a nonexistent clubId', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'CLUB', clubId: '00000000-0000-0000-0000-000000000000' },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error.code).toBe('CLUB_NOT_FOUND');
+    await app.close();
+  });
+
+  it('rejects mixing a clubId with venueType TO_BE_DEFINED', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'TO_BE_DEFINED', clubId: SEED_IDS.club.senorPato },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('creates a match without a court, and never requires one at creation time', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matches',
+      headers: { authorization: 'Bearer juan' },
+      payload: { ...baseVenuePayload(), venueType: 'CUSTOM', customVenueName: 'Cancha de Juan' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { data: { id: string; courtName: string | null } };
+    createdMatchIds.push(body.data.id);
+    expect(body.data.courtName).toBeNull();
+
     await app.close();
   });
 });

@@ -58,6 +58,12 @@ enum UserSex {
   FEMALE
 }
 
+enum MatchVenueType {
+  CLUB
+  TO_BE_DEFINED
+  CUSTOM
+}
+
 model User {
   id          String   @id @default(uuid())
   clerkUserId String   @unique @map("clerk_user_id")
@@ -207,11 +213,13 @@ model ClubNews {
 }
 
 model Match {
-  id              String  @id @default(uuid())
-  clubId          String? @map("club_id")
-  sportModalityId String  @map("sport_modality_id")
-  courtId         String? @map("court_id")
-  organizerUserId String  @map("organizer_user_id")
+  id              String         @id @default(uuid())
+  clubId          String?        @map("club_id")
+  venueType       MatchVenueType @default(TO_BE_DEFINED) @map("venue_type")
+  customVenueName String?        @map("custom_venue_name")
+  sportModalityId String         @map("sport_modality_id")
+  courtId         String?        @map("court_id")
+  organizerUserId String         @map("organizer_user_id")
 
   minPlayers Int      @map("min_players")
   maxPlayers Int      @map("max_players")

@@ -335,6 +335,40 @@ describe('PUT /api/v1/me/sport-profiles/:sportId/availability', () => {
     await app.close();
   });
 
+  it('persists an additional slot appended to an already-saved availability, keeping both after a fresh read', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    await createAnaPadelProfile(app);
+
+    const first = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/me/sport-profiles/${SEED_IDS.sports.padel}/availability`,
+      headers: { authorization: 'Bearer ana' },
+      payload: { slots: [{ dayOfWeek: 1, startMinutes: 600, endMinutes: 660 }] },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/me/sport-profiles/${SEED_IDS.sports.padel}/availability`,
+      headers: { authorization: 'Bearer ana' },
+      payload: {
+        slots: [
+          { dayOfWeek: 1, startMinutes: 600, endMinutes: 660 },
+          { dayOfWeek: 3, startMinutes: 700, endMinutes: 800 },
+        ],
+      },
+    });
+    expect(second.statusCode).toBe(200);
+
+    const refetch = await app.inject({ method: 'GET', url: '/api/v1/me/sport-profiles', headers: { authorization: 'Bearer ana' } });
+    const body = refetch.json() as { data: Array<{ sportId: string; availability: Array<{ dayOfWeek: number }> }> };
+    const padelProfile = body.data.find((profile) => profile.sportId === SEED_IDS.sports.padel);
+    expect(padelProfile?.availability).toHaveLength(2);
+    expect(padelProfile?.availability.map((slot) => slot.dayOfWeek).sort()).toEqual([1, 3]);
+
+    await app.close();
+  });
+
   it('returns 404 when the sport profile does not exist yet', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({

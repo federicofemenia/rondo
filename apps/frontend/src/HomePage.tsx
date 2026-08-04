@@ -1,3 +1,5 @@
+import type { MatchInvitationDto } from '@rondo/contracts';
+import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -10,9 +12,11 @@ import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
+import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
 import PercentRoundedIcon from '@mui/icons-material/PercentRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import PlaceRoundedIcon from '@mui/icons-material/PlaceRounded';
+import { describeSchedule } from './scheduleFormat';
 
 export type UpcomingEventItem = {
   id: string;
@@ -30,6 +34,11 @@ type HomePageProps = {
   clubName?: string | null;
   connectionStatus?: string;
   upcomingEvents?: UpcomingEventItem[];
+  pendingInvitations?: MatchInvitationDto[];
+  respondingInvitationId?: string | null;
+  invitationRespondErrors?: Record<string, string>;
+  onAcceptInvitation?: (invitationId: string) => void;
+  onRejectInvitation?: (invitationId: string) => void;
   onReserveCourt?: () => void;
   onCreateMatch?: () => void;
 };
@@ -59,6 +68,11 @@ function HomePage({
   clubName = null,
   connectionStatus,
   upcomingEvents = [],
+  pendingInvitations = [],
+  respondingInvitationId = null,
+  invitationRespondErrors = {},
+  onAcceptInvitation,
+  onRejectInvitation,
   onReserveCourt,
   onCreateMatch,
 }: HomePageProps) {
@@ -123,6 +137,61 @@ function HomePage({
           ))}
         </Stack>
       </Box>
+
+      {pendingInvitations.length > 0 ? (
+        <Box sx={{ mb: 8 }}>
+          <SectionHeader title="Invitaciones pendientes" />
+          <Stack spacing={2}>
+            {pendingInvitations.map((invitation) => {
+              const schedule = describeSchedule(invitation);
+              const isResponding = respondingInvitationId === invitation.id;
+              const respondError = invitationRespondErrors[invitation.id];
+
+              return (
+                <Card key={invitation.id} variant="outlined" sx={{ p: 4, borderColor: 'divider', bgcolor: 'background.paper' }}>
+                  <Stack direction="row" spacing={3} alignItems="flex-start">
+                    <Avatar sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+                      <MailOutlineRoundedIcon sx={{ color: 'warning.main' }} />
+                    </Avatar>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                        {invitation.organizerDisplayName} te invitó a {invitation.sportName} {invitation.modalityName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" component="p">
+                        {schedule.dateLabel} • {schedule.isConfirmed ? schedule.timeLabel : `Franja ${schedule.windowLabel}`}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" component="p">
+                        {invitation.clubName ?? 'Sede a definir'}
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  {respondError ? (
+                    <Alert severity="error" sx={{ mt: 3 }}>
+                      {respondError}
+                    </Alert>
+                  ) : null}
+
+                  <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+                    <Button variant="contained" fullWidth disabled={isResponding} onClick={() => onAcceptInvitation?.(invitation.id)}>
+                      {isResponding ? 'Enviando…' : 'Aceptar'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      fullWidth
+                      disabled={isResponding}
+                      onClick={() => onRejectInvitation?.(invitation.id)}
+                    >
+                      Rechazar
+                    </Button>
+                  </Stack>
+                </Card>
+              );
+            })}
+          </Stack>
+        </Box>
+      ) : null}
 
       <Box sx={{ mb: 8 }}>
         <SectionHeader title="Próximos eventos" />

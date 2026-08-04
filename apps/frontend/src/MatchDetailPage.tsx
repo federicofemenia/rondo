@@ -15,13 +15,14 @@ import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import type { MatchInvitationStatusDto, MatchRatingsResponseDto } from '@rondo/contracts';
+import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
+import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import { useApi } from './apiClient';
-import CandidatesPage from './CandidatesPage';
-import { clubOptions } from './clubOptions';
 import { buildDayOptions } from './dateOptions';
 import EntityPickerDialog from './EntityPickerDialog';
 import type { PickerItem } from './EntityPickerDialog';
 import ExactStartTimeInput from './ExactStartTimeInput';
+import MatchCandidatesSection from './MatchCandidatesSection';
 import MatchChatPage from './MatchChatPage';
 import { MATCH_STATUS_CHIP_STYLES, MATCH_STATUS_LABELS } from './matchStatus';
 import MatchPlayersPage from './MatchPlayersPage';
@@ -38,7 +39,6 @@ type MatchDetailPageProps = {
   myInvitationStatus?: MatchInvitationStatusDto | null;
   onBack?: () => void;
   onCancelMatch?: () => void;
-  onEditClub?: (clubName: string | null) => void;
   onEditSchedule?: (input: ScheduleUpdateInput) => Promise<void>;
   onRequestBooking?: () => void;
   onAssociateBooking?: (bookingId: string) => void;
@@ -86,7 +86,6 @@ function MatchDetailPage({
   myInvitationStatus,
   onBack,
   onCancelMatch,
-  onEditClub,
   onEditSchedule,
   onRequestBooking,
   onAssociateBooking,
@@ -97,9 +96,9 @@ function MatchDetailPage({
   const dayOptions = useMemo(() => buildDayOptions(), []);
   const [tab, setTab] = useState<Tab>(initialTab ?? 'datos');
   const [searchingPlayers, setSearchingPlayers] = useState(false);
+  const [candidatesCollapsed, setCandidatesCollapsed] = useState(false);
   const [playersVersion, setPlayersVersion] = useState(0);
   const [associateOpen, setAssociateOpen] = useState(false);
-  const [clubDraft, setClubDraft] = useState(match.clubName ?? '');
   const [dateDraft, setDateDraft] = useState(match.scheduledDate);
   const [availabilityRangeDraft, setAvailabilityRangeDraft] = useState<[number, number]>([
     match.availabilityStartMinutes / 60,
@@ -117,7 +116,7 @@ function MatchDetailPage({
 
   const status = match.status;
   const cancelled = status === 'CANCELLED';
-  const canEditSchedule = status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'EXPIRED';
+  const canEditSchedule = match.isOrganizer && status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'EXPIRED';
   const visibleTabs: Tab[] = cancelled ? ['datos', 'chat', 'valoraciones'] : ['datos', 'jugadores', 'chat', 'valoraciones'];
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
   const schedule = describeSchedule(match);
@@ -132,7 +131,6 @@ function MatchDetailPage({
     setScheduleSaving(true);
     setScheduleError(null);
     try {
-      onEditClub?.(clubDraft || null);
       await onEditSchedule?.({
         scheduledDate: dateDraft,
         availabilityStartMinutes: availabilityRangeDraft[0] * 60,
@@ -269,7 +267,7 @@ function MatchDetailPage({
                     {match.sport}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {match.clubName ? `${match.modality} • ${match.clubName}` : `${match.modality} • Club a definir`}
+                    {match.clubName ? `${match.modality} • ${match.clubName}` : `${match.modality} • Sede a definir`}
                   </Typography>
                 </Box>
               </Stack>
@@ -302,34 +300,24 @@ function MatchDetailPage({
           <Card variant="outlined" sx={{ p: 6, borderColor: 'divider' }}>
             <Typography sx={{ fontWeight: 700, mb: 2 }}>Estado del evento</Typography>
             <Box sx={{ '& > div:not(:last-of-type)': { borderBottom: '1px solid', borderColor: 'divider' } }}>
-              <StatusRow label={match.clubName ? 'Club seleccionado' : 'Club pendiente'} done={Boolean(match.clubName)} value={match.clubName ?? undefined} />
+              <StatusRow
+                label={match.clubName ? 'Sede seleccionada' : 'Sede pendiente de confirmación'}
+                done={Boolean(match.clubName)}
+                value={match.clubName ?? undefined}
+              />
               <StatusRow label="Día confirmado" done value={schedule.dateLabel} />
               <StatusRow
                 label={schedule.isConfirmed ? 'Horario confirmado' : 'Horario pendiente de confirmación'}
                 done={schedule.isConfirmed}
                 value={schedule.isConfirmed ? schedule.timeLabel : `Franja elegida: ${schedule.windowLabel}`}
               />
-              <StatusRow label={match.courtName ? 'Cancha confirmada' : 'Cancha pendiente'} done={Boolean(match.courtName)} value={match.courtName ?? undefined} />
+              {match.venueType === 'CLUB' ? (
+                <StatusRow label={match.courtName ? 'Cancha confirmada' : 'Cancha pendiente'} done={Boolean(match.courtName)} value={match.courtName ?? undefined} />
+              ) : null}
             </Box>
 
             {canEditSchedule ? (
               <Stack spacing={3} sx={{ mt: 4 }}>
-                <TextField
-                  select
-                  label="Editar club"
-                  value={clubDraft}
-                  onChange={(event) => setClubDraft(event.target.value)}
-                  slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                  helperText="Solo se listan los clubes de los que sos miembro."
-                  fullWidth
-                >
-                  <option value="">Sin definir</option>
-                  {clubOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </TextField>
                 <TextField
                   select
                   label="Editar día"
@@ -362,7 +350,7 @@ function MatchDetailPage({
                   {scheduleSaving ? 'Guardando…' : 'Guardar cambios'}
                 </Button>
 
-                {!match.courtName ? (
+                {match.venueType === 'CLUB' && !match.courtName ? (
                   <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
                     <Button variant="contained" onClick={onRequestBooking}>
                       Realizar una reserva
@@ -376,7 +364,7 @@ function MatchDetailPage({
             ) : null}
           </Card>
 
-          {!cancelled ? (
+          {!cancelled && match.isOrganizer ? (
             <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', mt: 6 }}>
               <Typography sx={{ fontWeight: 700, mb: 2 }}>Gestión del partido</Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
@@ -391,33 +379,60 @@ function MatchDetailPage({
       ) : null}
 
       {tab === 'jugadores' && visibleTabs.includes('jugadores') ? (
-        <>
-          <MatchPlayersPage
-            key={playersVersion}
-            matchId={match.id}
-            isOrganizer={match.isOrganizer}
-            status={match.status}
-            participantsCount={match.participantsCount}
-            maxPlayers={Number(match.maxPlayers)}
-            onSearchPlayers={() => setSearchingPlayers(true)}
-            onRosterChanged={() => {
-              setPlayersVersion((version) => version + 1);
-              onRosterChanged?.();
-            }}
-            onLeftMatch={onLeftMatch}
-          />
-          {searchingPlayers ? (
-            <CandidatesPage
-              matchId={match.id}
-              matchSummary={match}
-              onFinish={() => {
-                setSearchingPlayers(false);
-                setPlayersVersion((version) => version + 1);
-                onRosterChanged?.();
-              }}
-            />
-          ) : null}
-        </>
+        <MatchPlayersPage
+          refreshToken={playersVersion}
+          matchId={match.id}
+          isOrganizer={match.isOrganizer}
+          status={match.status}
+          participantsCount={match.participantsCount}
+          maxPlayers={Number(match.maxPlayers)}
+          searchingPlayers={searchingPlayers}
+          candidatesSection={
+            searchingPlayers ? (
+              <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', mb: 6 }}>
+                {match.status === 'FULL' ? (
+                  <>
+                    <Typography sx={{ fontWeight: 700, mb: 1 }}>Equipo completo</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Ya no hace falta buscar más jugadores para este partido.
+                    </Typography>
+                  </>
+                ) : (
+                  <>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: candidatesCollapsed ? 0 : 4 }}>
+                      <Typography variant="h3" component="h2">
+                        Candidatos compatibles
+                      </Typography>
+                      <IconButton
+                        aria-label={candidatesCollapsed ? 'Mostrar candidatos' : 'Ocultar candidatos'}
+                        onClick={() => setCandidatesCollapsed((current) => !current)}
+                        size="small"
+                      >
+                        {candidatesCollapsed ? <ExpandMoreRoundedIcon /> : <ExpandLessRoundedIcon />}
+                      </IconButton>
+                    </Stack>
+                    {!candidatesCollapsed ? (
+                      <MatchCandidatesSection
+                        matchId={match.id}
+                        matchSummary={match}
+                        onInvited={() => {
+                          setPlayersVersion((version) => version + 1);
+                          onRosterChanged?.();
+                        }}
+                      />
+                    ) : null}
+                  </>
+                )}
+              </Card>
+            ) : null
+          }
+          onSearchPlayers={() => setSearchingPlayers((current) => !current)}
+          onRosterChanged={() => {
+            setPlayersVersion((version) => version + 1);
+            onRosterChanged?.();
+          }}
+          onLeftMatch={onLeftMatch}
+        />
       ) : null}
 
       {tab === 'chat' && visibleTabs.includes('chat') ? <MatchChatPage matchId={match.id} status={status} /> : null}

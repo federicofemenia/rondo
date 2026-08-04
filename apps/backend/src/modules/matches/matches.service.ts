@@ -55,7 +55,9 @@ export function toMatchSummaryDto(match: MatchWithRelations, currentUserId: stri
     id: match.id,
     status: match.status,
     clubId: match.clubId,
-    clubName: match.club?.name ?? null,
+    clubName: match.club?.name ?? match.customVenueName ?? null,
+    venueType: match.venueType,
+    customVenueName: match.customVenueName,
     sportModalityId: match.sportModalityId,
     sportName: match.sportModality.sport.name,
     modalityName: match.sportModality.name,
@@ -141,7 +143,7 @@ export async function createMatch(organizerUserId: string, input: CreateMatchInp
     throw new MatchServiceError(422, 'SPORT_MODALITY_NOT_FOUND', 'La modalidad deportiva indicada no existe.');
   }
 
-  if (input.clubId) {
+  if (input.venueType === 'CLUB' && input.clubId) {
     const club = await prisma.club.findUnique({ where: { id: input.clubId } });
     if (!club) {
       throw new MatchServiceError(422, 'CLUB_NOT_FOUND', 'El club indicado no existe.');
@@ -152,7 +154,9 @@ export async function createMatch(organizerUserId: string, input: CreateMatchInp
 
   const created = await prisma.match.create({
     data: {
-      clubId: input.clubId ?? null,
+      clubId: input.venueType === 'CLUB' ? (input.clubId ?? null) : null,
+      venueType: input.venueType,
+      customVenueName: input.venueType === 'CUSTOM' ? (input.customVenueName?.trim() ?? null) : null,
       sportModalityId: input.sportModalityId,
       organizerUserId,
       minPlayers: input.minPlayers,

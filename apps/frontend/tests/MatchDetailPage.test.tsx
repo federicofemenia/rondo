@@ -16,6 +16,8 @@ const baseMatch: MatchEntity = {
   participantsCount: 1,
   clubId: 'club-1',
   clubName: 'Club Señor Pato',
+  venueType: 'CLUB',
+  customVenueName: null,
   courtName: 'Cancha 2 · Vidrio',
   scheduledDate: '2026-08-05',
   availabilityStartMinutes: 17 * 60,
@@ -48,20 +50,27 @@ describe('MatchDetailPage', () => {
     render(<MatchDetailPage match={{ ...baseMatch, courtName: null }} unlinkedBookings={[]} />);
 
     expect(screen.getByText(/cancha pendiente/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /realizar una reserva/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /asociar una reserva existente/i })).toBeTruthy();
   });
 
-  it('lets the organizer set a pending club directly from the estado del evento card', () => {
-    const onEditClub = vi.fn();
-    render(<MatchDetailPage match={{ ...baseMatch, clubName: null }} unlinkedBookings={[]} onEditClub={onEditClub} />);
+  it('shows a discreet "Sede pendiente de confirmación" message when the venue is still undecided, not an error', () => {
+    render(<MatchDetailPage match={{ ...baseMatch, clubName: null, venueType: 'TO_BE_DEFINED', clubId: null }} unlinkedBookings={[]} />);
 
-    expect(screen.getByText(/club pendiente/i)).toBeTruthy();
+    expect(screen.getByText(/sede pendiente de confirmación/i)).toBeTruthy();
+  });
 
-    fireEvent.change(screen.getByLabelText(/editar club/i), { target: { value: 'Club Señor Pato' } });
-    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+  it('shows the custom venue name and no "falta club" warning when the match has a free-text venue', () => {
+    render(
+      <MatchDetailPage
+        match={{ ...baseMatch, clubId: null, clubName: 'Cancha de Juan', venueType: 'CUSTOM', customVenueName: 'Cancha de Juan' }}
+        unlinkedBookings={[]}
+      />,
+    );
 
-    expect(onEditClub).toHaveBeenCalledWith('Club Señor Pato');
+    expect(screen.getByText(/sede seleccionada/i)).toBeTruthy();
+    expect(screen.getAllByText('Cancha de Juan').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/sede pendiente/i)).toBeFalsy();
+    // No court-related warning either: a free-text venue never books a court.
+    expect(screen.queryByText(/cancha pendiente/i)).toBeFalsy();
   });
 
   it('shows Completo once the backend reports the match as FULL', () => {
@@ -70,7 +79,7 @@ describe('MatchDetailPage', () => {
     expect(screen.getByText(/^completo$/i)).toBeTruthy();
   });
 
-  it('jugadores tab shows the roster and lets the organizer search real candidates for this match', async () => {
+  it('jugadores tab shows candidates above the roster, and invites update the section without a full reload', async () => {
     mockCandidates.push({
       id: 'candidate-lina',
       displayName: 'Lina',
@@ -85,17 +94,23 @@ describe('MatchDetailPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: /jugadores/i }));
     expect(await screen.findByText('👑 Organizador')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /buscar jugadores/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^buscar jugadores$/i }));
     expect(await screen.findByText('Lina')).toBeTruthy();
     // The confirmed/pending roster must stay visible alongside the candidate
     // search, not get replaced by it (that used to make it unreachable again).
     expect(screen.getByText('👑 Organizador')).toBeTruthy();
 
+    // Candidates render above the roster (Organizador/Confirmados/...).
+    const candidatesHeading = screen.getByText('Candidatos compatibles');
+    const organizerHeading = screen.getByText('👑 Organizador');
+    expect(candidatesHeading.compareDocumentPosition(organizerHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
     fireEvent.click(screen.getByRole('button', { name: /^invitar$/i }));
     expect(await screen.findByRole('button', { name: /invitación enviada/i })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /finalizar/i }));
-    expect(await screen.findByText(/buscar jugadores/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /ocultar búsqueda de jugadores/i }));
+    expect(await screen.findByRole('button', { name: /^buscar jugadores$/i })).toBeTruthy();
+    expect(screen.queryByText('Candidatos compatibles')).toBeFalsy();
     expect(screen.getByText('👑 Organizador')).toBeTruthy();
   });
 
@@ -119,6 +134,16 @@ describe('MatchDetailPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /cancelar partido/i }));
     expect(onCancelMatch).toHaveBeenCalled();
+  });
+
+  it('a non-organizer (confirmed participant or invited guest) never sees management actions: no Gestión del partido card, no schedule-edit form', () => {
+    const onCancelMatch = vi.fn();
+    render(<MatchDetailPage match={{ ...baseMatch, isOrganizer: false }} unlinkedBookings={[]} onCancelMatch={onCancelMatch} />);
+
+    expect(screen.queryByText(/gestión del partido/i)).toBeFalsy();
+    expect(screen.queryByRole('button', { name: /cancelar partido/i })).toBeFalsy();
+    expect(screen.queryByLabelText(/^editar día$/i)).toBeFalsy();
+    expect(screen.queryByRole('button', { name: /^guardar cambios$/i })).toBeFalsy();
   });
 
   it('does not offer Cancelar partido once the match is already cancelled', () => {

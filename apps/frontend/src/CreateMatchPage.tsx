@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import type { MatchVenueTypeDto } from '@rondo/contracts';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -21,6 +22,7 @@ export type MatchDraft = {
   minPlayers: string;
   maxPlayers: string;
   positions: string[];
+  venueType: MatchVenueTypeDto;
   clubId: string | null;
   clubName: string | null;
   courtName: string | null;
@@ -83,13 +85,17 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
     }
   };
 
+  const isOtherClub = clubId === OTHER_CLUB_VALUE;
+  const trimmedOtherClubName = otherClubName.trim();
+  const venueType: MatchVenueTypeDto = isOtherClub ? 'CUSTOM' : clubId ? 'CLUB' : 'TO_BE_DEFINED';
+  const isCustomVenueMissing = isOtherClub && !trimmedOtherClubName;
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const sportModalityId = sportModalities[sport]?.find((option) => option.name === modality)?.id;
-    if (!sportModalityId) {
+    if (!sportModalityId || isCustomVenueMissing) {
       return;
     }
-    const isOtherClub = clubId === OTHER_CLUB_VALUE;
     const selectedClub = isOtherClub ? undefined : clubs.find((club) => club.id === clubId);
     onCreateMatch?.({
       sport,
@@ -98,8 +104,9 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
       minPlayers,
       maxPlayers,
       positions,
-      clubId: isOtherClub ? null : clubId || null,
-      clubName: isOtherClub ? otherClubName.trim() || null : selectedClub?.name ?? null,
+      venueType,
+      clubId: venueType === 'CLUB' ? clubId || null : null,
+      clubName: venueType === 'CLUB' ? (selectedClub?.name ?? null) : venueType === 'CUSTOM' ? trimmedOtherClubName : null,
       courtName: null,
       date,
       availabilityStartMinutes,
@@ -208,33 +215,35 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
             <Divider sx={{ borderColor: 'divider' }} />
 
             <Box>
-              <Typography sx={{ fontWeight: 700, mb: 3 }}>Información logística</Typography>
+              <Typography sx={{ fontWeight: 700, mb: 3 }}>Lugar y horario</Typography>
               <Stack spacing={4}>
                 <TextField
                   select
-                  label="Club (opcional)"
+                  label="Sede"
                   value={clubId}
                   onChange={(event) => setClubId(event.target.value)}
                   slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
                   disabled={clubsLoading}
-                  helperText="Podés armar el partido sin definir club todavía. Solo se listan los clubes de los que sos miembro."
+                  helperText="Podés armar el partido sin definir la sede todavía."
                   fullWidth
                 >
-                  <option value="">Sin definir</option>
+                  <option value="">Sede a definir</option>
                   {clubs.map((club) => (
                     <option key={club.id} value={club.id}>
                       {club.name}
                     </option>
                   ))}
-                  <option value={OTHER_CLUB_VALUE}>Otro</option>
+                  <option value={OTHER_CLUB_VALUE}>Nombre del club</option>
                 </TextField>
 
-                {clubId === OTHER_CLUB_VALUE ? (
+                {isOtherClub ? (
                   <TextField
-                    label="Nombre del club"
+                    label="Nombre de la sede o club"
                     value={otherClubName}
                     onChange={(event) => setOtherClubName(event.target.value)}
-                    placeholder="Ingresá el nombre del club"
+                    placeholder="Ej: Club Atlético Central, Complejo La Canchita, Cancha de Juan"
+                    error={isCustomVenueMissing}
+                    helperText={isCustomVenueMissing ? 'Ingresá un nombre para la sede.' : undefined}
                     fullWidth
                   />
                 ) : null}
@@ -296,7 +305,7 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
           fullWidth
           variant="contained"
           size="large"
-          disabled={sportsLoading || !sport || !minPlayers || !maxPlayers}
+          disabled={sportsLoading || !sport || !minPlayers || !maxPlayers || isCustomVenueMissing}
           sx={{ borderRadius: 999 }}
         >
           Armar partido

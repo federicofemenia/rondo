@@ -143,10 +143,13 @@ export async function runSeed(): Promise<void> {
     cancellationReason: string | null;
     participantUserIds: string[];
   }) {
+    const venueType = input.clubId ? 'CLUB' : 'TO_BE_DEFINED';
+
     const match = await prisma.match.upsert({
       where: { id: input.id },
       update: {
         clubId: input.clubId,
+        venueType,
         sportModalityId: input.sportModalityId,
         courtId: input.courtId,
         organizerUserId: input.organizerUserId,
@@ -166,6 +169,7 @@ export async function runSeed(): Promise<void> {
       create: {
         id: input.id,
         clubId: input.clubId,
+        venueType,
         sportModalityId: input.sportModalityId,
         courtId: input.courtId,
         organizerUserId: input.organizerUserId,

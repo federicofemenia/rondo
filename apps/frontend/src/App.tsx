@@ -93,6 +93,8 @@ function App() {
   const [bookings, setBookings] = useState<BookingEntity[]>([]);
   const [pendingTasks, setPendingTasks] = useState<PendingTaskDto[]>([]);
   const [myInvitations, setMyInvitations] = useState<MatchInvitationDto[]>([]);
+  const [respondingInvitationId, setRespondingInvitationId] = useState<string | null>(null);
+  const [invitationRespondErrors, setInvitationRespondErrors] = useState<Record<string, string>>({});
 
   const [matchDraft, setMatchDraft] = useState<MatchDraft | null>(null);
   const [createdMatchId, setCreatedMatchId] = useState<string | null>(null);
@@ -235,7 +237,9 @@ function App() {
     try {
       const response = await api.post<{ data: MatchSummaryDto }>('/api/v1/matches', {
         sportModalityId: draft.sportModalityId,
-        clubId: draft.clubId,
+        venueType: draft.venueType,
+        clubId: draft.venueType === 'CLUB' ? draft.clubId : null,
+        customVenueName: draft.venueType === 'CUSTOM' ? draft.clubName : null,
         minPlayers: Number(draft.minPlayers),
         maxPlayers: Number(draft.maxPlayers),
         positions: draft.positions,
@@ -334,13 +338,31 @@ function App() {
     }
   };
 
-  const handleEditMatchClub = (matchId: string, clubName: string | null) => {
-    setMatches((current) => current.map((match) => (match.id === matchId ? { ...match, clubName } : match)));
-  };
-
   const handleEditMatchSchedule = async (matchId: string, input: ScheduleUpdateInput) => {
     const response = await api.patch<{ data: MatchSummaryDto }>(`/api/v1/matches/${matchId}/schedule`, input);
     setMatches((current) => current.map((match) => (match.id === matchId ? matchSummaryToEntity(response.data, match) : match)));
+  };
+
+  // Drives the Invitaciones pendientes section on Home directly off the same
+  // myInvitations state used everywhere else (no separate local copy). A
+  // successful response refreshes matches/invitations/pending tasks in one
+  // go, so accepting immediately surfaces the match under Próximos eventos
+  // and drops it from the pending list; rejecting just drops it.
+  const handleRespondInvitation = async (invitationId: string, action: 'accept' | 'reject') => {
+    setRespondingInvitationId(invitationId);
+    setInvitationRespondErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== invitationId)));
+
+    try {
+      await api.post<{ data: MatchInvitationDto }>(`/api/v1/invitations/${invitationId}/${action}`);
+      await loadAccountData();
+    } catch (error) {
+      setInvitationRespondErrors((current) => ({
+        ...current,
+        [invitationId]: describeError(error, 'No pudimos procesar tu respuesta. Reintentá.'),
+      }));
+    } finally {
+      setRespondingInvitationId(null);
+    }
   };
 
   const openEditProfile = () => setCurrentView('edit-profile');
@@ -371,13 +393,17 @@ function App() {
   matches.forEach((match) => {
     const isActive = match.status === 'ORGANIZING' || match.status === 'FULL';
 
-    if (isActive && !match.clubName) {
-      pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene club.`, onClick: () => openMatchDetail(match.id) });
+    // A venue that's still TO_BE_DEFINED is a real pending decision; CUSTOM
+    // already has a real venue name (no warning) and CLUB always has clubName.
+    if (isActive && match.venueType === 'TO_BE_DEFINED') {
+      pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene sede.`, onClick: () => openMatchDetail(match.id) });
     }
     if (isActive && !match.startsAt) {
       pendingActions.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario confirmado.`, onClick: () => openMatchDetail(match.id) });
     }
-    if (isActive && !match.courtName) {
+    // A missing court is only ever "pending" when there's an actual club to
+    // book a court from -- CUSTOM/TO_BE_DEFINED venues never surface this.
+    if (isActive && match.venueType === 'CLUB' && !match.courtName) {
       pendingActions.push({ id: `${match.id}-court`, label: `Tu partido de ${match.sport} todavía no tiene cancha.`, onClick: () => openMatchDetail(match.id) });
     }
   });
@@ -479,7 +505,6 @@ function App() {
           myInvitationStatus={myInvitation?.status ?? null}
           onBack={() => setCurrentView('home')}
           onCancelMatch={() => void handleCancelMatch(match.id)}
-          onEditClub={(clubName) => handleEditMatchClub(match.id, clubName)}
           onEditSchedule={(input) => handleEditMatchSchedule(match.id, input)}
           onRequestBooking={() => handleRequestBookingForMatch(match.id)}
           onAssociateBooking={(bookingId) => linkMatchAndBooking(match.id, bookingId)}
@@ -587,6 +612,11 @@ function App() {
             playerName={playerName || undefined}
             clubName={myClub?.name ?? null}
             upcomingEvents={upcomingEvents}
+            pendingInvitations={myInvitations.filter((invitation) => invitation.status === 'PENDING')}
+            respondingInvitationId={respondingInvitationId}
+            invitationRespondErrors={invitationRespondErrors}
+            onAcceptInvitation={(invitationId) => void handleRespondInvitation(invitationId, 'accept')}
+            onRejectInvitation={(invitationId) => void handleRespondInvitation(invitationId, 'reject')}
             onReserveCourt={openReservationFlow}
             onCreateMatch={openCreateFlow}
           />
@@ -668,7 +698,6 @@ function App() {
         <AppHeader
           onEditProfile={openEditProfile}
           onEditSportProfile={openSportProfile}
-          onOpenInvitations={openInvitations}
           onLogout={() => void handleLogout()}
           pendingActions={pendingActions}
         />

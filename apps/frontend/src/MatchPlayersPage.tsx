@@ -22,6 +22,11 @@ type MatchPlayersPageProps = {
   status: MatchStatusDto;
   participantsCount: number;
   maxPlayers: number;
+  searchingPlayers?: boolean;
+  /** Rendered right below the summary card, above the roster (Organizador/Confirmados/...), while searchingPlayers is true. */
+  candidatesSection?: ReactNode;
+  /** Bump to force a fresh GET of the roster without unmounting this component (which would also tear down candidatesSection and lose its local state, e.g. "Invitación enviada"). */
+  refreshToken?: number;
   onSearchPlayers?: () => void;
   onRosterChanged?: () => void;
   onLeftMatch?: () => void;
@@ -81,6 +86,9 @@ function MatchPlayersPage({
   status,
   participantsCount,
   maxPlayers,
+  searchingPlayers = false,
+  candidatesSection,
+  refreshToken = 0,
   onSearchPlayers,
   onRosterChanged,
   onLeftMatch,
@@ -125,7 +133,7 @@ function MatchPlayersPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId]);
+  }, [matchId, refreshToken]);
 
   // Background refresh while the Jugadores tab is mounted and visible:
   // organizer/confirmed/pending/rejected and cupos stay current without a
@@ -224,7 +232,7 @@ function MatchPlayersPage({
 
         {isOrganizer && !isFull && rosterEditable ? (
           <Button variant="contained" fullWidth onClick={onSearchPlayers} sx={{ mb: 2 }}>
-            Buscar jugadores
+            {searchingPlayers ? 'Ocultar búsqueda de jugadores' : 'Buscar jugadores'}
           </Button>
         ) : null}
 
@@ -241,6 +249,8 @@ function MatchPlayersPage({
           </>
         ) : null}
       </Card>
+
+      {candidatesSection}
 
       {loading ? (
         <Stack alignItems="center" sx={{ py: 8 }}>

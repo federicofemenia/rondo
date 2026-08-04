@@ -79,11 +79,16 @@ export interface MatchStatusChangedByDto {
   displayName: string;
 }
 
+export type MatchVenueTypeDto = 'CLUB' | 'TO_BE_DEFINED' | 'CUSTOM';
+
 export interface MatchSummaryDto {
   id: string;
   status: MatchStatusDto;
   clubId: string | null;
+  /** Resolved display name for the venue: the club's name, the custom venue name, or null when still TO_BE_DEFINED. */
   clubName: string | null;
+  venueType: MatchVenueTypeDto;
+  customVenueName: string | null;
   sportModalityId: string;
   sportName: string;
   modalityName: string;
@@ -166,10 +171,55 @@ function validateScheduleFields(data: ScheduleFields, ctx: z.RefinementCtx): voi
   }
 }
 
+const matchVenueTypeSchema = z.enum(['CLUB', 'TO_BE_DEFINED', 'CUSTOM']);
+
+const MAX_CUSTOM_VENUE_NAME_LENGTH = 120;
+
+/**
+ * A match's venue is exactly one of: a real club (clubId required,
+ * customVenueName must be absent), still undecided (neither field set), or a
+ * free-text venue (customVenueName required and trimmed, no clubId). Mixing
+ * fields from different venue types is rejected here rather than silently
+ * ignored, so the persisted match can never end up in an inconsistent state.
+ */
+function validateVenueFields(
+  data: { venueType: MatchVenueTypeDto; clubId?: string | null; customVenueName?: string | null },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.venueType === 'CLUB') {
+    if (!data.clubId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'clubId es obligatorio cuando venueType es CLUB.', path: ['clubId'] });
+    }
+    if (data.customVenueName) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'customVenueName no debe enviarse cuando venueType es CLUB.', path: ['customVenueName'] });
+    }
+  } else if (data.venueType === 'TO_BE_DEFINED') {
+    if (data.clubId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'clubId no debe enviarse cuando venueType es TO_BE_DEFINED.', path: ['clubId'] });
+    }
+    if (data.customVenueName) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'customVenueName no debe enviarse cuando venueType es TO_BE_DEFINED.',
+        path: ['customVenueName'],
+      });
+    }
+  } else {
+    if (data.clubId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'clubId no debe enviarse cuando venueType es CUSTOM.', path: ['clubId'] });
+    }
+    if (!data.customVenueName || !data.customVenueName.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'customVenueName es obligatorio cuando venueType es CUSTOM.', path: ['customVenueName'] });
+    }
+  }
+}
+
 export const createMatchInputSchema = z
   .object({
     sportModalityId: z.string().uuid(),
+    venueType: matchVenueTypeSchema,
     clubId: z.string().uuid().nullable().optional(),
+    customVenueName: z.string().trim().min(1).max(MAX_CUSTOM_VENUE_NAME_LENGTH).nullable().optional(),
     minPlayers: z.number().int().min(1),
     maxPlayers: z.number().int().min(1),
     positions: z.array(z.string().trim().min(1)).max(10).optional(),
@@ -182,6 +232,7 @@ export const createMatchInputSchema = z
     if (data.maxPlayers < data.minPlayers) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'maxPlayers debe ser mayor o igual a minPlayers.', path: ['maxPlayers'] });
     }
+    validateVenueFields(data, ctx);
     validateScheduleFields(data, ctx);
   });
 

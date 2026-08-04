@@ -12,7 +12,6 @@ import Popover from '@mui/material/Popover';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
-import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded';
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
@@ -25,12 +24,11 @@ import type { PendingAction } from './types';
 type AppHeaderProps = {
   onEditProfile?: () => void;
   onEditSportProfile?: () => void;
-  onOpenInvitations?: () => void;
   onLogout?: () => void;
   pendingActions?: PendingAction[];
 };
 
-function AppHeader({ onEditProfile, onEditSportProfile, onOpenInvitations, onLogout, pendingActions = [] }: AppHeaderProps) {
+function AppHeader({ onEditProfile, onEditSportProfile, onLogout, pendingActions = [] }: AppHeaderProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const menuOpen = Boolean(menuAnchor);
   const closeMenu = () => setMenuAnchor(null);
@@ -105,17 +103,6 @@ function AppHeader({ onEditProfile, onEditSportProfile, onOpenInvitations, onLog
             <SportsSoccerRoundedIcon fontSize="small" />
           </ListItemIcon>
           Perfil deportivo
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            closeMenu();
-            onOpenInvitations?.();
-          }}
-        >
-          <ListItemIcon>
-            <MailOutlineRoundedIcon fontSize="small" />
-          </ListItemIcon>
-          Mis invitaciones
         </MenuItem>
         <Divider />
         <MenuItem

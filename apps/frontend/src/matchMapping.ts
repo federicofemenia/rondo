@@ -20,6 +20,8 @@ export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntit
     participantsCount: dto.participantsCount,
     clubId: dto.clubId,
     clubName: dto.clubName,
+    venueType: dto.venueType,
+    customVenueName: dto.customVenueName,
     courtName: dto.courtName,
     scheduledDate: dto.scheduledDate,
     availabilityStartMinutes: dto.availabilityStartMinutes,

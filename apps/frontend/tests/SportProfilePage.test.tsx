@@ -112,6 +112,89 @@ describe('SportProfilePage', () => {
     expect(screen.queryByText('18:00 - 22:00')).toBeFalsy();
   });
 
+  it('adds a second slot to a profile that already has one, and persists both after leaving and returning', async () => {
+    mockSportProfiles.push({
+      id: 'profile-existing',
+      sportId: 'sport-padel',
+      sportName: 'Pádel',
+      positions: [],
+      isAvailableForInvitations: true,
+      availability: [{ id: 'slot-existing', dayOfWeek: 1, startMinutes: 600, endMinutes: 660 }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { unmount } = render(<SportProfilePage />);
+    expect(await screen.findByText('10:00 - 11:00')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/^día$/i), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText(/^desde$/i), { target: { value: '18:00' } });
+    fireEvent.change(screen.getByLabelText(/^hasta$/i), { target: { value: '20:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^agregar franja$/i }));
+
+    // Both the pre-existing and the newly-added slot must still be visible
+    // locally right after adding, before Guardar is even pressed.
+    expect(screen.getByText('10:00 - 11:00')).toBeTruthy();
+    expect(screen.getByText('18:00 - 20:00')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }));
+    await screen.findByText(/perfil deportivo guardado/i);
+
+    await waitFor(() => {
+      const profile = mockSportProfiles.find((candidate) => candidate.sportId === 'sport-padel');
+      expect(profile?.availability).toHaveLength(2);
+    });
+
+    // Simulate leaving and returning: unmount and render a fresh instance,
+    // which forces a real refetch instead of reusing in-memory component state.
+    unmount();
+    render(<SportProfilePage />);
+
+    expect(await screen.findByText('10:00 - 11:00')).toBeTruthy();
+    expect(screen.getByText('18:00 - 20:00')).toBeTruthy();
+  });
+
+  it('saves multiple slots added in the same session', async () => {
+    render(<SportProfilePage />);
+    await screen.findByText(/todavía no configuraste ningún deporte/i);
+    await addSport('Pádel');
+
+    fireEvent.change(await screen.findByLabelText(/^día$/i), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText(/^desde$/i), { target: { value: '10:00' } });
+    fireEvent.change(screen.getByLabelText(/^hasta$/i), { target: { value: '12:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^agregar franja$/i }));
+
+    fireEvent.change(screen.getByLabelText(/^día$/i), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText(/^desde$/i), { target: { value: '18:00' } });
+    fireEvent.change(screen.getByLabelText(/^hasta$/i), { target: { value: '20:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^agregar franja$/i }));
+
+    expect(screen.getByText('10:00 - 12:00')).toBeTruthy();
+    expect(screen.getByText('18:00 - 20:00')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }));
+
+    await waitFor(() => {
+      const profile = mockSportProfiles.find((candidate) => candidate.sportId === 'sport-padel');
+      expect(profile?.availability).toHaveLength(2);
+    });
+  });
+
+  it('rejects an exact duplicate slot', async () => {
+    render(<SportProfilePage />);
+    await screen.findByText(/todavía no configuraste ningún deporte/i);
+    await addSport('Pádel');
+
+    fireEvent.change(await screen.findByLabelText(/^día$/i), { target: { value: '6' } });
+    fireEvent.click(screen.getByRole('button', { name: /^agregar franja$/i }));
+    expect(await screen.findByText('18:00 - 22:00')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^agregar franja$/i }));
+
+    expect(await screen.findByText(/se superpone/i)).toBeTruthy();
+    expect(screen.getAllByText('18:00 - 22:00')).toHaveLength(1);
+  });
+
   it('shows an error when adding an overlapping slot', async () => {
     render(<SportProfilePage />);
     await screen.findByText(/todavía no configuraste ningún deporte/i);

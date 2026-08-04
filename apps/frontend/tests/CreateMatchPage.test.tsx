@@ -19,14 +19,14 @@ describe('CreateMatchPage', () => {
 
     expect(screen.getByRole('heading', { name: /armar partido/i })).toBeTruthy();
     expect(screen.getByText(/información deportiva/i)).toBeTruthy();
-    expect(screen.getByText(/información logística/i)).toBeTruthy();
+    expect(screen.getByText(/lugar y horario/i)).toBeTruthy();
     expect(screen.getByLabelText(/^deporte$/i)).toBeTruthy();
     expect(screen.getByLabelText(/modalidad/i)).toBeTruthy();
     expect(screen.getByLabelText(/jugadores mínimo/i)).toBeTruthy();
     expect(screen.getByLabelText(/jugadores máximo/i)).toBeTruthy();
-    expect(screen.getByLabelText(/^club \(opcional\)$/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^sede$/i)).toBeTruthy();
     expect(screen.getByLabelText(/^día$/i)).toBeTruthy();
-    expect(screen.getAllByText(/sin definir/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/sede a definir/i).length).toBeGreaterThan(0);
 
     expect((screen.getByLabelText(/^deporte$/i) as HTMLSelectElement).value).toBe('');
     expect(screen.getByText(/seleccione un deporte/i)).toBeTruthy();
@@ -41,7 +41,7 @@ describe('CreateMatchPage', () => {
     render(<CreateMatchPage />);
 
     await screen.findByRole('option', { name: 'Fútbol' });
-    expect((screen.getByLabelText(/^club \(opcional\)$/i) as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText(/^sede$/i) as HTMLSelectElement).value).toBe('');
   });
 
   it('shows posiciones requeridas only once fútbol is selected, and hides it again for pádel', async () => {
@@ -72,7 +72,7 @@ describe('CreateMatchPage', () => {
     expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', false);
   });
 
-  it('submits the match draft with no club by default, and no exact time by default', async () => {
+  it('submits the match draft with venueType TO_BE_DEFINED by default, and no exact time by default', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
@@ -90,6 +90,7 @@ describe('CreateMatchPage', () => {
       minPlayers: '4',
       maxPlayers: '10',
       positions: ['Delantero'],
+      venueType: 'TO_BE_DEFINED',
       clubId: null,
       clubName: null,
       courtName: null,
@@ -100,13 +101,13 @@ describe('CreateMatchPage', () => {
     });
   });
 
-  it('includes the club when one is selected, and the exact start time when it is enabled', async () => {
+  it('includes venueType CLUB and the club when one is selected, and the exact start time when it is enabled', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
     await selectFootball();
     fillPlayerCounts();
-    const clubSelect = screen.getByLabelText(/^club \(opcional\)$/i);
+    const clubSelect = screen.getByLabelText(/^sede$/i);
 
     fireEvent.change(clubSelect, { target: { value: 'club-1' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /horario exacto \(opcional\)/i }));
@@ -114,6 +115,7 @@ describe('CreateMatchPage', () => {
 
     expect(onCreateMatch).toHaveBeenCalledWith(
       expect.objectContaining({
+        venueType: 'CLUB',
         clubId: 'club-1',
         clubName: 'Club Señor Pato',
         availabilityStartMinutes: 13 * 60,
@@ -123,24 +125,38 @@ describe('CreateMatchPage', () => {
     );
   });
 
-  it('lets the user pick Otro and type a free-text club name', async () => {
+  it('lets the user pick Otro and type a free-text venue name, sent as venueType CUSTOM', async () => {
     const onCreateMatch = vi.fn();
     render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
     await selectFootball();
     fillPlayerCounts();
-    const clubSelect = screen.getByLabelText(/^club \(opcional\)$/i);
+    const clubSelect = screen.getByLabelText(/^sede$/i);
 
     fireEvent.change(clubSelect, { target: { value: '__other__' } });
-    fireEvent.change(screen.getByLabelText(/nombre del club/i), { target: { value: 'Cancha del barrio' } });
+    fireEvent.change(screen.getByLabelText(/nombre de la sede o club/i), { target: { value: 'Cancha del barrio' } });
     fireEvent.click(screen.getByRole('button', { name: /^armar partido$/i }));
 
     expect(onCreateMatch).toHaveBeenCalledWith(
       expect.objectContaining({
+        venueType: 'CUSTOM',
         clubId: null,
         clubName: 'Cancha del barrio',
       }),
     );
+  });
+
+  it('disables submit until a free-text venue name is entered when Otro is selected', async () => {
+    render(<CreateMatchPage />);
+
+    await selectFootball();
+    fillPlayerCounts();
+    fireEvent.change(screen.getByLabelText(/^sede$/i), { target: { value: '__other__' } });
+
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
+
+    fireEvent.change(screen.getByLabelText(/nombre de la sede o club/i), { target: { value: 'Plaza del barrio' } });
+    expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', false);
   });
 
   it('requires a franja horaria: the slider always has a value and cannot be turned off', async () => {
