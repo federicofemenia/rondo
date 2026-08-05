@@ -50,6 +50,8 @@ import { usePushNavigation } from './usePushNavigation';
 import { useVisiblePolling } from './useVisiblePolling';
 
 const HOME_POLL_INTERVAL_MS = 20_000;
+/** How long a COMPLETED/CANCELLED/EXPIRED match stays visible on Home at all, under "Partidos finalizados" -- past this it drops off Home entirely (still reachable via MatchDetailPage directly, e.g. a push deep link). */
+const FINISHED_MATCH_VISIBILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const BOOKING_CHIP_COLOR = { bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main' };
 
@@ -712,6 +714,7 @@ function App() {
     }
 
     if (!isWizardStep(currentView)) {
+      const now = Date.now();
       const upcomingEvents: UpcomingEventItem[] = [];
       const finishedEvents: UpcomingEventItem[] = [];
       const ACTIVE_MATCH_STATUSES: MatchStatusDto[] = ['ORGANIZING', 'FULL', 'IN_PROGRESS'];
@@ -750,10 +753,16 @@ function App() {
             };
 
             // Home keeps only ORGANIZING/FULL/IN_PROGRESS under "Próximos
-            // partidos" -- everything else (COMPLETED, CANCELLED, EXPIRED)
-            // goes into one combined "Partidos finalizados" section instead
-            // of being mixed in or filtered by age.
-            (ACTIVE_MATCH_STATUSES.includes(entity.status) ? upcomingEvents : finishedEvents).push(item);
+            // partidos". Everything else (COMPLETED, CANCELLED, EXPIRED)
+            // goes into one combined "Partidos finalizados" section, but
+            // only for 24h after the status changed -- past that window it
+            // drops off Home entirely (still fully viewable via
+            // MatchDetailPage, e.g. from a push deep link).
+            if (ACTIVE_MATCH_STATUSES.includes(entity.status)) {
+              upcomingEvents.push(item);
+            } else if (now - Date.parse(entity.statusChangedAt) < FINISHED_MATCH_VISIBILITY_WINDOW_MS) {
+              finishedEvents.push(item);
+            }
             return;
           }
 

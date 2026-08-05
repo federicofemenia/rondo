@@ -394,16 +394,28 @@ describe('App', () => {
     expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
   });
 
-  it('keeps showing an old COMPLETED match under Partidos finalizados regardless of age', async () => {
+  it('drops a COMPLETED match from Home entirely once it is older than the 24h Partidos finalizados window', async () => {
     clerkAuthMock.isSignedIn = true;
     const staleCompletedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     mockMyMatches.push(fixtureMatch({ status: 'COMPLETED', maxPlayers: 10, participantsCount: 3, statusChangedAt: staleCompletedAt }));
     render(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
+    await screen.findByRole('button', { name: /armar partido/i });
+    expect(screen.queryByText('Partido finalizado')).toBeFalsy();
+    expect(screen.queryByText(/^partidos finalizados$/i)).toBeFalsy();
+    expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
+  });
+
+  it('keeps showing a COMPLETED match under Partidos finalizados within the 24h window', async () => {
+    clerkAuthMock.isSignedIn = true;
+    const recentCompletedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    mockMyMatches.push(fixtureMatch({ status: 'COMPLETED', maxPlayers: 10, participantsCount: 3, statusChangedAt: recentCompletedAt }));
+    render(<App />);
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
     await screen.findByText(/^partidos finalizados$/i);
     expect(screen.getByText('Partido finalizado')).toBeTruthy();
-    expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
   });
 
   it('shows "Partido finalizado" (not "Faltan N jugadores") on Home for a COMPLETED match', async () => {
