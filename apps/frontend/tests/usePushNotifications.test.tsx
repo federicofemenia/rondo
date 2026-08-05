@@ -70,6 +70,29 @@ describe('usePushNotifications', () => {
     expect(result.current.permission).toBe('unsupported');
   });
 
+  it('reconciling is false immediately when unsupported (nothing to check)', () => {
+    stubUnsupportedEnvironment();
+    const { result } = renderHook(() => usePushNotifications());
+
+    expect(result.current.reconciling).toBe(false);
+  });
+
+  it('reconciling starts true and settles to false once the mount-time subscription check completes', async () => {
+    stubPushEnvironment({ permission: 'default' });
+    const { result } = renderHook(() => usePushNotifications());
+
+    expect(result.current.reconciling).toBe(true);
+    await waitFor(() => expect(result.current.reconciling).toBe(false));
+  });
+
+  it('reconciling settles to false even when permission is granted with no local subscription', async () => {
+    stubPushEnvironment({ permission: 'granted', existingSubscription: null });
+    const { result } = renderHook(() => usePushNotifications());
+
+    await waitFor(() => expect(result.current.reconciling).toBe(false));
+    expect(result.current.enabled).toBe(false);
+  });
+
   it('reads the browser permission state (default/granted/denied) when supported', () => {
     stubPushEnvironment({ permission: 'denied' });
     const { result } = renderHook(() => usePushNotifications());

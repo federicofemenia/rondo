@@ -34,6 +34,7 @@ export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntit
     isOrganizer: dto.isOrganizer,
     bookingId: previous?.bookingId ?? null,
     createdAt: Date.parse(dto.createdAt),
+    statusChangedAt: dto.statusChangedAt,
     cancelledAt: dto.status === 'CANCELLED' ? dto.statusChangedAt : null,
     cancelledByType: dto.status === 'CANCELLED' ? dto.statusChangedByType : null,
     cancelledByName: dto.statusChangedByUser?.displayName ?? null,

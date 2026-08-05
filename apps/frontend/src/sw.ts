@@ -93,6 +93,17 @@ function resolveSameOriginPath(rawUrl: unknown): string {
   }
 }
 
+/**
+ * Single, documented strategy for both "app open" and "app closed" (see
+ * docs/WEB_PUSH.md): a closed app opens a fresh window/tab directly at the
+ * deep-link path, which the SPA's own navigation fallback serves index.html
+ * for and App.tsx parses on boot (?open=...). An already-open window is
+ * focused and sent the same destination via postMessage instead of
+ * `client.navigate()` -- navigate() would force a real (if same-origin)
+ * navigation and reload the whole SPA just to change a query string the app
+ * can perfectly well react to in place; postMessage lets App.tsx
+ * (pushNavigation.ts) apply it without losing in-memory state.
+ */
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetPath = resolveSameOriginPath((event.notification.data as { url?: unknown } | undefined)?.url);
@@ -104,14 +115,7 @@ self.addEventListener('notificationclick', (event) => {
 
       if (existing) {
         await existing.focus();
-        // Deep links (e.g. to a specific match/invitation) are a future
-        // slice -- this build only ever sends "/", so there is nothing to
-        // navigate to beyond focusing the existing window. Kept as a no-op
-        // guard rather than calling navigate() unconditionally, since not
-        // every browser's WindowClient supports it.
-        if (targetPath !== '/' && 'navigate' in existing) {
-          await existing.navigate(targetPath);
-        }
+        existing.postMessage({ type: 'OPEN_PUSH_DESTINATION', url: targetPath });
         return;
       }
 

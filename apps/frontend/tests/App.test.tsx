@@ -69,7 +69,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /club señor pato/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /armar partido/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /reservar cancha/i })).toBeTruthy();
-    expect(screen.getByText(/todavía no tenés partidos ni reservas/i)).toBeTruthy();
+    expect(screen.getByText(/todavía no tenés partidos próximos/i)).toBeTruthy();
   });
 
   it('opens the 2-step armar partido flow from the home screen', async () => {
@@ -114,12 +114,10 @@ describe('App', () => {
     // No club was selected while creating the match (venueType TO_BE_DEFINED):
     // the pending nudge is about the venue, never about a court -- a court
     // can't be booked without a club, so it must never appear as a "pending
-    // task" in that case.
-    fireEvent.click(screen.getByLabelText(/notificaciones/i));
+    // task" in that case. Home's own "Tareas pendientes" section shows this
+    // inline now (see HomePage.tsx), not only inside the notifications bell.
     expect(screen.getByText(/todavía no tiene sede/i)).toBeTruthy();
     expect(screen.queryByText(/todavía no tiene cancha/i)).toBeFalsy();
-    fireEvent.keyDown(screen.getByText(/todavía no tiene sede/i), { key: 'Escape', code: 'Escape' });
-    await waitFor(() => expect(screen.queryByText(/todavía no tiene sede/i)).toBeFalsy());
 
     fireEvent.click(screen.getByRole('button', { name: /fútbol • fútbol 5/i }));
 
@@ -129,7 +127,7 @@ describe('App', () => {
 
     // Setting the club from the match detail's "Editar sede" form should
     // clear the "todavía no tiene sede" pending action back on Home -- it's
-    // driven by the same `matches` state the bell reads from.
+    // driven by the same `matches` state Home's Tareas pendientes section reads from.
     fireEvent.change(await screen.findByLabelText(/^editar sede$/i), { target: { value: 'club-1' } });
     fireEvent.click(screen.getByRole('button', { name: /^guardar cambios$/i }));
     await waitFor(() => expect(screen.getByText(/sede seleccionada/i)).toBeTruthy());
@@ -137,7 +135,6 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: /volver/i }));
     await screen.findByRole('heading', { name: /hola, federico/i });
 
-    fireEvent.click(screen.getByLabelText(/notificaciones/i));
     expect(screen.queryByText(/todavía no tiene sede/i)).toBeFalsy();
   });
 
@@ -170,13 +167,13 @@ describe('App', () => {
       });
 
       await vi.advanceTimersByTimeAsync(20_000);
-      await vi.waitFor(() => expect(screen.getByText(/invitaciones pendientes/i)).toBeTruthy());
+      await vi.waitFor(() => expect(screen.getByText(/^invitaciones$/i)).toBeTruthy());
       expect(screen.getByText(/juan pérez te invitó a fútbol fútbol 5/i)).toBeTruthy();
       expect(screen.getByText(/sede a definir/i)).toBeTruthy();
 
       fireEvent.click(screen.getByRole('button', { name: /^aceptar$/i }));
 
-      await vi.waitFor(() => expect(screen.queryByText(/invitaciones pendientes/i)).toBeFalsy());
+      await vi.waitFor(() => expect(screen.queryByText(/^invitaciones$/i)).toBeFalsy());
     } finally {
       vi.useRealTimers();
     }
@@ -211,12 +208,12 @@ describe('App', () => {
       });
 
       await vi.advanceTimersByTimeAsync(20_000);
-      await vi.waitFor(() => expect(screen.getByText(/invitaciones pendientes/i)).toBeTruthy());
+      await vi.waitFor(() => expect(screen.getByText(/^invitaciones$/i)).toBeTruthy());
 
       fireEvent.click(screen.getByRole('button', { name: /^rechazar$/i }));
 
-      await vi.waitFor(() => expect(screen.queryByText(/invitaciones pendientes/i)).toBeFalsy());
-      expect(screen.getByText(/todavía no tenés partidos ni reservas/i)).toBeTruthy();
+      await vi.waitFor(() => expect(screen.queryByText(/^invitaciones$/i)).toBeFalsy());
+      expect(screen.getByText(/todavía no tenés partidos próximos/i)).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
@@ -374,14 +371,37 @@ describe('App', () => {
     expect(screen.queryByText(/faltan \d+ jugadores/i)).toBeFalsy();
   });
 
-  it('shows "Partido vencido" (not "Faltan N jugadores") on Home for an EXPIRED match', async () => {
+  it('never shows an EXPIRED match on Home -- Próximos partidos stops mixing in cancelled/expired/old matches', async () => {
     clerkAuthMock.isSignedIn = true;
     mockMyMatches.push(fixtureMatch({ status: 'EXPIRED', maxPlayers: 10, participantsCount: 3 }));
     render(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
-    expect(await screen.findByText('Partido vencido')).toBeTruthy();
+    await screen.findByText(/todavía no tenés partidos próximos/i);
+    expect(screen.queryByText('Partido vencido')).toBeFalsy();
     expect(screen.queryByText(/faltan \d+ jugadores/i)).toBeFalsy();
+  });
+
+  it('never shows a CANCELLED match on Home', async () => {
+    clerkAuthMock.isSignedIn = true;
+    mockMyMatches.push(fixtureMatch({ status: 'CANCELLED', maxPlayers: 10, participantsCount: 3 }));
+    render(<App />);
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
+    await screen.findByText(/todavía no tenés partidos próximos/i);
+    expect(screen.queryByText('Partido cancelado')).toBeFalsy();
+  });
+
+  it('drops a COMPLETED match from Home once it is older than the 24h recently-completed window', async () => {
+    clerkAuthMock.isSignedIn = true;
+    const staleCompletedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    mockMyMatches.push(fixtureMatch({ status: 'COMPLETED', maxPlayers: 10, participantsCount: 3, statusChangedAt: staleCompletedAt }));
+    render(<App />);
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
+    await screen.findByText(/todavía no tenés partidos próximos/i);
+    expect(screen.queryByText('Partido finalizado')).toBeFalsy();
+    expect(screen.queryByText(/finalizados recientemente/i)).toBeFalsy();
   });
 
   it('shows "Partido finalizado" (not "Faltan N jugadores") on Home for a COMPLETED match', async () => {

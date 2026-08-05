@@ -198,7 +198,9 @@ Para reiniciar el estado durante desarrollo (sin recargar la página): `resetIns
 
 ## Prioridad frente a las notificaciones push
 
-`InstallWelcomeDialog` tiene prioridad 1, `PushNotificationsBanner` prioridad 2 — nunca se muestran los dos a la vez. `PushNotificationsBanner` consulta `useInstallWelcomeVisible()` (`installWelcome.ts`, el mismo store reactivo) y se oculta mientras esa card siga siendo elegible; en cuanto se descarta o se instala, el banner de push puede aparecer en el siguiente render, sin esperar un remount. En iPhone sin instalar, además, no tiene sentido pedir permiso de notificaciones todavía (Web Push en iOS requiere estar instalada) — mostrar primero cómo instalar y recién después ofrecer activar notificaciones es tanto una cuestión de secuencia de UX como una limitación técnica real. Ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md).
+`InstallWelcomeDialog` tiene prioridad 1, `PushNotificationsBanner` prioridad 2 — nunca se muestran los dos a la vez. `PushNotificationsBanner` consulta `useInstallWelcomeVisible()` (`installWelcome.ts`, el mismo store reactivo) y se oculta mientras esa card siga siendo elegible; en cuanto se descarta o se instala, el banner de push puede aparecer en el siguiente render, sin esperar un remount. En iPhone sin instalar, además, no tiene sentido pedir permiso de notificaciones todavía (Web Push en iOS requiere estar instalada) — mostrar primero cómo instalar y recién después ofrecer activar notificaciones es tanto una cuestión de secuencia de UX como una limitación técnica real.
+
+El banner de push en sí ahora también cubre el caso "el navegador ya tiene permiso `granted` pero este dispositivo nunca llegó a suscribirse" (CTA "Completar activación", en vez de quedar oculto sin explicación) — ver [Manejo de permisos](./WEB_PUSH.md#manejo-de-permisos) en `docs/WEB_PUSH.md` para el detalle completo.
 
 ---
 

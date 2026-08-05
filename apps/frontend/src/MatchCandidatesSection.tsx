@@ -6,17 +6,16 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
-import Rating from '@mui/material/Rating';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
-import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import { ApiError, useApi } from './apiClient';
 import PlayerProfileCardDialog from './PlayerProfileCardDialog';
 import PlayerRatingCommentsDialog from './PlayerRatingCommentsDialog';
+import PlayerRatingsSummary from './PlayerRatingsSummary';
 
 export type CandidateMatchSummary = {
   sportId: string;
@@ -42,51 +41,6 @@ const positionAbbreviations: Record<string, string> = {
 
 function describeError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
-}
-
-function CandidateRatingsSummary({ ratings }: { ratings: CandidateDto['ratings'] }) {
-  if (ratings.count === 0) {
-    return (
-      <Typography variant="caption" color="text.secondary">
-        Sin valoraciones en {ratings.sportName}
-      </Typography>
-    );
-  }
-
-  return (
-    <Stack spacing={0.5}>
-      <Stack direction="row" alignItems="center" spacing={1}>
-        <Rating
-          value={ratings.gameplayAverage ?? 0}
-          precision={0.5}
-          readOnly
-          size="small"
-          icon={<StarRoundedIcon fontSize="inherit" sx={{ color: 'primary.main' }} />}
-          emptyIcon={<StarRoundedIcon fontSize="inherit" sx={{ color: 'divider' }} />}
-        />
-        <Typography variant="caption" color="text.secondary">
-          Juego
-        </Typography>
-      </Stack>
-      <Stack direction="row" alignItems="center" spacing={1}>
-        <Rating
-          value={ratings.conductAverage ?? 0}
-          precision={0.5}
-          readOnly
-          size="small"
-          icon={<StarRoundedIcon fontSize="inherit" sx={{ color: 'primary.main' }} />}
-          emptyIcon={<StarRoundedIcon fontSize="inherit" sx={{ color: 'divider' }} />}
-        />
-        <Typography variant="caption" color="text.secondary">
-          Conducta
-        </Typography>
-      </Stack>
-      <Typography variant="caption" color="text.secondary">
-        {ratings.count} {ratings.count === 1 ? 'valoración' : 'valoraciones'} · {ratings.commentsCount}{' '}
-        {ratings.commentsCount === 1 ? 'comentario' : 'comentarios'}
-      </Typography>
-    </Stack>
-  );
 }
 
 /**
@@ -208,7 +162,7 @@ function MatchCandidatesSection({ matchId, matchSummary, onInvited }: MatchCandi
                 </Stack>
 
                 <Box sx={{ mt: 2 }}>
-                  <CandidateRatingsSummary ratings={candidate.ratings} />
+                  <PlayerRatingsSummary ratings={candidate.ratings} />
                 </Box>
 
                 {candidate.ratings.commentsCount > 0 ? (

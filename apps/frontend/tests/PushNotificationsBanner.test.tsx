@@ -19,9 +19,16 @@ function stubNavigator(overrides: { userAgent?: string; standalone?: boolean; se
   });
 }
 
-function stubSupportedBrowser(permission: NotificationPermission) {
+function stubSupportedBrowser(permission: NotificationPermission, options: { existingSubscription?: boolean } = {}) {
+  const existingSubscription = options.existingSubscription
+    ? {
+        endpoint: 'https://push.example.com/banner-test-existing',
+        toJSON: () => ({ endpoint: 'https://push.example.com/banner-test-existing', keys: { p256dh: 'p256dh', auth: 'auth' } }),
+        unsubscribe: vi.fn(async () => true),
+      }
+    : null;
   const pushManager = {
-    getSubscription: vi.fn(async () => null),
+    getSubscription: vi.fn(async () => existingSubscription),
     subscribe: vi.fn(async () => ({
       endpoint: 'https://push.example.com/banner-test',
       toJSON: () => ({ endpoint: 'https://push.example.com/banner-test', keys: { p256dh: 'p256dh', auth: 'auth' } }),
@@ -54,21 +61,33 @@ describe('PushNotificationsBanner', () => {
     expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
   });
 
-  it('shows the activation banner when supported and permission is still "default"', () => {
+  it('shows the activation banner when supported and permission is still "default"', async () => {
     stubSupportedBrowser('default');
     render(<PushNotificationsBanner />);
 
-    expect(screen.getByText(/activá las notificaciones/i)).toBeTruthy();
-    expect(screen.getByText(/recibí avisos cuando te inviten a un partido/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^activar$/i })).toBeTruthy();
+    expect(await screen.findByText(/activá las notificaciones/i)).toBeTruthy();
+    expect(screen.getByText(/recibí invitaciones, mensajes y novedades/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /activar notificaciones/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /ahora no/i })).toBeTruthy();
   });
 
-  it('does not show once permission is already granted', () => {
-    stubSupportedBrowser('granted');
+  it('does not show once permission is granted and this device already has a subscription', async () => {
+    stubSupportedBrowser('granted', { existingSubscription: true });
     render(<PushNotificationsBanner />);
 
-    expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
+    // Let the mount-time reconciliation effect settle before asserting
+    // absence, or a false negative could hide a bug where the banner
+    // briefly shows and never re-hides.
+    await vi.waitFor(() => expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy());
+  });
+
+  it('shows a "Completar activación" prompt when permission is granted but this device has no subscription yet', async () => {
+    stubSupportedBrowser('granted', { existingSubscription: false });
+    render(<PushNotificationsBanner />);
+
+    expect(await screen.findByText(/activá las notificaciones/i)).toBeTruthy();
+    expect(screen.getByText(/ya diste permiso, pero falta completar la activación/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /completar activación/i })).toBeTruthy();
   });
 
   it('does not show once permission is denied', () => {
@@ -95,21 +114,21 @@ describe('PushNotificationsBanner', () => {
     expect(screen.queryByText(/para recibir notificaciones en iphone/i)).toBeFalsy();
   });
 
-  it('"Ahora no" hides the banner and persists the dismissal for this device', () => {
+  it('"Ahora no" hides the banner and persists the dismissal for this device', async () => {
     stubSupportedBrowser('default');
     render(<PushNotificationsBanner />);
 
-    fireEvent.click(screen.getByRole('button', { name: /ahora no/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /ahora no/i }));
 
     expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
     expect(localStorage.getItem(DISMISSAL_STORAGE_KEY)).toBeTruthy();
   });
 
-  it('closing with the X icon also dismisses it', () => {
+  it('closing with the X icon also dismisses it', async () => {
     stubSupportedBrowser('default');
     render(<PushNotificationsBanner />);
 
-    fireEvent.click(screen.getByRole('button', { name: /cerrar/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /cerrar/i }));
 
     expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
     expect(localStorage.getItem(DISMISSAL_STORAGE_KEY)).toBeTruthy();
@@ -123,12 +142,12 @@ describe('PushNotificationsBanner', () => {
     expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
   });
 
-  it('"Activar" triggers the browser permission request, and the banner hides once permission is granted', async () => {
+  it('"Activar notificaciones" triggers the browser permission request, and the banner hides once permission is granted', async () => {
     stubSupportedBrowser('default');
     const { requestPermission } = Notification as unknown as { requestPermission: ReturnType<typeof vi.fn> };
     render(<PushNotificationsBanner />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^activar$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /activar notificaciones/i }));
 
     expect(requestPermission).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy());

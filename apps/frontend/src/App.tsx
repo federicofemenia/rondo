@@ -46,9 +46,12 @@ import { retryWithBackoff } from './apiRetry';
 import { useAdminClubs } from './useAdminClubs';
 import { useMyClubs } from './useMyClubs';
 import { useOnlineStatus } from './useOnlineStatus';
+import { usePushNavigation } from './usePushNavigation';
 import { useVisiblePolling } from './useVisiblePolling';
 
 const HOME_POLL_INTERVAL_MS = 20_000;
+/** How long a COMPLETED match stays visible on Home at all, in its own "Finalizados recientemente" subsection -- matches the visibility window already implied by the existing pending-ratings lifecycle, not a new business rule (see docs/PWA.md). */
+const RECENTLY_COMPLETED_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const BOOKING_CHIP_COLOR = { bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main' };
 
@@ -116,6 +119,7 @@ function App() {
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [reservationMatchContext, setReservationMatchContext] = useState<string | null>(null);
   const [selectedAdminClubId, setSelectedAdminClubId] = useState<string | null>(null);
+  const [highlightInvitationId, setHighlightInvitationId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadStatus = async () => {
@@ -219,6 +223,100 @@ function App() {
     enabled: currentView === 'home' || currentView === 'match-detail',
     runImmediately: false,
   });
+
+  // Resolves a push notification's matchId against whatever the app already
+  // knows (matches state, populated from /me/matches at boot) before ever
+  // hitting the network -- a match a push targets is almost always already
+  // there, since every event that produces a push implies the recipient is
+  // an organizer/participant. The network fallback only exists for the
+  // rarer case of a fresh deep link the initial list hasn't caught up with
+  // yet, and doubles as the source of real 404s; GET /api/v1/matches/:id has
+  // no per-user access restriction today, so a 403 here is defensive (see
+  // docs/WEB_PUSH.md) rather than something this endpoint can currently
+  // produce.
+  const resolveMatchForDeepLink = async (matchId: string): Promise<MatchEntity> => {
+    const existing = matches.find((match) => match.id === matchId);
+    if (existing) {
+      return existing;
+    }
+    try {
+      const response = await api.get<{ data: MatchSummaryDto }>(`/api/v1/matches/${matchId}`);
+      const entity = matchSummaryToEntity(response.data);
+      setMatches((current) => [...current, entity]);
+      return entity;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        throw new Error('El partido ya no está disponible.');
+      }
+      if (error instanceof ApiError && error.status === 403) {
+        throw new Error('No tenés acceso a este partido.');
+      }
+      throw new Error('No pudimos abrir el partido. Reintentá.');
+    }
+  };
+
+  // Applies a push notification's deep link (see pushNavigation.ts) once
+  // Clerk, auth, and the initial account data are all ready -- never
+  // before, so a link tapped while signed out waits at Login (the query
+  // params just sit in the URL untouched, see docs/WEB_PUSH.md) and one
+  // tapped mid-boot waits for bootPhase to actually reach 'ready'. Always
+  // clears the pending destination when done, success or failure, so it can
+  // never be re-applied on a later render or a page refresh.
+  const { destination: pushDestination, clear: clearPushDestination } = usePushNavigation();
+
+  useEffect(() => {
+    if (!pushDestination || bootPhase !== 'ready') {
+      return;
+    }
+
+    let cancelled = false;
+
+    const apply = async () => {
+      try {
+        switch (pushDestination.type) {
+          case 'INVITATIONS': {
+            setCurrentView('home');
+            setHighlightInvitationId(pushDestination.invitationId ?? null);
+            break;
+          }
+          case 'MATCH_SUMMARY':
+          case 'MATCH_PLAYERS':
+          case 'MATCH_CHAT':
+          case 'MATCH_RATINGS': {
+            const tab: MatchDetailTab =
+              pushDestination.type === 'MATCH_PLAYERS'
+                ? 'jugadores'
+                : pushDestination.type === 'MATCH_CHAT'
+                  ? 'chat'
+                  : pushDestination.type === 'MATCH_RATINGS'
+                    ? 'valoraciones'
+                    : 'datos';
+            const match = await resolveMatchForDeepLink(pushDestination.matchId);
+            if (!cancelled) {
+              openMatchDetail(match.id, tab);
+            }
+            break;
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCurrentView('home');
+          setGlobalError(error instanceof Error ? error.message : 'No pudimos abrir el contenido de la notificación.');
+        }
+      } finally {
+        if (!cancelled) {
+          clearPushDestination();
+        }
+      }
+    };
+
+    void apply();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushDestination, bootPhase]);
 
   const openCreateFlow = () => {
     setMatchDraft(null);
@@ -408,36 +506,34 @@ function App() {
 
   const showAppHeader = currentView !== 'login' && currentView !== 'register';
 
-  const pendingActions: PendingAction[] = [];
+  // Real, actionable tasks only -- deliberately excludes "no club",
+  // "no court on a custom venue" (isActive && venueType === 'CLUB' already
+  // guards that), inactive-status matches, and push-notification state
+  // (that has its own dedicated banner, not a task item). Shared between
+  // the header bell (pendingActions below) and Home's own "Tareas
+  // pendientes" section (homePendingTasks) so both stay in sync without
+  // duplicating this logic.
+  const homePendingTasks: PendingAction[] = [];
   matches.forEach((match) => {
     const isActive = match.status === 'ORGANIZING' || match.status === 'FULL';
 
     // A venue that's still TO_BE_DEFINED is a real pending decision; CUSTOM
     // already has a real venue name (no warning) and CLUB always has clubName.
     if (isActive && match.venueType === 'TO_BE_DEFINED') {
-      pendingActions.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene sede.`, onClick: () => openMatchDetail(match.id) });
+      homePendingTasks.push({ id: `${match.id}-club`, label: `Tu partido de ${match.sport} todavía no tiene sede.`, onClick: () => openMatchDetail(match.id) });
     }
     if (isActive && !match.startsAt) {
-      pendingActions.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario confirmado.`, onClick: () => openMatchDetail(match.id) });
+      homePendingTasks.push({ id: `${match.id}-time`, label: `Tu partido de ${match.sport} todavía no tiene horario confirmado.`, onClick: () => openMatchDetail(match.id) });
     }
     // A missing court is only ever "pending" when there's an actual club to
     // book a court from -- CUSTOM/TO_BE_DEFINED venues never surface this.
     if (isActive && match.venueType === 'CLUB' && !match.courtName) {
-      pendingActions.push({ id: `${match.id}-court`, label: `Tu partido de ${match.sport} todavía no tiene cancha.`, onClick: () => openMatchDetail(match.id) });
+      homePendingTasks.push({ id: `${match.id}-court`, label: `Tu partido de ${match.sport} todavía no tiene cancha.`, onClick: () => openMatchDetail(match.id) });
     }
   });
 
-  const pendingInvitationsCount = myInvitations.filter((invitation) => invitation.status === 'PENDING').length;
-  if (pendingInvitationsCount > 0) {
-    pendingActions.push({
-      id: 'pending-invitations',
-      label: pendingInvitationsCount === 1 ? 'Tenés una invitación pendiente.' : `Tenés ${pendingInvitationsCount} invitaciones pendientes.`,
-      onClick: openInvitations,
-    });
-  }
-
   pendingTasks.forEach((task) => {
-    pendingActions.push({
+    homePendingTasks.push({
       id: `${task.matchId}-${task.type}`,
       label: task.title,
       description: task.description,
@@ -447,9 +543,22 @@ function App() {
 
   bookings.forEach((booking) => {
     if (!booking.matchId) {
-      pendingActions.push({ id: `${booking.id}-no-match`, label: 'Tenés una reserva sin partido asociado.', onClick: () => openBookingDetail(booking.id) });
+      homePendingTasks.push({ id: `${booking.id}-no-match`, label: 'Tenés una reserva sin partido asociado.', onClick: () => openBookingDetail(booking.id) });
     }
   });
+
+  // The bell keeps a broader summary (adds the invitations count on top of
+  // the same task items) -- Home shows invitations in their own full
+  // section instead, so homePendingTasks above never repeats them.
+  const pendingActions: PendingAction[] = [...homePendingTasks];
+  const pendingInvitationsCount = myInvitations.filter((invitation) => invitation.status === 'PENDING').length;
+  if (pendingInvitationsCount > 0) {
+    pendingActions.push({
+      id: 'pending-invitations',
+      label: pendingInvitationsCount === 1 ? 'Tenés una invitación pendiente.' : `Tenés ${pendingInvitationsCount} invitaciones pendientes.`,
+      onClick: openInvitations,
+    });
+  }
 
   const renderView = () => {
     if (!authLoaded) {
@@ -605,16 +714,36 @@ function App() {
     }
 
     if (!isWizardStep(currentView)) {
-      const upcomingEvents: UpcomingEventItem[] = [...matches, ...bookings]
+      const now = Date.now();
+      const upcomingEvents: UpcomingEventItem[] = [];
+      const recentlyCompletedEvents: UpcomingEventItem[] = [];
+
+      [...matches, ...bookings]
         .slice()
         .sort((a, b) => a.createdAt - b.createdAt)
-        .map((entity) => {
+        .forEach((entity) => {
           if ('sport' in entity) {
+            // Home's "Próximos partidos" never mixes in cancelled, expired,
+            // or long-finished matches -- CANCELLED/EXPIRED stop appearing
+            // here entirely (still fully viewable via MatchDetailPage, e.g.
+            // from a push deep link), and a COMPLETED match only gets a
+            // brief "Finalizados recientemente" appearance for 24h before
+            // it, too, drops off. IN_PROGRESS needs no extra time check: the
+            // backend's lazy lifecycle resolution already guarantees it only
+            // shows up while the match is genuinely happening right now.
+            if (entity.status === 'CANCELLED' || entity.status === 'EXPIRED') {
+              return;
+            }
+            const isRecentlyCompleted = entity.status === 'COMPLETED' && now - Date.parse(entity.statusChangedAt) < RECENTLY_COMPLETED_WINDOW_MS;
+            if (entity.status === 'COMPLETED' && !isRecentlyCompleted) {
+              return;
+            }
+
             const schedule = describeSchedule(entity);
             const missingPlayers = Number(entity.maxPlayers) - entity.participantsCount;
-            return {
+            const item: UpcomingEventItem = {
               id: entity.id,
-              kind: 'match' as const,
+              kind: 'match',
               title: `${entity.sport} • ${entity.modality}`,
               subtitle: schedule.isConfirmed
                 ? `${schedule.dateLabel} • ${schedule.timeLabel}`
@@ -626,26 +755,28 @@ function App() {
                     ? 'Partido en juego'
                     : entity.status === 'COMPLETED'
                       ? 'Partido finalizado'
-                      : entity.status === 'EXPIRED'
-                        ? 'Partido vencido'
-                        : missingPlayers === 1
-                          ? 'Falta 1 jugador'
-                          : `Faltan ${missingPlayers} jugadores`,
+                      : missingPlayers === 1
+                        ? 'Falta 1 jugador'
+                        : `Faltan ${missingPlayers} jugadores`,
               chipLabel: MATCH_STATUS_LABELS[entity.status],
               chipColor: MATCH_STATUS_CHIP_STYLES[entity.status],
               onClick: () => openMatchDetail(entity.id),
             };
+
+            (isRecentlyCompleted ? recentlyCompletedEvents : upcomingEvents).push(item);
+            return;
           }
-          return {
+
+          upcomingEvents.push({
             id: entity.id,
-            kind: 'booking' as const,
+            kind: 'booking',
             title: `${entity.courtName} • ${entity.clubName}`,
             subtitle: `${entity.dateLabel} • ${entity.time}`,
             meta: entity.matchId ? 'Con partido' : 'Sin partido',
             chipLabel: 'Reserva',
             chipColor: BOOKING_CHIP_COLOR,
             onClick: () => openBookingDetail(entity.id),
-          };
+          });
         });
 
       return (
@@ -655,9 +786,12 @@ function App() {
             playerName={playerName || undefined}
             clubName={myClub?.name ?? null}
             upcomingEvents={upcomingEvents}
+            recentlyCompletedEvents={recentlyCompletedEvents}
             pendingInvitations={myInvitations.filter((invitation) => invitation.status === 'PENDING')}
             respondingInvitationId={respondingInvitationId}
             invitationRespondErrors={invitationRespondErrors}
+            highlightInvitationId={highlightInvitationId}
+            pendingTaskItems={homePendingTasks}
             onAcceptInvitation={(invitationId) => void handleRespondInvitation(invitationId, 'accept')}
             onRejectInvitation={(invitationId) => void handleRespondInvitation(invitationId, 'reject')}
             onReserveCourt={openReservationFlow}

@@ -30,6 +30,7 @@ const baseMatch: MatchEntity = {
   isOrganizer: true,
   bookingId: 'booking-1',
   createdAt: 1,
+  statusChangedAt: '2026-08-01T12:00:00.000Z',
   cancelledAt: null,
   cancelledByType: null,
   cancelledByName: null,

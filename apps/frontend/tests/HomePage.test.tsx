@@ -1,7 +1,23 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import HomePage from '../src/HomePage';
+import type { UpcomingEventItem } from '../src/HomePage';
 import type { MatchInvitationDto } from '@rondo/contracts';
+import type { PendingAction } from '../src/types';
+
+function fixtureEvent(overrides: Partial<UpcomingEventItem> = {}): UpcomingEventItem {
+  return {
+    id: 'event-1',
+    kind: 'match',
+    title: 'Fútbol • Fútbol 5',
+    subtitle: 'Sábado • 20:00',
+    meta: 'Faltan 2 jugadores',
+    chipLabel: 'Organizando',
+    chipColor: { bgcolor: 'transparent', color: 'inherit' },
+    onClick: vi.fn(),
+    ...overrides,
+  };
+}
 
 const pendingInvitation: MatchInvitationDto = {
   id: 'invitation-1',
@@ -25,16 +41,16 @@ const pendingInvitation: MatchInvitationDto = {
 };
 
 describe('HomePage', () => {
-  it('does not show an Invitaciones pendientes section when there are none', () => {
+  it('does not show an Invitaciones section when there are none', () => {
     render(<HomePage />);
 
-    expect(screen.queryByText(/invitaciones pendientes/i)).toBeFalsy();
+    expect(screen.queryByText(/^invitaciones$/i)).toBeFalsy();
   });
 
   it('shows each pending invitation with organizer, sport, schedule, venue and Aceptar/Rechazar actions', () => {
     render(<HomePage pendingInvitations={[pendingInvitation]} />);
 
-    expect(screen.getByText(/invitaciones pendientes/i)).toBeTruthy();
+    expect(screen.getByText(/^invitaciones$/i)).toBeTruthy();
     expect(screen.getByText(/federico te invitó a fútbol fútbol 5/i)).toBeTruthy();
     expect(screen.getByText('Sede a definir')).toBeTruthy();
     expect(screen.getByRole('button', { name: /^aceptar$/i })).toBeTruthy();
@@ -103,5 +119,83 @@ describe('HomePage', () => {
 
     expect(screen.getByRole('button', { name: /club señor pato/i })).toBeTruthy();
     expect(screen.getByText(/novedades de club señor pato/i)).toBeTruthy();
+  });
+
+  it('shows the empty state with an Organizar partido CTA when there are no upcoming events', () => {
+    const onCreateMatch = vi.fn();
+    render(<HomePage upcomingEvents={[]} onCreateMatch={onCreateMatch} />);
+
+    expect(screen.getByText(/todavía no tenés partidos próximos/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^organizar partido$/i }));
+    expect(onCreateMatch).toHaveBeenCalled();
+  });
+
+  it('orders sections: Invitaciones before Próximos partidos, before Club/NoClub, before Acciones rápidas (last)', () => {
+    render(
+      <HomePage
+        pendingInvitations={[pendingInvitation]}
+        upcomingEvents={[fixtureEvent()]}
+        clubName="Club Señor Pato"
+      />,
+    );
+
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+    const invitationsIndex = headings.findIndex((text) => text === 'Invitaciones');
+    const proximosIndex = headings.findIndex((text) => text === 'Próximos partidos');
+    const novedadesIndex = headings.findIndex((text) => text?.startsWith('Novedades de'));
+    const accionesIndex = headings.findIndex((text) => text === 'Acciones rápidas');
+
+    expect(invitationsIndex).toBeGreaterThanOrEqual(0);
+    expect(invitationsIndex).toBeLessThan(proximosIndex);
+    expect(proximosIndex).toBeLessThan(novedadesIndex);
+    expect(novedadesIndex).toBeLessThan(accionesIndex);
+    // Acciones rápidas must be the very last section, never duplicated elsewhere.
+    expect(accionesIndex).toBe(headings.length - 1);
+    expect(screen.getAllByRole('button', { name: /armar partido/i })).toHaveLength(1);
+  });
+
+  it('shows a "Finalizados recientemente" subsection only when there are recently-completed matches, distinct from Próximos partidos', () => {
+    const { rerender } = render(<HomePage upcomingEvents={[fixtureEvent()]} recentlyCompletedEvents={[]} />);
+    expect(screen.queryByText(/finalizados recientemente/i)).toBeFalsy();
+
+    rerender(
+      <HomePage
+        upcomingEvents={[fixtureEvent({ id: 'upcoming-1' })]}
+        recentlyCompletedEvents={[fixtureEvent({ id: 'completed-1', title: 'Pádel • Dobles', meta: 'Partido finalizado' })]}
+      />,
+    );
+    expect(screen.getByText(/finalizados recientemente/i)).toBeTruthy();
+    expect(screen.getByText('Fútbol • Fútbol 5')).toBeTruthy();
+    expect(screen.getByText('Pádel • Dobles')).toBeTruthy();
+  });
+
+  it('hides the Tareas pendientes section entirely when there are no pending tasks', () => {
+    render(<HomePage pendingTaskItems={[]} />);
+    expect(screen.queryByText(/tareas pendientes/i)).toBeFalsy();
+  });
+
+  it('shows real pending tasks and invokes their onClick', () => {
+    const onClick = vi.fn();
+    const tasks: PendingAction[] = [{ id: 'task-1', label: 'Tu partido de Fútbol todavía no tiene sede.', description: 'Elegí un club', onClick }];
+    render(<HomePage pendingTaskItems={tasks} />);
+
+    expect(screen.getByText(/todavía no tiene sede/i)).toBeTruthy();
+    expect(screen.getByText('Elegí un club')).toBeTruthy();
+    fireEvent.click(screen.getByText(/todavía no tiene sede/i));
+    expect(onClick).toHaveBeenCalled();
+  });
+
+  it('scrolls to and highlights the invitation matching highlightInvitationId', () => {
+    const scrollIntoViewMock = vi.fn();
+    // jsdom has no real layout engine, so Element.prototype.scrollIntoView is not implemented by default.
+    Element.prototype.scrollIntoView = scrollIntoViewMock;
+
+    render(<HomePage pendingInvitations={[pendingInvitation]} highlightInvitationId="invitation-1" />);
+
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
+
+  it('does not throw when highlightInvitationId does not match any pending invitation', () => {
+    expect(() => render(<HomePage pendingInvitations={[pendingInvitation]} highlightInvitationId="does-not-exist" />)).not.toThrow();
   });
 });

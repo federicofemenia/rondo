@@ -35,6 +35,8 @@ export type MatchEntity = {
   isOrganizer: boolean;
   bookingId: string | null;
   createdAt: number;
+  /** When `status` last changed, regardless of what it changed to -- used to compute the "recently completed" (last 24h) window on Home, separately from `cancelledAt` below (which is specifically null unless status is CANCELLED). */
+  statusChangedAt: string;
   cancelledAt: string | null;
   cancelledByType: StatusChangedByTypeDto | null;
   cancelledByName: string | null;

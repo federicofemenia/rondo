@@ -83,6 +83,51 @@ describe('GET /api/v1/matches/:matchId/participants', () => {
     await app.close();
   });
 
+  it('includes a ratings summary, scoped to the match sport, for the organizer and every confirmed participant', async () => {
+    const confirmedPlayer = await createTestUser('Bruno');
+    createdUserIds.push(confirmedPlayer.id);
+
+    const match = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      participantUserIds: [confirmedPlayer.id],
+      sportModalityId: SEED_IDS.modalities.football5,
+    });
+    createdMatchIds.push(match.id);
+
+    await prisma.playerRating.create({
+      data: { matchId: match.id, authorUserId: SEED_IDS.users.juan, targetUserId: confirmedPlayer.id, gameplayScore: 4, conductScore: 5, comment: 'Buen partido' },
+    });
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/participants`, headers: { authorization: 'Bearer juan' } });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      data: {
+        organizer: { ratings: { sportId: string; gameplayAverage: number | null; conductAverage: number | null; count: number; commentsCount: number } };
+        confirmed: Array<{ userId: string; ratings: { gameplayAverage: number | null; conductAverage: number | null; count: number; commentsCount: number } }>;
+      };
+    };
+
+    const rated = body.data.confirmed.find((entry) => entry.userId === confirmedPlayer.id);
+    expect(rated?.ratings).toEqual({
+      sportId: SEED_IDS.sports.football,
+      sportName: 'Fútbol',
+      gameplayAverage: 4,
+      conductAverage: 5,
+      count: 1,
+      commentsCount: 1,
+    });
+
+    // The organizer never received a rating in this test -- still gets a
+    // real (empty, not missing) summary, same shape a candidate with no
+    // ratings gets.
+    expect(body.data.organizer.ratings).toMatchObject({ sportId: SEED_IDS.sports.football, count: 0, commentsCount: 0, gameplayAverage: null, conductAverage: null });
+
+    await prisma.playerRating.deleteMany({ where: { matchId: match.id } });
+    await app.close();
+  });
+
   it('reflects a cancelled invitation disappearing from pending immediately', async () => {
     const invitedPlayer = await createTestUser('Fabricio');
     createdUserIds.push(invitedPlayer.id);

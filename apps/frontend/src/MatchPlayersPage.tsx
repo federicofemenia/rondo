@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { MatchParticipantsResponseDto, MatchStatusDto } from '@rondo/contracts';
+import type { MatchParticipantSummaryDto, MatchParticipantsResponseDto, MatchStatusDto } from '@rondo/contracts';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
@@ -12,6 +12,9 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import { ApiError, useApi } from './apiClient';
+import PlayerProfileCardDialog from './PlayerProfileCardDialog';
+import PlayerRatingCommentsDialog from './PlayerRatingCommentsDialog';
+import PlayerRatingsSummary from './PlayerRatingsSummary';
 import { useVisiblePolling } from './useVisiblePolling';
 
 const POLL_INTERVAL_MS = 20_000;
@@ -22,6 +25,9 @@ type MatchPlayersPageProps = {
   status: MatchStatusDto;
   participantsCount: number;
   maxPlayers: number;
+  /** Needed to open a player's profile card (ratings are scoped per sport) -- see PlayerProfileCardDialog. */
+  sportId: string;
+  sportName?: string;
   searchingPlayers?: boolean;
   /** Rendered right below the summary card, above the roster (Organizador/Confirmados/...), while searchingPlayers is true. */
   candidatesSection?: ReactNode;
@@ -46,15 +52,28 @@ function PlayerRow({
   displayName,
   avatarUrl,
   subtitle,
+  ratings,
+  onOpenProfile,
   action,
 }: {
   displayName: string;
   avatarUrl: string | null;
   subtitle?: string;
+  /** Present only for the organizer and confirmed participants -- pending/rejected invitees never played, so they have no ratings and no profile card. */
+  ratings?: MatchParticipantSummaryDto['ratings'];
+  onOpenProfile?: () => void;
   action?: ReactNode;
 }) {
   return (
-    <Card variant="outlined" sx={{ p: 4, bgcolor: 'background.default', borderColor: 'divider' }}>
+    // Deliberately no role="button"/tabIndex here when onOpenProfile is
+    // set: the card already contains a real, independently focusable
+    // control (the Quitar button), and ARIA disallows nesting interactive
+    // controls -- same convention as MatchCandidatesSection.
+    <Card
+      variant="outlined"
+      onClick={onOpenProfile}
+      sx={{ p: 4, bgcolor: 'background.default', borderColor: 'divider', cursor: onOpenProfile ? 'pointer' : undefined }}
+    >
       <Stack direction="row" spacing={3} alignItems="center" justifyContent="space-between">
         <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
           <Avatar
@@ -76,6 +95,11 @@ function PlayerRow({
         </Stack>
         {action}
       </Stack>
+      {ratings ? (
+        <Box sx={{ mt: 3 }}>
+          <PlayerRatingsSummary ratings={ratings} />
+        </Box>
+      ) : null}
     </Card>
   );
 }
@@ -86,6 +110,8 @@ function MatchPlayersPage({
   status,
   participantsCount,
   maxPlayers,
+  sportId,
+  sportName,
   searchingPlayers = false,
   candidatesSection,
   refreshToken = 0,
@@ -104,6 +130,9 @@ function MatchPlayersPage({
   const [cancelErrors, setCancelErrors] = useState<Record<string, string>>({});
   const [leaving, setLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
+
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
+  const [commentsUserId, setCommentsUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -262,7 +291,12 @@ function MatchPlayersPage({
         <Stack spacing={6}>
           <Box>
             <Typography sx={{ fontWeight: 700, mb: 3 }}>👑 Organizador</Typography>
-            <PlayerRow displayName={roster.organizer.displayName} avatarUrl={roster.organizer.avatarUrl} />
+            <PlayerRow
+              displayName={roster.organizer.displayName}
+              avatarUrl={roster.organizer.avatarUrl}
+              ratings={roster.organizer.ratings}
+              onOpenProfile={() => setSelectedProfileUserId(roster.organizer.userId)}
+            />
           </Box>
 
           <Box>
@@ -276,6 +310,8 @@ function MatchPlayersPage({
                     <PlayerRow
                       displayName={participant.displayName}
                       avatarUrl={participant.avatarUrl}
+                      ratings={participant.ratings}
+                      onOpenProfile={() => setSelectedProfileUserId(participant.userId)}
                       action={
                         isOrganizer && rosterEditable ? (
                           <Button
@@ -283,7 +319,10 @@ function MatchPlayersPage({
                             color="error"
                             size="small"
                             disabled={removingUserId === participant.userId}
-                            onClick={() => void handleRemoveParticipant(participant.userId)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleRemoveParticipant(participant.userId);
+                            }}
                           >
                             {removingUserId === participant.userId ? 'Quitando…' : 'Quitar'}
                           </Button>
@@ -348,6 +387,26 @@ function MatchPlayersPage({
           ) : null}
         </Stack>
       ) : null}
+
+      <PlayerProfileCardDialog
+        open={selectedProfileUserId !== null}
+        userId={selectedProfileUserId}
+        sportId={sportId}
+        sportName={sportName}
+        onClose={() => setSelectedProfileUserId(null)}
+        onShowComments={() => {
+          setCommentsUserId(selectedProfileUserId);
+          setSelectedProfileUserId(null);
+        }}
+      />
+
+      <PlayerRatingCommentsDialog
+        open={commentsUserId !== null}
+        userId={commentsUserId}
+        sportId={sportId}
+        sportName={sportName ?? ''}
+        onClose={() => setCommentsUserId(null)}
+      />
     </Box>
   );
 }

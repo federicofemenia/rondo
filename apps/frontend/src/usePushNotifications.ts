@@ -11,6 +11,8 @@ type UsePushNotificationsResult = {
   permission: PushPermissionState;
   /** Whether *this* browser/device currently has an active push subscription (granted permission + a live PushManager subscription). */
   enabled: boolean;
+  /** True from mount until the initial granted-permission/local-subscription check settles -- lets a caller (e.g. PushNotificationsBanner) avoid flashing a "complete activation" prompt at someone who is, in fact, already fully enabled. */
+  reconciling: boolean;
   loading: boolean;
   error: string | null;
   enable: () => Promise<void>;
@@ -65,11 +67,13 @@ export function usePushNotifications(): UsePushNotificationsResult {
 
   const [permission, setPermission] = useState<PushPermissionState>(() => (detectSupport() ? Notification.permission : 'unsupported'));
   const [enabled, setEnabled] = useState(false);
+  const [reconciling, setReconciling] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supported) {
+      setReconciling(false);
       return;
     }
 
@@ -93,6 +97,10 @@ export function usePushNotifications(): UsePushNotificationsResult {
       } catch {
         // Best-effort: a failed reconciliation must not block the rest of
         // the app, and the user can still retry via "Activar" explicitly.
+      } finally {
+        if (!cancelled) {
+          setReconciling(false);
+        }
       }
     };
 
@@ -176,5 +184,5 @@ export function usePushNotifications(): UsePushNotificationsResult {
     }
   }, [api]);
 
-  return { supported, permission, enabled, loading, error, enable, disable, sendTest };
+  return { supported, permission, enabled, reconciling, loading, error, enable, disable, sendTest };
 }

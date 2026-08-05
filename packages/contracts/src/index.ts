@@ -504,6 +504,8 @@ export interface MatchParticipantSummaryDto {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  /** Scoped to the match's own sport, same aggregation as CandidateDto.ratings -- lets the Jugadores tab show stars/comments inline, the same way Candidatos does, without a separate per-player request. */
+  ratings: RatingsSummaryDto;
 }
 
 export interface MatchPendingInvitationDto {
@@ -649,6 +651,17 @@ export type PushEventType =
   | 'RATING_RECEIVED';
 
 /**
+ * Typed in-app destination for a push notification, one per PushEventType
+ * (see the event -> destination table in docs/WEB_PUSH.md). `url` on
+ * PushNotificationPayloadDto is the serialized, service-worker-facing form
+ * of this same destination (see apps/frontend/src/pushNavigation.ts for the
+ * parser) -- `destination` is kept alongside it as the typed source of
+ * truth so nothing on either side has to re-derive it from a free-form
+ * string.
+ */
+export type PushDestinationDto = 'HOME_INVITATIONS' | 'MATCH_SUMMARY' | 'MATCH_PLAYERS' | 'MATCH_CHAT' | 'MATCH_RATINGS';
+
+/**
  * Shape of the JSON payload the backend sends as the push message body, and
  * that the service worker's `push` handler expects to parse (see
  * apps/frontend/src/sw.ts). Not sent over HTTP as a Rondo API response --
@@ -674,6 +687,7 @@ export interface PushNotificationPayloadDto {
     invitationId?: string;
     messageId?: string;
     ratingId?: string;
+    destination?: PushDestinationDto;
   };
 }
 

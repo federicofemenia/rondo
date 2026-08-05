@@ -534,6 +534,8 @@ function MatchDetailPage({
           status={match.status}
           participantsCount={match.participantsCount}
           maxPlayers={Number(match.maxPlayers)}
+          sportId={match.sportId}
+          sportName={match.sport}
           searchingPlayers={searchingPlayers}
           candidatesSection={
             searchingPlayers && isEditable ? (

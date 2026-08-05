@@ -1,4 +1,4 @@
-import type { PushNotificationPayloadDto } from '@rondo/contracts';
+import type { PushDestinationDto, PushNotificationPayloadDto } from '@rondo/contracts';
 import { toArgentinaMinutesOfDay } from '../matches/argentinaTime.js';
 
 // Same Argentina-only, no-DST fixed offset used everywhere else this
@@ -44,10 +44,38 @@ export function toMatchPushContext(match: {
 }
 
 const PUSH_PAYLOAD_VERSION = 1;
-const DEFAULT_URL = '/';
 
-function basePayload(overrides: Omit<PushNotificationPayloadDto, 'version' | 'url'> & { url?: string }): PushNotificationPayloadDto {
-  return { version: PUSH_PAYLOAD_VERSION, url: DEFAULT_URL, ...overrides };
+/**
+ * Serializes a typed PushDestinationDto into the `/?open=...` deep-link URL
+ * the service worker's notificationclick forwards and the frontend's
+ * pushNavigation.ts parses back into the same destination -- see the event
+ * -> destination table in docs/WEB_PUSH.md. `open` uses kebab-case (not the
+ * DTO's own SCREAMING_CASE) purely so the query string reads naturally.
+ */
+const DESTINATION_OPEN_PARAM: Record<PushDestinationDto, string> = {
+  HOME_INVITATIONS: 'invitations',
+  MATCH_SUMMARY: 'match-summary',
+  MATCH_PLAYERS: 'match-players',
+  MATCH_CHAT: 'match-chat',
+  MATCH_RATINGS: 'match-ratings',
+};
+
+function buildDestinationUrl(destination: PushDestinationDto, params: Record<string, string> = {}): string {
+  const search = new URLSearchParams({ open: DESTINATION_OPEN_PARAM[destination], ...params });
+  return `/?${search.toString()}`;
+}
+
+function basePayload(
+  destination: PushDestinationDto,
+  params: Record<string, string>,
+  overrides: Omit<PushNotificationPayloadDto, 'version' | 'url' | 'data'> & { data: NonNullable<PushNotificationPayloadDto['data']> },
+): PushNotificationPayloadDto {
+  return {
+    version: PUSH_PAYLOAD_VERSION,
+    url: buildDestinationUrl(destination, params),
+    ...overrides,
+    data: { ...overrides.data, destination },
+  };
 }
 
 export function invitationReceivedPayload(ctx: MatchPushContext, organizerName: string, invitationId: string): PushNotificationPayloadDto {
@@ -65,7 +93,7 @@ export function invitationReceivedPayload(ctx: MatchPushContext, organizerName: 
     body = `${organizerName} te invitó a jugar ${ctx.sportName} el ${day}. Sede a definir.`;
   }
 
-  return basePayload({
+  return basePayload('HOME_INVITATIONS', { invitationId }, {
     title: 'Nueva invitación',
     body,
     tag: `match-invitation-${invitationId}`,
@@ -74,7 +102,7 @@ export function invitationReceivedPayload(ctx: MatchPushContext, organizerName: 
 }
 
 export function invitationAcceptedPayload(ctx: MatchPushContext, accepterName: string, invitationId: string): PushNotificationPayloadDto {
-  return basePayload({
+  return basePayload('MATCH_PLAYERS', { matchId: ctx.matchId }, {
     title: 'Invitación aceptada',
     body: `${accepterName} aceptó tu invitación para ${ctx.sportName}.`,
     tag: `match-invitation-accepted-${invitationId}`,
@@ -83,7 +111,7 @@ export function invitationAcceptedPayload(ctx: MatchPushContext, accepterName: s
 }
 
 export function participantJoinedPayload(ctx: MatchPushContext, joinerName: string, invitationId: string): PushNotificationPayloadDto {
-  return basePayload({
+  return basePayload('MATCH_PLAYERS', { matchId: ctx.matchId }, {
     title: 'Nuevo jugador confirmado',
     body: `${joinerName} se sumó al partido de ${ctx.sportName}.`,
     tag: `match-participant-joined-${invitationId}`,
@@ -92,7 +120,7 @@ export function participantJoinedPayload(ctx: MatchPushContext, joinerName: stri
 }
 
 export function invitationRejectedPayload(ctx: MatchPushContext, rejecterName: string, invitationId: string): PushNotificationPayloadDto {
-  return basePayload({
+  return basePayload('MATCH_PLAYERS', { matchId: ctx.matchId }, {
     title: 'Invitación rechazada',
     body: `${rejecterName} rechazó la invitación para ${ctx.sportName}.`,
     tag: `match-invitation-rejected-${invitationId}`,
@@ -105,7 +133,7 @@ export function matchCancelledPayload(ctx: MatchPushContext): PushNotificationPa
   const day = weekdayLabel(ctx.scheduledDate);
   const time = ctx.startsAt ? ` a las ${formatArgentinaTime(ctx.startsAt)}` : '';
 
-  return basePayload({
+  return basePayload('MATCH_SUMMARY', { matchId: ctx.matchId }, {
     title: 'Partido cancelado',
     body: `El partido de ${ctx.sportName} del ${day}${time} fue cancelado.`,
     tag: `match-cancelled-${ctx.matchId}`,
@@ -114,7 +142,7 @@ export function matchCancelledPayload(ctx: MatchPushContext): PushNotificationPa
 }
 
 export function matchFullPayload(ctx: MatchPushContext): PushNotificationPayloadDto {
-  return basePayload({
+  return basePayload('MATCH_SUMMARY', { matchId: ctx.matchId }, {
     title: 'Equipo completo',
     body: `El partido de ${ctx.sportName} ya completó todos sus lugares.`,
     tag: `match-full-${ctx.matchId}`,
@@ -123,7 +151,7 @@ export function matchFullPayload(ctx: MatchPushContext): PushNotificationPayload
 }
 
 export function matchCompletedRatingsEnabledPayload(ctx: MatchPushContext): PushNotificationPayloadDto {
-  return basePayload({
+  return basePayload('MATCH_RATINGS', { matchId: ctx.matchId }, {
     title: 'Valoraciones habilitadas',
     body: 'El partido terminó. Ya podés valorar a los demás jugadores.',
     tag: `match-ratings-${ctx.matchId}`,
@@ -144,7 +172,7 @@ export function truncateChatPreview(content: string): string {
 
 /** Same tag for every message in a given match on purpose -- see docs/WEB_PUSH.md for the observed grouping/replace behavior this produces. */
 export function chatMessagePayload(ctx: MatchPushContext, authorName: string, content: string, messageId: string): PushNotificationPayloadDto {
-  return basePayload({
+  return basePayload('MATCH_CHAT', { matchId: ctx.matchId }, {
     title: `${authorName} · ${ctx.sportName}`,
     body: truncateChatPreview(content),
     tag: `match-chat-${ctx.matchId}`,
@@ -156,13 +184,16 @@ export function chatMessagePayload(ctx: MatchPushContext, authorName: string, co
  * Deliberately excludes the score, the comment, and the rater's identity --
  * those stay inside Rondo (see docs/WEB_PUSH.md). `sportName` alone is
  * enough context to be useful without leaking anything the rated player
- * couldn't already infer (which sport they just played).
+ * couldn't already infer (which sport they just played). Opens the match's
+ * own Jugadores tab -- ratings for every confirmed participant show inline
+ * there (see MatchPlayersPage.tsx), the same way Candidatos already does,
+ * so there is no separate "my ratings" screen to send this to.
  */
-export function ratingReceivedPayload(sportName: string, ratingId: string): PushNotificationPayloadDto {
-  return basePayload({
+export function ratingReceivedPayload(matchId: string, sportName: string, ratingId: string): PushNotificationPayloadDto {
+  return basePayload('MATCH_PLAYERS', { matchId }, {
     title: 'Nueva valoración',
     body: `Recibiste una nueva valoración en ${sportName}.`,
     tag: `rating-received-${ratingId}`,
-    data: { type: 'RATING_RECEIVED', ratingId },
+    data: { type: 'RATING_RECEIVED', matchId, ratingId },
   });
 }

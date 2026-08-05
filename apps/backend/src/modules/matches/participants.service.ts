@@ -1,5 +1,6 @@
 import type { MatchParticipantsResponseDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
+import { emptyRatingsSummary, getRatingsSummaries } from './ratings.service.js';
 import { assertMatchEditable, displayName, requireMatchWithRelations } from './matches.service.js';
 import { MatchServiceError } from './errors.js';
 
@@ -9,6 +10,12 @@ import { MatchServiceError } from './errors.js';
  * pending invitations, and rejected invitations. Cancelled invitations are
  * intentionally left out: once cancelled they are no longer part of the
  * active roster the organizer manages.
+ *
+ * Organizer and confirmed participants also carry their ratings summary for
+ * this match's sport (same one grouped query getRatingsSummaries always
+ * uses -- never one query per player), so the Jugadores tab can show
+ * stars/comments inline the same way Candidatos already does. Pending and
+ * rejected invitees never played, so they carry no ratings.
  */
 export async function getMatchParticipants(matchId: string): Promise<MatchParticipantsResponseDto> {
   const match = await requireMatchWithRelations(matchId);
@@ -22,12 +29,16 @@ export async function getMatchParticipants(matchId: string): Promise<MatchPartic
     }),
   ]);
 
+  const sport = { id: match.sportModality.sport.id, name: match.sportModality.sport.name };
+  const ratingsByUserId = await getRatingsSummaries(participants.map((participant) => participant.userId), sport);
+
   const confirmed = participants
     .filter((participant) => participant.userId !== match.organizerUserId)
     .map((participant) => ({
       userId: participant.userId,
       displayName: displayName(participant.user),
       avatarUrl: participant.user.avatarUrl,
+      ratings: ratingsByUserId.get(participant.userId) ?? emptyRatingsSummary(sport),
     }));
 
   const pending = invitations
@@ -52,7 +63,12 @@ export async function getMatchParticipants(matchId: string): Promise<MatchPartic
     }));
 
   return {
-    organizer: { userId: match.organizerUserId, displayName: displayName(match.organizer), avatarUrl: match.organizer.avatarUrl },
+    organizer: {
+      userId: match.organizerUserId,
+      displayName: displayName(match.organizer),
+      avatarUrl: match.organizer.avatarUrl,
+      ratings: ratingsByUserId.get(match.organizerUserId) ?? emptyRatingsSummary(sport),
+    },
     confirmed,
     pending,
     rejected,

@@ -42,7 +42,17 @@ function AppHeader({ onEditProfile, onEditSportProfile, onLogout, pendingActions
   const pendingActionsCount = pendingActions.length;
 
   return (
-    <Box component="header" sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+    <Box
+      component="header"
+      sx={{
+        position: 'sticky',
+        top: 0,
+        zIndex: (muiTheme) => muiTheme.zIndex.appBar,
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+      }}
+    >
       <Box
         sx={{
           display: 'grid',

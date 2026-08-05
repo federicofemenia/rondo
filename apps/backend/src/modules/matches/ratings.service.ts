@@ -129,7 +129,7 @@ export async function rateParticipant(
     aggregateId: rating.id,
     dedupeKey: `rating-received-${rating.id}`,
     recipientUserIds: [targetUserId],
-    payload: ratingReceivedPayload(match.sportModality.sport.name, rating.id),
+    payload: ratingReceivedPayload(match.id, match.sportModality.sport.name, rating.id),
   });
 
   return toRatingDto(rating);

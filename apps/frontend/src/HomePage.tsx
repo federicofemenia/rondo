@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { MatchInvitationDto } from '@rondo/contracts';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
@@ -16,8 +17,10 @@ import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
 import PercentRoundedIcon from '@mui/icons-material/PercentRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import PlaceRoundedIcon from '@mui/icons-material/PlaceRounded';
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import NoClubMembershipCard from './NoClubMembershipCard';
 import { describeSchedule } from './scheduleFormat';
+import type { PendingAction } from './types';
 
 export type UpcomingEventItem = {
   id: string;
@@ -35,9 +38,15 @@ type HomePageProps = {
   clubName?: string | null;
   connectionStatus?: string;
   upcomingEvents?: UpcomingEventItem[];
+  /** COMPLETED matches still within their 24h Home-visibility window -- shown in their own subsection, never merged into upcomingEvents. */
+  recentlyCompletedEvents?: UpcomingEventItem[];
   pendingInvitations?: MatchInvitationDto[];
   respondingInvitationId?: string | null;
   invitationRespondErrors?: Record<string, string>;
+  /** Set when a push notification deep-linked to a specific pending invitation -- scrolls to and briefly highlights that card once. */
+  highlightInvitationId?: string | null;
+  /** Real, actionable tasks only (see App.tsx) -- section is hidden entirely when empty. */
+  pendingTaskItems?: PendingAction[];
   onAcceptInvitation?: (invitationId: string) => void;
   onRejectInvitation?: (invitationId: string) => void;
   onReserveCourt?: () => void;
@@ -48,6 +57,8 @@ const quickActions = [
   { key: 'create', label: 'Armar partido', icon: GroupsRoundedIcon },
   { key: 'reserve', label: 'Reservar cancha', icon: CalendarMonthRoundedIcon },
 ] as const;
+
+const HIGHLIGHT_DURATION_MS = 2500;
 
 function SectionHeader({ title, action }: { title: string; action?: string }) {
   return (
@@ -64,14 +75,61 @@ function SectionHeader({ title, action }: { title: string; action?: string }) {
   );
 }
 
+function EventList({ events }: { events: UpcomingEventItem[] }) {
+  return (
+    <Stack spacing={2}>
+      {events.map((event) => (
+        <Card key={event.id} variant="outlined" sx={{ borderColor: 'divider', bgcolor: 'background.paper' }}>
+          <CardActionArea onClick={event.onClick} sx={{ p: 3, display: 'flex', gap: 3, alignItems: 'center' }}>
+            <Avatar sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
+              {event.kind === 'match' ? (
+                <SportsSoccerRoundedIcon sx={{ color: 'text.primary' }} />
+              ) : (
+                <PlaceRoundedIcon sx={{ color: 'info.main' }} />
+              )}
+            </Avatar>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Chip
+                label={event.chipLabel}
+                size="small"
+                sx={{
+                  mb: 1,
+                  height: 20,
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  bgcolor: event.chipColor.bgcolor,
+                  color: event.chipColor.color,
+                }}
+              />
+              <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                {event.title}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {event.subtitle}
+              </Typography>
+            </Box>
+            <Typography variant="body2" sx={{ color: 'primary.light', fontWeight: 700, flexShrink: 0 }}>
+              {event.meta}
+            </Typography>
+            <ChevronRightRoundedIcon sx={{ color: 'text.secondary', flexShrink: 0 }} />
+          </CardActionArea>
+        </Card>
+      ))}
+    </Stack>
+  );
+}
+
 function HomePage({
   playerName = 'Federico',
   clubName = null,
   connectionStatus,
   upcomingEvents = [],
+  recentlyCompletedEvents = [],
   pendingInvitations = [],
   respondingInvitationId = null,
   invitationRespondErrors = {},
+  highlightInvitationId = null,
+  pendingTaskItems = [],
   onAcceptInvitation,
   onRejectInvitation,
   onReserveCourt,
@@ -83,8 +141,29 @@ function HomePage({
   };
   const isOffline = Boolean(connectionStatus) && connectionStatus !== 'API conectada';
 
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const appliedHighlightRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!highlightInvitationId || appliedHighlightRef.current === highlightInvitationId) {
+      return;
+    }
+    appliedHighlightRef.current = highlightInvitationId;
+
+    const element = document.getElementById(`invitation-${highlightInvitationId}`);
+    if (!element) {
+      return;
+    }
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedId(highlightInvitationId);
+
+    const timeout = setTimeout(() => setHighlightedId(null), HIGHLIGHT_DURATION_MS);
+    return () => clearTimeout(timeout);
+  }, [highlightInvitationId]);
+
   return (
     <Box component="main" sx={{ maxWidth: 480, mx: 'auto', px: 4, pb: 12 }}>
+      {/* 1. Encabezado */}
       {isOffline ? (
         <Chip
           label={connectionStatus}
@@ -107,49 +186,30 @@ function HomePage({
         </Button>
       ) : null}
 
-      <Box sx={{ mb: 8 }}>
-        <SectionHeader title="Acciones rápidas" />
-        <Stack direction="row" spacing={2}>
-          {quickActions.map(({ key, label, icon: Icon }) => (
-            <Card
-              key={key}
-              variant="outlined"
-              component="button"
-              onClick={actionHandlers[key]}
-              sx={{
-                flex: 1,
-                p: 3,
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-                color: 'text.primary',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1,
-                font: 'inherit',
-              }}
-            >
-              <Icon sx={{ color: 'primary.main' }} />
-              <Typography variant="caption" sx={{ fontWeight: 600, textAlign: 'center' }}>
-                {label}
-              </Typography>
-            </Card>
-          ))}
-        </Stack>
-      </Box>
-
+      {/* 3. Invitaciones -- only when there is at least one pending, shown directly (no separate screen). */}
       {pendingInvitations.length > 0 ? (
         <Box sx={{ mb: 8 }}>
-          <SectionHeader title="Invitaciones pendientes" />
+          <SectionHeader title="Invitaciones" />
           <Stack spacing={2}>
             {pendingInvitations.map((invitation) => {
               const schedule = describeSchedule(invitation);
               const isResponding = respondingInvitationId === invitation.id;
               const respondError = invitationRespondErrors[invitation.id];
+              const isHighlighted = highlightedId === invitation.id;
 
               return (
-                <Card key={invitation.id} variant="outlined" sx={{ p: 4, borderColor: 'divider', bgcolor: 'background.paper' }}>
+                <Card
+                  key={invitation.id}
+                  id={`invitation-${invitation.id}`}
+                  variant="outlined"
+                  sx={{
+                    p: 4,
+                    borderColor: isHighlighted ? 'primary.main' : 'divider',
+                    bgcolor: 'background.paper',
+                    transition: 'border-color 0.3s ease',
+                    boxShadow: isHighlighted ? 4 : 'none',
+                  }}
+                >
                   <Stack direction="row" spacing={3} alignItems="flex-start">
                     <Avatar sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
                       <MailOutlineRoundedIcon sx={{ color: 'warning.main' }} />
@@ -194,87 +254,120 @@ function HomePage({
         </Box>
       ) : null}
 
+      {/* 4. Próximos partidos, with recently-finished matches in their own subsection. */}
       <Box sx={{ mb: 8 }}>
-        <SectionHeader title="Próximos eventos" />
+        <SectionHeader title="Próximos partidos" />
         {upcomingEvents.length > 0 ? (
-          <Stack spacing={2}>
-            {upcomingEvents.map((event) => (
-              <Card key={event.id} variant="outlined" sx={{ borderColor: 'divider', bgcolor: 'background.paper' }}>
-                <CardActionArea onClick={event.onClick} sx={{ p: 3, display: 'flex', gap: 3, alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
-                    {event.kind === 'match' ? (
-                      <SportsSoccerRoundedIcon sx={{ color: 'text.primary' }} />
-                    ) : (
-                      <PlaceRoundedIcon sx={{ color: 'info.main' }} />
-                    )}
-                  </Avatar>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Chip
-                      label={event.chipLabel}
-                      size="small"
-                      sx={{
-                        mb: 1,
-                        height: 20,
-                        fontSize: '0.65rem',
-                        fontWeight: 700,
-                        bgcolor: event.chipColor.bgcolor,
-                        color: event.chipColor.color,
-                      }}
-                    />
-                    <Typography variant="body1" sx={{ fontWeight: 700 }}>
-                      {event.title}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {event.subtitle}
-                    </Typography>
-                  </Box>
-                  <Typography variant="body2" sx={{ color: 'primary.light', fontWeight: 700, flexShrink: 0 }}>
-                    {event.meta}
-                  </Typography>
-                  <ChevronRightRoundedIcon sx={{ color: 'text.secondary', flexShrink: 0 }} />
-                </CardActionArea>
-              </Card>
-            ))}
-          </Stack>
+          <EventList events={upcomingEvents} />
         ) : (
           <Card variant="outlined" sx={{ p: 3, display: 'flex', gap: 3, alignItems: 'center', borderColor: 'divider', bgcolor: 'background.paper' }}>
             <Avatar sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
               <SportsSoccerRoundedIcon sx={{ color: 'text.secondary' }} />
             </Avatar>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body1" sx={{ fontWeight: 700 }}>
-                Todavía no tenés partidos ni reservas
+              <Typography variant="body1" sx={{ fontWeight: 700, mb: 2 }}>
+                Todavía no tenés partidos próximos.
               </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Empezá desde Acciones rápidas
-              </Typography>
+              <Button variant="outlined" size="small" onClick={onCreateMatch}>
+                Organizar partido
+              </Button>
             </Box>
           </Card>
         )}
+
+        {recentlyCompletedEvents.length > 0 ? (
+          <Box sx={{ mt: 5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Finalizados recientemente
+            </Typography>
+            <EventList events={recentlyCompletedEvents} />
+          </Box>
+        ) : null}
       </Box>
 
-      {clubName ? (
-        <Box>
-          <SectionHeader title={`Novedades de ${clubName}`} />
-          <Card variant="outlined" sx={{ p: 4, display: 'flex', gap: 3, alignItems: 'center', borderColor: 'divider', bgcolor: 'background.paper' }}>
-            <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
-              <PercentRoundedIcon sx={{ color: 'background.default' }} />
-            </Avatar>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                20% OFF en todas las canchas de lunes a viernes
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Válido para socios
-              </Typography>
-            </Box>
-          </Card>
+      {/* 5. Tareas pendientes -- hidden entirely when there is nothing real to do. */}
+      {pendingTaskItems.length > 0 ? (
+        <Box sx={{ mb: 8 }}>
+          <SectionHeader title="Tareas pendientes" />
+          <Stack spacing={2}>
+            {pendingTaskItems.map((task) => (
+              <Card key={task.id} variant="outlined" sx={{ borderColor: 'divider', bgcolor: 'background.paper' }}>
+                <CardActionArea onClick={task.onClick} sx={{ p: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <WarningAmberRoundedIcon sx={{ color: 'warning.main', flexShrink: 0 }} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      {task.label}
+                    </Typography>
+                    {task.description ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {task.description}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                  <ChevronRightRoundedIcon sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                </CardActionArea>
+              </Card>
+            ))}
+          </Stack>
         </Box>
-      ) : (
-        <Box>
+      ) : null}
+
+      {/* 6. Club: novedades if there is an active membership, otherwise the no-club card -- never both. */}
+      <Box sx={{ mb: 8 }}>
+        {clubName ? (
+          <>
+            <SectionHeader title={`Novedades de ${clubName}`} />
+            <Card variant="outlined" sx={{ p: 4, display: 'flex', gap: 3, alignItems: 'center', borderColor: 'divider', bgcolor: 'background.paper' }}>
+              <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
+                <PercentRoundedIcon sx={{ color: 'background.default' }} />
+              </Avatar>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  20% OFF en todas las canchas de lunes a viernes
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Válido para socios
+                </Typography>
+              </Box>
+            </Card>
+          </>
+        ) : (
           <NoClubMembershipCard />
-        </Box>
-      )}
+        )}
+      </Box>
+
+      {/* 7. Acciones principales -- last, per the reorg (never duplicated elsewhere). */}
+      <Box>
+        <SectionHeader title="Acciones rápidas" />
+        <Stack direction="row" spacing={2}>
+          {quickActions.map(({ key, label, icon: Icon }) => (
+            <Card
+              key={key}
+              variant="outlined"
+              component="button"
+              onClick={actionHandlers[key]}
+              sx={{
+                flex: 1,
+                p: 3,
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                color: 'text.primary',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 1,
+                font: 'inherit',
+              }}
+            >
+              <Icon sx={{ color: 'primary.main' }} />
+              <Typography variant="caption" sx={{ fontWeight: 600, textAlign: 'center' }}>
+                {label}
+              </Typography>
+            </Card>
+          ))}
+        </Stack>
+      </Box>
     </Box>
   );
 }

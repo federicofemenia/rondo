@@ -170,6 +170,8 @@ export const mockSportProfileFailingSportIds = new Set<string>();
 
 /** Mutable per-test fixture for GET /api/v1/me/matches; reset to empty before every test. */
 export const mockMyMatches: MatchSummaryDto[] = [];
+/** matchIds added here make GET /api/v1/matches/:matchId respond with a 403, to exercise a push deep link to a match the current user cannot access. */
+export const mockSingleMatchAccessDeniedIds = new Set<string>();
 
 /** Mutable per-test fixture for GET /api/v1/matches/:matchId/candidates; reset to empty before every test. */
 export const mockCandidates: CandidateDto[] = [];
@@ -252,6 +254,7 @@ beforeEach(() => {
   mockSportProfiles.length = 0;
   mockSportProfileFailingSportIds.clear();
   mockMyMatches.length = 0;
+  mockSingleMatchAccessDeniedIds.clear();
   mockCandidates.length = 0;
   mockCandidatesFailingMatchIds.clear();
   mockPublicProfiles.clear();
@@ -316,6 +319,19 @@ beforeEach(() => {
 
     if (url.endsWith('/api/v1/me/matches')) {
       return json({ data: mockMyMatches });
+    }
+
+    const singleMatchMatch = url.match(/\/api\/v1\/matches\/([^/]+)$/);
+    if (method === 'GET' && singleMatchMatch) {
+      const matchId = singleMatchMatch[1]!;
+      if (mockSingleMatchAccessDeniedIds.has(matchId)) {
+        return json({ error: { code: 'MATCH_ACCESS_DENIED', message: 'No tenés acceso a este partido.' } }, 403);
+      }
+      const match = mockMyMatches.find((candidate) => candidate.id === matchId);
+      if (!match) {
+        return json({ error: { code: 'MATCH_NOT_FOUND', message: 'El partido no existe.' } }, 404);
+      }
+      return json({ data: match });
     }
 
     if (url.endsWith('/api/v1/me/pending-tasks')) {

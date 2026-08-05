@@ -27,7 +27,7 @@ const DISMISSAL_STORAGE_KEY = 'rondo-push-banner-dismissed-at';
  * two never compete for the user's attention at once.
  */
 function PushNotificationsBanner() {
-  const { supported, permission, enable, loading } = usePushNotifications();
+  const { supported, permission, enabled, reconciling, enable, loading } = usePushNotifications();
   const [dismissed, setDismissed] = useState(() => isInstallPromptDismissed(DISMISSAL_STORAGE_KEY));
   const installWelcomeVisible = useInstallWelcomeVisible();
 
@@ -46,9 +46,18 @@ function PushNotificationsBanner() {
   // independently of `supported`, or the message would never show at all.
   const iosNotInstalled = isIosDevice() && !isStandaloneDisplayMode();
 
-  if (!iosNotInstalled && (!supported || permission !== 'default')) {
+  // Everywhere else: show for the normal first-ask case (permission
+  // 'default') and for the "granted but this device never finished
+  // subscribing" case (permission 'granted', enabled false) -- 'denied'
+  // never shows here (see PushNotificationsSettings/Perfil instead), and
+  // `reconciling` gates the granted-without-subscription case so someone
+  // who *is* already fully enabled never sees a one-frame flash of this
+  // banner while usePushNotifications is still checking.
+  if (!iosNotInstalled && (!supported || reconciling || permission === 'denied' || enabled)) {
     return null;
   }
+
+  const needsReconciliation = !iosNotInstalled && permission === 'granted' && !enabled;
 
   return (
     <Box
@@ -82,7 +91,9 @@ function PushNotificationsBanner() {
             <Typography variant="body2" color="text.secondary">
               {iosNotInstalled
                 ? 'Para recibir notificaciones en iPhone, primero agregá Rondo a tu pantalla de inicio.'
-                : 'Recibí avisos cuando te inviten a un partido o cambie algo importante.'}
+                : needsReconciliation
+                  ? 'Ya diste permiso, pero falta completar la activación en este dispositivo.'
+                  : 'Recibí invitaciones, mensajes y novedades importantes de tus partidos aunque Rondo esté cerrada.'}
             </Typography>
           </Box>
           <IconButton aria-label="Cerrar" size="small" onClick={handleDismiss}>
@@ -95,7 +106,7 @@ function PushNotificationsBanner() {
               Ahora no
             </Button>
             <Button variant="contained" fullWidth disabled={loading} onClick={() => void enable()}>
-              {loading ? 'Activando…' : 'Activar'}
+              {loading ? 'Activando…' : needsReconciliation ? 'Completar activación' : 'Activar notificaciones'}
             </Button>
           </Stack>
         )}
