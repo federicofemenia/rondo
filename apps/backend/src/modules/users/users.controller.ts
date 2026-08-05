@@ -1,10 +1,18 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Club, ClubMembership, User } from '@prisma/client';
 import type { UserClubDto, UserDto } from '@rondo/contracts';
-import { updateProfileInputSchema } from '@rondo/contracts';
+import { sportIdQuerySchema, updateProfileInputSchema } from '@rondo/contracts';
+import { MatchServiceError } from '../matches/errors.js';
 import { getRatingComments } from '../matches/ratings.service.js';
 import { getPublicProfile } from './publicProfile.service.js';
 import { displayName, getUserClubMemberships, updateProfile } from './users.service.js';
+
+function sendServiceError(reply: FastifyReply, error: unknown): FastifyReply {
+  if (error instanceof MatchServiceError) {
+    return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message } });
+  }
+  throw error;
+}
 
 function toUserDto(user: User): UserDto {
   return {
@@ -69,25 +77,47 @@ export function registerUserRoutes(app: FastifyInstance): void {
     return { data: toUserDto(user) };
   });
 
-  app.get<{ Params: { id: string } }>('/api/v1/users/:id/public-profile', { preHandler: app.requireAuth }, async (request, reply) => {
-    if (!request.currentUser) {
-      return reply;
-    }
+  app.get<{ Params: { id: string }; Querystring: { sportId?: string } }>(
+    '/api/v1/users/:id/public-profile',
+    { preHandler: app.requireAuth },
+    async (request, reply) => {
+      if (!request.currentUser) {
+        return reply;
+      }
 
-    const profile = await getPublicProfile(request.params.id);
-    if (!profile) {
-      return reply.code(404).send({ error: { code: 'USER_NOT_FOUND', message: 'El usuario indicado no existe.' } });
-    }
+      const parsed = sportIdQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: { code: 'INVALID_INPUT', message: 'sportId es obligatorio y debe ser un id válido.', details: parsed.error.issues },
+        });
+      }
 
-    return { data: profile };
-  });
+      try {
+        const profile = await getPublicProfile(request.params.id, parsed.data.sportId);
+        return { data: profile };
+      } catch (error) {
+        return sendServiceError(reply, error);
+      }
+    },
+  );
 
-  app.get<{ Params: { id: string } }>('/api/v1/users/:id/rating-comments', { preHandler: app.requireAuth }, async (request, reply) => {
-    if (!request.currentUser) {
-      return reply;
-    }
+  app.get<{ Params: { id: string }; Querystring: { sportId?: string } }>(
+    '/api/v1/users/:id/rating-comments',
+    { preHandler: app.requireAuth },
+    async (request, reply) => {
+      if (!request.currentUser) {
+        return reply;
+      }
 
-    const comments = await getRatingComments(request.params.id);
-    return { data: comments };
-  });
+      const parsed = sportIdQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: { code: 'INVALID_INPUT', message: 'sportId es obligatorio y debe ser un id válido.', details: parsed.error.issues },
+        });
+      }
+
+      const comments = await getRatingComments(request.params.id, parsed.data.sportId);
+      return { data: comments };
+    },
+  );
 }

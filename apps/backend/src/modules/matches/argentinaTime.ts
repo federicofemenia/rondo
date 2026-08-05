@@ -14,3 +14,14 @@ export function toArgentinaMinutesOfDay(date: Date): number {
   const utcMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
   return (((utcMinutes - ARGENTINA_UTC_OFFSET_MINUTES) % 1440) + 1440) % 1440;
 }
+
+/**
+ * Builds the real UTC instant for `minutesFromMidnight` Argentina local time
+ * on `scheduledDate` (a bare calendar day stored as literal UTC midnight,
+ * e.g. from Match.scheduledDate). Mirrors the frontend's buildIsoDateTime
+ * (scheduleFormat.ts) so both sides agree on what a given day+minutes pair
+ * actually means as an instant.
+ */
+export function toArgentinaInstant(scheduledDate: Date, minutesFromMidnight: number): Date {
+  return new Date(scheduledDate.getTime() + (minutesFromMidnight + ARGENTINA_UTC_OFFSET_MINUTES) * 60_000);
+}

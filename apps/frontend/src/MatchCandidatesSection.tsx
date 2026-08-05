@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { MouseEvent } from 'react';
-import type { CandidateDto, MatchInvitationDto, RatingCommentDto } from '@rondo/contracts';
+import type { CandidateDto, MatchInvitationDto } from '@rondo/contracts';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
@@ -17,8 +16,10 @@ import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import { ApiError, useApi } from './apiClient';
 import PlayerProfileCardDialog from './PlayerProfileCardDialog';
+import PlayerRatingCommentsDialog from './PlayerRatingCommentsDialog';
 
 export type CandidateMatchSummary = {
+  sportId: string;
   sport: string;
   modality: string;
   clubName: string | null;
@@ -47,7 +48,7 @@ function CandidateRatingsSummary({ ratings }: { ratings: CandidateDto['ratings']
   if (ratings.count === 0) {
     return (
       <Typography variant="caption" color="text.secondary">
-        Sin valoraciones
+        Sin valoraciones en {ratings.sportName}
       </Typography>
     );
   }
@@ -106,11 +107,7 @@ function MatchCandidatesSection({ matchId, matchSummary, onInvited }: MatchCandi
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({});
 
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
-
-  const [expandedCommentsId, setExpandedCommentsId] = useState<string | null>(null);
-  const [commentsByCandidate, setCommentsByCandidate] = useState<Record<string, RatingCommentDto[]>>({});
-  const [commentsLoadingId, setCommentsLoadingId] = useState<string | null>(null);
-  const [commentsErrorByCandidate, setCommentsErrorByCandidate] = useState<Record<string, string>>({});
+  const [commentsCandidateId, setCommentsCandidateId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,35 +151,6 @@ function MatchCandidatesSection({ matchId, matchSummary, onInvited }: MatchCandi
       setInviteErrors((current) => ({ ...current, [candidate.id]: describeError(caught, 'No pudimos enviar la invitación. Reintentá.') }));
     } finally {
       setInvitingId(null);
-    }
-  };
-
-  const handleToggleComments = async (event: MouseEvent, candidate: CandidateDto) => {
-    event.stopPropagation();
-
-    if (expandedCommentsId === candidate.id) {
-      setExpandedCommentsId(null);
-      return;
-    }
-
-    setExpandedCommentsId(candidate.id);
-    if (commentsByCandidate[candidate.id] || commentsLoadingId === candidate.id) {
-      return;
-    }
-
-    setCommentsLoadingId(candidate.id);
-    setCommentsErrorByCandidate((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== candidate.id)));
-
-    try {
-      const response = await api.get<{ data: RatingCommentDto[] }>(`/api/v1/users/${candidate.id}/rating-comments`);
-      setCommentsByCandidate((current) => ({ ...current, [candidate.id]: response.data }));
-    } catch (caught) {
-      setCommentsErrorByCandidate((current) => ({
-        ...current,
-        [candidate.id]: describeError(caught, 'No pudimos cargar los comentarios. Reintentá más tarde.'),
-      }));
-    } finally {
-      setCommentsLoadingId(null);
     }
   };
 
@@ -247,34 +215,14 @@ function MatchCandidatesSection({ matchId, matchSummary, onInvited }: MatchCandi
                   <Button
                     variant="text"
                     size="small"
-                    onClick={(event) => void handleToggleComments(event, candidate)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setCommentsCandidateId(candidate.id);
+                    }}
                     sx={{ mt: 0.5, px: 0, minWidth: 0 }}
                   >
-                    {expandedCommentsId === candidate.id ? 'Ocultar comentarios' : `Ver comentarios (${candidate.ratings.commentsCount})`}
+                    Ver comentarios ({candidate.ratings.commentsCount})
                   </Button>
-                ) : null}
-
-                {expandedCommentsId === candidate.id ? (
-                  <Box sx={{ mt: 1 }}>
-                    {commentsLoadingId === candidate.id ? (
-                      <Stack alignItems="center" sx={{ py: 2 }}>
-                        <CircularProgress size={20} />
-                      </Stack>
-                    ) : commentsErrorByCandidate[candidate.id] ? (
-                      <Alert severity="error">{commentsErrorByCandidate[candidate.id]}</Alert>
-                    ) : (
-                      <Stack spacing={1}>
-                        {(commentsByCandidate[candidate.id] ?? []).map((comment) => (
-                          <Box key={comment.id} sx={{ p: 2, borderRadius: 2, bgcolor: 'background.paper' }}>
-                            <Typography variant="caption" sx={{ fontWeight: 700 }} display="block">
-                              {comment.authorDisplayName}
-                            </Typography>
-                            <Typography variant="body2">"{comment.comment}"</Typography>
-                          </Box>
-                        ))}
-                      </Stack>
-                    )}
-                  </Box>
                 ) : null}
 
                 {inviteError ? (
@@ -306,8 +254,21 @@ function MatchCandidatesSection({ matchId, matchSummary, onInvited }: MatchCandi
       <PlayerProfileCardDialog
         open={selectedCandidateId !== null}
         userId={selectedCandidateId}
+        sportId={matchSummary?.sportId ?? ''}
         sportName={matchSummary?.sport}
         onClose={() => setSelectedCandidateId(null)}
+        onShowComments={() => {
+          setCommentsCandidateId(selectedCandidateId);
+          setSelectedCandidateId(null);
+        }}
+      />
+
+      <PlayerRatingCommentsDialog
+        open={commentsCandidateId !== null}
+        userId={commentsCandidateId}
+        sportId={matchSummary?.sportId ?? ''}
+        sportName={matchSummary?.sport ?? ''}
+        onClose={() => setCommentsCandidateId(null)}
       />
     </>
   );

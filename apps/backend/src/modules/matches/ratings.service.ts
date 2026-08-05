@@ -122,8 +122,10 @@ function roundToOneDecimal(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-export function emptyRatingsSummary(): RatingsSummaryDto {
-  return { gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 };
+export type SportRef = { id: string; name: string };
+
+export function emptyRatingsSummary(sport: SportRef): RatingsSummaryDto {
+  return { sportId: sport.id, sportName: sport.name, gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 };
 }
 
 /**
@@ -132,22 +134,30 @@ export function emptyRatingsSummary(): RatingsSummaryDto {
  * text -- same "has real text" rule as getRatingComments below. Used by the
  * candidates list (all candidates at once) and the public profile (a
  * single-element list) alike, so neither ever N+1s.
+ *
+ * Both queries are scoped to `sport` via the rating's match -- a rating
+ * only ever reflects how someone played in ONE match, which belongs to
+ * exactly one sport, so mixing sports into a single average would be
+ * meaningless (and misleading: a padel-only player would look "unrated"
+ * or oddly-rated on a football candidates list otherwise).
  */
-export async function getRatingsSummaries(userIds: string[]): Promise<Map<string, RatingsSummaryDto>> {
+export async function getRatingsSummaries(userIds: string[], sport: SportRef): Promise<Map<string, RatingsSummaryDto>> {
   if (userIds.length === 0) {
     return new Map();
   }
 
+  const sportFilter = { match: { sportModality: { sportId: sport.id } } };
+
   const [grouped, commentGroups] = await Promise.all([
     prisma.playerRating.groupBy({
       by: ['targetUserId'],
-      where: { targetUserId: { in: userIds } },
+      where: { targetUserId: { in: userIds }, ...sportFilter },
       _avg: { gameplayScore: true, conductScore: true },
       _count: { _all: true },
     }),
     prisma.playerRating.groupBy({
       by: ['targetUserId'],
-      where: { targetUserId: { in: userIds }, AND: [{ comment: { not: null } }, { comment: { not: '' } }] },
+      where: { targetUserId: { in: userIds }, AND: [{ comment: { not: null } }, { comment: { not: '' } }], ...sportFilter },
       _count: { _all: true },
     }),
   ]);
@@ -157,6 +167,8 @@ export async function getRatingsSummaries(userIds: string[]): Promise<Map<string
   const summaries = new Map<string, RatingsSummaryDto>();
   for (const group of grouped) {
     summaries.set(group.targetUserId, {
+      sportId: sport.id,
+      sportName: sport.name,
       gameplayAverage: group._avg.gameplayScore !== null ? roundToOneDecimal(group._avg.gameplayScore) : null,
       conductAverage: group._avg.conductScore !== null ? roundToOneDecimal(group._avg.conductScore) : null,
       count: group._count._all,
@@ -166,9 +178,9 @@ export async function getRatingsSummaries(userIds: string[]): Promise<Map<string
   return summaries;
 }
 
-export async function getRatingsSummary(userId: string): Promise<RatingsSummaryDto> {
-  const summaries = await getRatingsSummaries([userId]);
-  return summaries.get(userId) ?? emptyRatingsSummary();
+export async function getRatingsSummary(userId: string, sport: SportRef): Promise<RatingsSummaryDto> {
+  const summaries = await getRatingsSummaries([userId], sport);
+  return summaries.get(userId) ?? emptyRatingsSummary(sport);
 }
 
 const MAX_RATING_COMMENTS = 20;
@@ -197,15 +209,17 @@ function toRatingCommentDto(rating: {
 
 /**
  * Most recent MAX_RATING_COMMENTS ratings that actually carry written
- * feedback for this user, newest first. Deliberately not paginated or
- * unbounded -- this is the "Ver comentarios" on-demand fetch, never loaded
- * as part of a list of many players at once.
+ * feedback for this user *in this sport*, newest first -- comments from a
+ * different sport's matches are never mixed in. Deliberately not paginated
+ * or unbounded -- this is the "Ver comentarios" on-demand fetch, never
+ * loaded as part of a list of many players at once.
  */
-export async function getRatingComments(userId: string): Promise<RatingCommentDto[]> {
+export async function getRatingComments(userId: string, sportId: string): Promise<RatingCommentDto[]> {
   const ratings = await prisma.playerRating.findMany({
     where: {
       targetUserId: userId,
       AND: [{ comment: { not: null } }, { comment: { not: '' } }],
+      match: { sportModality: { sportId } },
     },
     orderBy: { createdAt: 'desc' },
     take: MAX_RATING_COMMENTS,

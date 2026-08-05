@@ -6,6 +6,8 @@ import { SEED_IDS } from '../../src/infrastructure/database/seedIds.js';
 type CreateTestMatchInput = {
   organizerUserId?: string;
   participantUserIds?: string[];
+  sportModalityId?: string;
+  courtId?: string;
   minPlayers?: number;
   maxPlayers?: number;
   scheduledDate?: Date;
@@ -37,8 +39,8 @@ export async function createTestMatch(input: CreateTestMatchInput = {}): Promise
       id: randomUUID(),
       clubId: SEED_IDS.club.senorPato,
       venueType: 'CLUB',
-      sportModalityId: SEED_IDS.modalities.football5,
-      courtId: SEED_IDS.courts.football5,
+      sportModalityId: input.sportModalityId ?? SEED_IDS.modalities.football5,
+      courtId: input.courtId ?? SEED_IDS.courts.football5,
       organizerUserId: input.organizerUserId ?? SEED_IDS.users.juan,
       minPlayers: input.minPlayers ?? 2,
       maxPlayers: input.maxPlayers ?? 10,

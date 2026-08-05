@@ -10,15 +10,22 @@ type ExactStartTimeInputProps = {
   value: number | null;
   onChange: (value: number) => void;
   label?: string;
+  disabled?: boolean;
 };
 
 /**
  * Plain slot picker within the availability window. Whether an exact time
  * applies at all is decided one level up (the "¿Tenés un horario exacto?"
- * question) -- this component only renders once that answer is "sí", so it
- * has no enabled/disabled state of its own.
+ * question) -- this component only renders once that answer is "sí".
  */
-function ExactStartTimeInput({ availabilityStartMinutes, availabilityEndMinutes, value, onChange, label = 'Horario exacto' }: ExactStartTimeInputProps) {
+function ExactStartTimeInput({
+  availabilityStartMinutes,
+  availabilityEndMinutes,
+  value,
+  onChange,
+  label = 'Horario exacto',
+  disabled = false,
+}: ExactStartTimeInputProps) {
   const options = useMemo(() => {
     const result: number[] = [];
     for (let minutes = availabilityStartMinutes; minutes < availabilityEndMinutes; minutes += STEP_MINUTES) {
@@ -34,6 +41,7 @@ function ExactStartTimeInput({ availabilityStartMinutes, availabilityEndMinutes,
       value={value ?? options[0] ?? availabilityStartMinutes}
       onChange={(event) => onChange(Number(event.target.value))}
       slotProps={{ select: { native: true } }}
+      disabled={disabled}
       fullWidth
     >
       {options.map((minutes) => (

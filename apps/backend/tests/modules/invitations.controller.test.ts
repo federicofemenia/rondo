@@ -13,10 +13,16 @@ beforeAll(async () => {
   await runSeed();
 });
 
-// Arbitrary fixed day so tests never depend on when they happen to run; only
+// A day far enough in the future that it's never already past its own
+// availability window (or even started) by the time the test runs -- only
 // its derived day-of-week (via getUTCDay(), matching PlayerAvailability's
 // convention) matters, never the actual date.
-const TEST_DAY = new Date(Date.UTC(2026, 7, 1));
+function futureUtcDay(daysFromNow: number): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysFromNow));
+}
+
+const TEST_DAY = futureUtcDay(30);
 const TEST_DAY_OF_WEEK = TEST_DAY.getUTCDay();
 
 async function createCandidateUser(firstName: string, lastName = 'Test'): Promise<User> {

@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { CreateInvitationInputDto, MatchInvitationDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
-import { displayName, getConfirmedParticipantIds, requireMatchWithRelations } from './matches.service.js';
+import { assertMatchEditable, displayName, getConfirmedParticipantIds, requireMatchWithRelations } from './matches.service.js';
 import { getMatchCandidates } from './matching.service.js';
 import { MatchServiceError } from './errors.js';
 
@@ -91,6 +91,8 @@ export async function createInvitation(
 ): Promise<MatchInvitationDto> {
   const match = await requireMatchWithRelations(matchId, now);
 
+  assertMatchEditable(match);
+
   if (match.organizerUserId !== organizerUserId) {
     throw new MatchServiceError(403, 'NOT_ORGANIZER', 'Solo el organizador puede invitar jugadores.');
   }
@@ -153,13 +155,18 @@ export async function acceptInvitation(invitationId: string, actingUserId: strin
     throw new MatchServiceError(403, 'NOT_INVITED_USER', 'Solo el jugador invitado puede aceptar esta invitación.');
   }
 
-  if (invitation.match.status !== 'ORGANIZING') {
+  // Resolves lifecycle with the same `now` before trusting the status --
+  // invitation.match.status (from requireInvitation's raw read above) can be
+  // stale (e.g. a franja-only match that just expired) since nothing kept it
+  // in sync until something actually reads the match itself.
+  const match = await requireMatchWithRelations(invitation.matchId, now);
+  if (match.status !== 'ORGANIZING') {
     throw new MatchServiceError(409, 'MATCH_NOT_ACCEPTING_PARTICIPANTS', 'El partido ya no acepta nuevos participantes.');
   }
 
   await prisma.$transaction(async (tx) => {
     const participantsCount = await tx.matchParticipant.count({ where: { matchId: invitation.matchId } });
-    if (participantsCount >= invitation.match.maxPlayers) {
+    if (participantsCount >= match.maxPlayers) {
       throw new MatchServiceError(409, 'MATCH_FULL', 'El partido ya no tiene lugares disponibles.');
     }
 
@@ -167,7 +174,7 @@ export async function acceptInvitation(invitationId: string, actingUserId: strin
     await tx.matchInvitation.update({ where: { id: invitationId }, data: { status: 'ACCEPTED', respondedAt: now } });
 
     const newCount = participantsCount + 1;
-    if (newCount >= invitation.match.maxPlayers) {
+    if (newCount >= match.maxPlayers) {
       await tx.match.update({
         where: { id: invitation.matchId },
         data: { status: 'FULL', statusChangedAt: now, statusChangedByType: 'USER', statusChangedByUserId: actingUserId },
@@ -194,7 +201,7 @@ export async function rejectInvitation(invitationId: string, actingUserId: strin
   return toInvitationDto(await requireInvitation(invitationId));
 }
 
-export async function cancelInvitation(invitationId: string, actingUserId: string): Promise<MatchInvitationDto> {
+export async function cancelInvitation(invitationId: string, actingUserId: string, now: Date = new Date()): Promise<MatchInvitationDto> {
   const invitation = await requireInvitation(invitationId);
 
   if (invitation.status !== 'PENDING') {
@@ -204,6 +211,9 @@ export async function cancelInvitation(invitationId: string, actingUserId: strin
   if (invitation.match.organizerUserId !== actingUserId) {
     throw new MatchServiceError(403, 'NOT_ORGANIZER', 'Solo el organizador puede cancelar esta invitación.');
   }
+
+  const match = await requireMatchWithRelations(invitation.matchId, now);
+  assertMatchEditable(match);
 
   await prisma.matchInvitation.update({ where: { id: invitationId }, data: { status: 'CANCELLED' } });
 

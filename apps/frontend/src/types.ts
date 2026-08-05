@@ -12,6 +12,7 @@ export type PendingAction = {
 export type MatchEntity = {
   id: string;
   status: MatchStatusDto;
+  sportId: string;
   sport: string;
   modality: string;
   sportModalityId: string;

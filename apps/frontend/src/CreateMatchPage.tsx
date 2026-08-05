@@ -22,6 +22,7 @@ import { useMyClubs } from './useMyClubs';
 import { useSports } from './useSports';
 
 export type MatchDraft = {
+  sportId: string;
   sport: string;
   modality: string;
   sportModalityId: string;
@@ -130,11 +131,13 @@ function CreateMatchPage({ onCreateMatch }: CreateMatchPageProps) {
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const sportModalityId = sportModalities[sport]?.find((option) => option.name === modality)?.id;
-    if (!sportModalityId || isCustomVenueMissing || isDurationInvalid) {
+    const sportId = sports.find((option) => option.name === sport)?.id;
+    if (!sportModalityId || !sportId || isCustomVenueMissing || isDurationInvalid) {
       return;
     }
     const selectedClub = isOtherClub ? undefined : clubs.find((club) => club.id === clubId);
     onCreateMatch?.({
+      sportId,
       sport,
       modality,
       sportModalityId,

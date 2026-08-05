@@ -62,11 +62,37 @@ describe('GET /api/v1/users/:id/public-profile', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${randomUUID()}/public-profile`,
+      url: `/api/v1/users/${randomUUID()}/public-profile?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 
     expect(response.statusCode).toBe(404);
+    expect(response.json().error.code).toBe('USER_NOT_FOUND');
+    await app.close();
+  });
+
+  it('requires a sportId query param', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${SEED_IDS.users.juan}/public-profile`,
+      headers: { authorization: 'Bearer juan' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('returns 404 when sportId does not match a real sport', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${SEED_IDS.users.juan}/public-profile?sportId=${randomUUID()}`,
+      headers: { authorization: 'Bearer juan' },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error.code).toBe('SPORT_NOT_FOUND');
     await app.close();
   });
 
@@ -79,7 +105,7 @@ describe('GET /api/v1/users/:id/public-profile', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${target.id}/public-profile`,
+      url: `/api/v1/users/${target.id}/public-profile?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 
@@ -92,7 +118,14 @@ describe('GET /api/v1/users/:id/public-profile', () => {
       biography: 'Juego todos los martes.',
     });
     expect((body.data.positions as string[]).sort()).toEqual(['Delantero', 'Mediocampista']);
-    expect(body.data.ratings).toEqual({ gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 });
+    expect(body.data.ratings).toEqual({
+      sportId: SEED_IDS.sports.football,
+      sportName: 'Fútbol',
+      gameplayAverage: null,
+      conductAverage: null,
+      count: 0,
+      commentsCount: 0,
+    });
 
     expect(body.data.email).toBeUndefined();
     expect(body.data.username).toBeUndefined();
@@ -107,7 +140,7 @@ describe('GET /api/v1/users/:id/public-profile', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${target.id}/public-profile`,
+      url: `/api/v1/users/${target.id}/public-profile?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 
@@ -118,29 +151,34 @@ describe('GET /api/v1/users/:id/public-profile', () => {
     await app.close();
   });
 
-  it('deduplicates positions across multiple sport profiles', async () => {
+  it('only returns positions from the requested sport, never a different one', async () => {
     const target = await createBareUser();
     await prisma.userSportProfile.create({
       data: { userId: target.id, sportId: SEED_IDS.sports.football, positions: ['Delantero'], isAvailableForInvitations: true },
     });
     await prisma.userSportProfile.create({
-      data: { userId: target.id, sportId: SEED_IDS.sports.padel, positions: ['Delantero'], isAvailableForInvitations: true },
+      data: { userId: target.id, sportId: SEED_IDS.sports.padel, positions: ['Reves'], isAvailableForInvitations: true },
     });
 
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
-    const response = await app.inject({
+    const footballResponse = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${target.id}/public-profile`,
+      url: `/api/v1/users/${target.id}/public-profile?sportId=${SEED_IDS.sports.football}`,
+      headers: { authorization: 'Bearer juan' },
+    });
+    const padelResponse = await app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${target.id}/public-profile?sportId=${SEED_IDS.sports.padel}`,
       headers: { authorization: 'Bearer juan' },
     });
 
-    const body = response.json() as { data: { positions: string[] } };
-    expect(body.data.positions).toEqual(['Delantero']);
+    expect((footballResponse.json() as { data: { positions: string[] } }).data.positions).toEqual(['Delantero']);
+    expect((padelResponse.json() as { data: { positions: string[] } }).data.positions).toEqual(['Reves']);
 
     await app.close();
   });
 
-  it('reflects the aggregated ratings average and count', async () => {
+  it('reflects the aggregated ratings average and count for the requested sport only', async () => {
     const target = await createBareUser();
     await rateTarget(target.id, SEED_IDS.users.juan, 4, 5);
     await rateTarget(target.id, SEED_IDS.users.martin, 2, 3);
@@ -148,14 +186,50 @@ describe('GET /api/v1/users/:id/public-profile', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${target.id}/public-profile`,
+      url: `/api/v1/users/${target.id}/public-profile?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 
     const body = response.json() as {
-      data: { ratings: { gameplayAverage: number; conductAverage: number; count: number; commentsCount: number } };
+      data: { ratings: { sportId: string; sportName: string; gameplayAverage: number; conductAverage: number; count: number; commentsCount: number } };
     };
-    expect(body.data.ratings).toEqual({ gameplayAverage: 3, conductAverage: 4, count: 2, commentsCount: 0 });
+    expect(body.data.ratings).toEqual({
+      sportId: SEED_IDS.sports.football,
+      sportName: 'Fútbol',
+      gameplayAverage: 3,
+      conductAverage: 4,
+      count: 2,
+      commentsCount: 0,
+    });
+
+    await app.close();
+  });
+
+  it('never mixes ratings from a different sport into the average', async () => {
+    const target = await createBareUser();
+    // Real ratings, but from a padel match -- must not affect the football summary.
+    const padelMatch = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      participantUserIds: [SEED_IDS.users.juan, target.id],
+      status: 'COMPLETED',
+      endsAt: new Date(Date.now() - 3600_000),
+      statusChangedAt: new Date(Date.now() - 3600_000),
+      sportModalityId: SEED_IDS.modalities.padelDoubles,
+    });
+    createdMatchIds.push(padelMatch.id);
+    await prisma.playerRating.create({
+      data: { matchId: padelMatch.id, authorUserId: SEED_IDS.users.juan, targetUserId: target.id, gameplayScore: 5, conductScore: 5 },
+    });
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${target.id}/public-profile?sportId=${SEED_IDS.sports.football}`,
+      headers: { authorization: 'Bearer juan' },
+    });
+
+    const body = response.json() as { data: { ratings: { gameplayAverage: number | null; count: number } } };
+    expect(body.data.ratings).toMatchObject({ gameplayAverage: null, count: 0 });
 
     await app.close();
   });
@@ -168,7 +242,7 @@ describe('GET /api/v1/users/:id/public-profile', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${target.id}/public-profile`,
+      url: `/api/v1/users/${target.id}/public-profile?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 
@@ -189,12 +263,25 @@ describe('GET /api/v1/users/:id/rating-comments', () => {
     await app.close();
   });
 
-  it('returns "no comments" as an empty list for a user with none', async () => {
+  it('requires a sportId query param', async () => {
     const target = await createBareUser();
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
       url: `/api/v1/users/${target.id}/rating-comments`,
+      headers: { authorization: 'Bearer juan' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('returns "no comments" as an empty list for a user with none', async () => {
+    const target = await createBareUser();
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${target.id}/rating-comments?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 
@@ -212,7 +299,7 @@ describe('GET /api/v1/users/:id/rating-comments', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${target.id}/rating-comments`,
+      url: `/api/v1/users/${target.id}/rating-comments?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 
@@ -233,6 +320,44 @@ describe('GET /api/v1/users/:id/rating-comments', () => {
     await app.close();
   });
 
+  it('excludes comments from a different sport', async () => {
+    const target = await createBareUser();
+    await rateTarget(target.id, SEED_IDS.users.juan, 5, 4, 'Comentario de fútbol.');
+
+    const padelMatch = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      participantUserIds: [SEED_IDS.users.juan, target.id],
+      status: 'COMPLETED',
+      endsAt: new Date(Date.now() - 3600_000),
+      statusChangedAt: new Date(Date.now() - 3600_000),
+      sportModalityId: SEED_IDS.modalities.padelDoubles,
+      courtId: SEED_IDS.courts.padel1,
+    });
+    createdMatchIds.push(padelMatch.id);
+    await prisma.playerRating.create({
+      data: {
+        matchId: padelMatch.id,
+        authorUserId: SEED_IDS.users.juan,
+        targetUserId: target.id,
+        gameplayScore: 5,
+        conductScore: 5,
+        comment: 'Comentario de pádel.',
+      },
+    });
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/users/${target.id}/rating-comments?sportId=${SEED_IDS.sports.football}`,
+      headers: { authorization: 'Bearer juan' },
+    });
+
+    const body = response.json() as { data: Array<{ comment: string }> };
+    expect(body.data.map((comment) => comment.comment)).toEqual(['Comentario de fútbol.']);
+
+    await app.close();
+  });
+
   it('orders comments most recent first', async () => {
     const target = await createBareUser();
     const older = await rateTarget(target.id, SEED_IDS.users.juan, 4, 4, 'Primero.');
@@ -242,7 +367,7 @@ describe('GET /api/v1/users/:id/rating-comments', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${target.id}/rating-comments`,
+      url: `/api/v1/users/${target.id}/rating-comments?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 
@@ -264,7 +389,7 @@ describe('GET /api/v1/users/:id/rating-comments', () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/users/${target.id}/rating-comments`,
+      url: `/api/v1/users/${target.id}/rating-comments?sportId=${SEED_IDS.sports.football}`,
       headers: { authorization: 'Bearer juan' },
     });
 

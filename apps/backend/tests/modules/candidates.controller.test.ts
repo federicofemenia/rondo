@@ -13,10 +13,20 @@ beforeAll(async () => {
   await runSeed();
 });
 
-// Arbitrary fixed day so tests never depend on when they happen to run; only
+// A day far enough in the future that it's never already past its own
+// availability window (or even started) by the time the test runs -- only
 // its derived day-of-week (via getUTCDay(), matching PlayerAvailability's
-// convention) matters, never the actual date.
-const TEST_DAY = new Date(Date.UTC(2026, 7, 1));
+// convention) matters, never the actual date. Computed relative to the real
+// clock rather than hardcoded, since a fixed calendar date eventually
+// becomes "the past" and every franja-only match on it would immediately
+// read as EXPIRED (rangeStartAt already gone) regardless of what the test
+// is actually trying to exercise.
+function futureUtcDay(daysFromNow: number): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysFromNow));
+}
+
+const TEST_DAY = futureUtcDay(30);
 const TEST_DAY_OF_WEEK = TEST_DAY.getUTCDay();
 
 /** A real UTC instant for `hour:minute` Argentina local time on TEST_DAY. */
@@ -552,14 +562,76 @@ describe('GET /api/v1/matches/:matchId/candidates', () => {
     const body = response.json() as {
       data: Array<{
         id: string;
-        ratings: { gameplayAverage: number | null; conductAverage: number | null; count: number; commentsCount: number };
+        ratings: {
+          sportId: string;
+          sportName: string;
+          gameplayAverage: number | null;
+          conductAverage: number | null;
+          count: number;
+          commentsCount: number;
+        };
       }>;
     };
     const ratedCandidate = body.data.find((candidate) => candidate.id === rated.id);
     const unratedCandidate = body.data.find((candidate) => candidate.id === unrated.id);
 
-    expect(ratedCandidate?.ratings).toEqual({ gameplayAverage: 5, conductAverage: 4, count: 1, commentsCount: 0 });
-    expect(unratedCandidate?.ratings).toEqual({ gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 });
+    expect(ratedCandidate?.ratings).toEqual({
+      sportId: SEED_IDS.sports.football,
+      sportName: 'Fútbol',
+      gameplayAverage: 5,
+      conductAverage: 4,
+      count: 1,
+      commentsCount: 0,
+    });
+    expect(unratedCandidate?.ratings).toEqual({
+      sportId: SEED_IDS.sports.football,
+      sportName: 'Fútbol',
+      gameplayAverage: null,
+      conductAverage: null,
+      count: 0,
+      commentsCount: 0,
+    });
+
+    await app.close();
+  });
+
+  it("never mixes a candidate's ratings from a different sport into this match's candidate list", async () => {
+    const candidate = await createCandidateUser('Rodrigo');
+    createdUserIds.push(candidate.id);
+    const profile = await createSportProfile(candidate.id, SEED_IDS.sports.football);
+    await addAvailability(profile.id, TEST_DAY_OF_WEEK, 14 * 60, 19 * 60);
+
+    // Real, well-formed ratings, but earned in padel -- must never surface
+    // on a football match's candidate list.
+    const padelMatch = await createTestMatch({
+      organizerUserId: SEED_IDS.users.juan,
+      participantUserIds: [SEED_IDS.users.juan, candidate.id],
+      status: 'COMPLETED',
+      endsAt: new Date(Date.now() - 3600_000),
+      statusChangedAt: new Date(Date.now() - 3600_000),
+      sportModalityId: SEED_IDS.modalities.padelDoubles,
+      courtId: SEED_IDS.courts.padel1,
+    });
+    createdMatchIds.push(padelMatch.id);
+    await prisma.playerRating.create({
+      data: { matchId: padelMatch.id, authorUserId: SEED_IDS.users.juan, targetUserId: candidate.id, gameplayScore: 5, conductScore: 5 },
+    });
+
+    const match = await createTestMatch({
+      scheduledDate: TEST_DAY,
+      availabilityStartMinutes: 14 * 60,
+      availabilityEndMinutes: 19 * 60,
+      startsAt: null,
+      endsAt: null,
+    });
+    createdMatchIds.push(match.id);
+
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });
+    const response = await app.inject({ method: 'GET', url: `/api/v1/matches/${match.id}/candidates`, headers: { authorization: 'Bearer juan' } });
+
+    const body = response.json() as { data: Array<{ id: string; ratings: { gameplayAverage: number | null; count: number } }> };
+    const found = body.data.find((current) => current.id === candidate.id);
+    expect(found?.ratings).toMatchObject({ gameplayAverage: null, count: 0 });
 
     await app.close();
   });

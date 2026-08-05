@@ -88,6 +88,7 @@ describe('CreateMatchPage', () => {
     const expectedDate = buildDayOptions()[0]!.value;
 
     expect(onCreateMatch).toHaveBeenCalledWith({
+      sportId: 'sport-football',
       sport: 'Fútbol',
       modality: 'Fútbol 5',
       sportModalityId: 'modality-football-5',

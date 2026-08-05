@@ -133,7 +133,21 @@ function MatchDetailPage({
 
   const status = match.status;
   const cancelled = status === 'CANCELLED';
-  const canEditSchedule = match.isOrganizer && status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'EXPIRED';
+  // Only ORGANIZING/FULL are editable, and only while they still are that --
+  // once a match reaches its start/expiry instant it moves on to
+  // IN_PROGRESS/EXPIRED/COMPLETED server-side, so status alone is enough
+  // (mirrors the backend's isMatchEditable).
+  const isEditable = match.isOrganizer && (status === 'ORGANIZING' || status === 'FULL');
+  const readOnlyReason: string | null =
+    status === 'IN_PROGRESS'
+      ? 'Este partido está en juego y no puede modificarse.'
+      : status === 'EXPIRED'
+        ? 'Este partido venció y ya no puede modificarse.'
+        : status === 'COMPLETED'
+          ? 'Este partido finalizó y ya no puede modificarse.'
+          : status === 'CANCELLED'
+            ? 'Este partido fue cancelado y no puede modificarse.'
+            : null;
   const visibleTabs: Tab[] = cancelled ? ['datos', 'chat', 'valoraciones'] : ['datos', 'jugadores', 'chat', 'valoraciones'];
   const statusChip = MATCH_STATUS_CHIP_STYLES[status];
   const schedule = describeSchedule(match);
@@ -174,7 +188,7 @@ function MatchDetailPage({
   };
 
   const handleSaveSchedule = async () => {
-    if (isCustomVenueMissing || isDurationInvalid) {
+    if (isCustomVenueMissing || isDurationInvalid || !isEditable) {
       return;
     }
     setScheduleSaving(true);
@@ -369,15 +383,20 @@ function MatchDetailPage({
               ) : null}
             </Box>
 
-            {canEditSchedule ? (
+            {match.isOrganizer ? (
               <Stack spacing={3} sx={{ mt: 4 }}>
+                {readOnlyReason ? (
+                  <Typography variant="body2" color="warning.main" sx={{ fontWeight: 600 }}>
+                    {readOnlyReason}
+                  </Typography>
+                ) : null}
                 <TextField
                   select
                   label="Editar sede"
                   value={clubSelectDraft}
                   onChange={(event) => setClubSelectDraft(event.target.value)}
                   slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                  disabled={clubsLoading}
+                  disabled={clubsLoading || !isEditable}
                   fullWidth
                 >
                   <option value="">Sede a definir</option>
@@ -397,6 +416,7 @@ function MatchDetailPage({
                     placeholder="Ej: Club Atlético Central, Complejo La Canchita, Cancha de Juan"
                     error={isCustomVenueMissing}
                     helperText={isCustomVenueMissing ? 'Ingresá un nombre para la sede.' : undefined}
+                    disabled={!isEditable}
                     fullWidth
                   />
                 ) : null}
@@ -407,6 +427,7 @@ function MatchDetailPage({
                   value={dateDraft}
                   onChange={(event) => handleDateDraftChange(event.target.value)}
                   slotProps={{ select: { native: true } }}
+                  disabled={!isEditable}
                   fullWidth
                 >
                   {!dayOptions.some((option) => option.value === dateDraft) ? <option value={dateDraft}>{dateDraft}</option> : null}
@@ -422,10 +443,11 @@ function MatchDetailPage({
                   value={durationMinutesDraft}
                   onChange={(event) => setDurationMinutesDraft(Number(event.target.value))}
                   slotProps={{ htmlInput: { min: 15, max: 600, step: 15 } }}
+                  disabled={!isEditable}
                   fullWidth
                 />
 
-                <FormControl>
+                <FormControl disabled={!isEditable}>
                   <FormLabel id="has-exact-time-draft-label">¿Tenés un horario exacto?</FormLabel>
                   <RadioGroup
                     row
@@ -433,13 +455,18 @@ function MatchDetailPage({
                     value={hasExactTimeDraft ? 'yes' : 'no'}
                     onChange={(event) => handleHasExactTimeDraftChange(event.target.value === 'yes')}
                   >
-                    <FormControlLabel value="yes" control={<Radio />} label="Sí" />
-                    <FormControlLabel value="no" control={<Radio />} label="No" />
+                    <FormControlLabel value="yes" control={<Radio />} label="Sí" disabled={!isEditable} />
+                    <FormControlLabel value="no" control={<Radio />} label="No" disabled={!isEditable} />
                   </RadioGroup>
                 </FormControl>
 
                 {!hasExactTimeDraft ? (
-                  <TimeRangeInput value={availabilityRangeDraft} onChange={handleAvailabilityRangeDraftChange} label="Editar franja horaria disponible" />
+                  <TimeRangeInput
+                    value={availabilityRangeDraft}
+                    onChange={handleAvailabilityRangeDraftChange}
+                    label="Editar franja horaria disponible"
+                    disabled={!isEditable}
+                  />
                 ) : null}
 
                 {hasExactTimeDraft ? (
@@ -449,6 +476,7 @@ function MatchDetailPage({
                     value={exactStartMinutesDraft}
                     onChange={setExactStartMinutesDraft}
                     label="Editar horario exacto"
+                    disabled={!isEditable}
                   />
                 ) : null}
                 {scheduleError ? (
@@ -456,11 +484,15 @@ function MatchDetailPage({
                     {scheduleError}
                   </Typography>
                 ) : null}
-                <Button variant="outlined" onClick={() => void handleSaveSchedule()} disabled={scheduleSaving || isCustomVenueMissing || isDurationInvalid}>
+                <Button
+                  variant="outlined"
+                  onClick={() => void handleSaveSchedule()}
+                  disabled={scheduleSaving || isCustomVenueMissing || isDurationInvalid || !isEditable}
+                >
                   {scheduleSaving ? 'Guardando…' : 'Guardar cambios'}
                 </Button>
 
-                {match.venueType === 'CLUB' && !match.courtName ? (
+                {isEditable && match.venueType === 'CLUB' && !match.courtName ? (
                   <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
                     <Button variant="contained" onClick={onRequestBooking}>
                       Realizar una reserva
@@ -478,9 +510,15 @@ function MatchDetailPage({
             <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', mt: 6 }}>
               <Typography sx={{ fontWeight: 700, mb: 2 }}>Gestión del partido</Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-                Podés cancelar el partido si ya no se va a jugar.
+                {isEditable ? 'Podés cancelar el partido si ya no se va a jugar.' : readOnlyReason}
               </Typography>
-              <Button variant="outlined" color="error" onClick={onCancelMatch} sx={{ borderColor: 'divider', color: 'error.main' }}>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={onCancelMatch}
+                disabled={!isEditable}
+                sx={{ borderColor: 'divider', color: 'error.main' }}
+              >
                 Cancelar partido
               </Button>
             </Card>
@@ -498,7 +536,7 @@ function MatchDetailPage({
           maxPlayers={Number(match.maxPlayers)}
           searchingPlayers={searchingPlayers}
           candidatesSection={
-            searchingPlayers ? (
+            searchingPlayers && isEditable ? (
               <Card variant="outlined" sx={{ p: 6, borderColor: 'divider', mb: 6 }}>
                 {match.status === 'FULL' ? (
                   <>

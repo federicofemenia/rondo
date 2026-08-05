@@ -1,5 +1,6 @@
 import type { Match, MatchStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma.js';
+import { toArgentinaInstant } from './argentinaTime.js';
 
 const TERMINAL_STATUSES: readonly MatchStatus[] = ['COMPLETED', 'CANCELLED', 'EXPIRED'];
 
@@ -9,7 +10,7 @@ export const CHAT_POST_MATCH_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const CHAT_WRITABLE_STATUSES: readonly MatchStatus[] = ['ORGANIZING', 'FULL', 'IN_PROGRESS', 'COMPLETED'];
 
-type LifecycleMatch = Pick<Match, 'status' | 'scheduledDate' | 'startsAt' | 'endsAt' | 'minPlayers'>;
+type LifecycleMatch = Pick<Match, 'status' | 'scheduledDate' | 'availabilityStartMinutes' | 'startsAt' | 'endsAt' | 'minPlayers'>;
 
 /** Midnight (UTC) of the day after `date`, i.e. the exclusive end of that calendar day. */
 export function endOfScheduledDay(date: Date): Date {
@@ -17,12 +18,23 @@ export function endOfScheduledDay(date: Date): Date {
 }
 
 /**
+ * The instant a franja-only match (no confirmed startsAt) expires: the
+ * moment its proposed availability window *starts*, in Argentina local
+ * time -- not when it ends, and not end-of-day. If the organizer hasn't
+ * locked in an exact time before the window they proposed even begins,
+ * there's no reason for players to expect the match still might happen.
+ */
+export function rangeStartAt(match: Pick<Match, 'scheduledDate' | 'availabilityStartMinutes'>): Date {
+  return toArgentinaInstant(match.scheduledDate, match.availabilityStartMinutes);
+}
+
+/**
  * Pure time-based transition table. Participant-count-driven transitions
  * (ORGANIZING <-> FULL) are applied wherever participants change, not here.
- * A match without a confirmed time (startsAt/endsAt still null) never starts
- * or completes automatically: it stays ORGANIZING/FULL until either a time
- * is set, or the scheduled day is over, at which point it expires so it
- * cannot linger forever without a time.
+ * A match without a confirmed time (startsAt/endsAt still null) never
+ * starts or completes automatically: it stays ORGANIZING/FULL until either
+ * a time is set, or its proposed availability window starts (rangeStartAt),
+ * at which point it expires -- it never lingers all the way to end-of-day.
  *
  * An ORGANIZING match that never reaches maxPlayers still counts as played
  * once it has at least minPlayers confirmed: it rides the same clock as a
@@ -36,7 +48,7 @@ export function resolveMatchStatus(match: LifecycleMatch, participantsCount: num
   }
 
   if (!match.startsAt || !match.endsAt) {
-    return now.getTime() >= endOfScheduledDay(match.scheduledDate).getTime() ? 'EXPIRED' : match.status;
+    return now.getTime() >= rangeStartAt(match).getTime() ? 'EXPIRED' : match.status;
   }
 
   const nowMs = now.getTime();
@@ -131,7 +143,7 @@ export function matchChatClosesAt(match: Pick<Match, 'status' | 'endsAt'>): Date
 }
 
 export function isVisibleOnHome(
-  match: Pick<Match, 'status' | 'scheduledDate' | 'endsAt' | 'statusChangedAt'>,
+  match: Pick<Match, 'status' | 'scheduledDate' | 'availabilityStartMinutes' | 'endsAt' | 'statusChangedAt'>,
   now: Date = new Date(),
 ): boolean {
   const nowMs = now.getTime();
@@ -145,7 +157,7 @@ export function isVisibleOnHome(
       return nowMs - match.statusChangedAt.getTime() < HOME_VISIBILITY_WINDOW_MS;
     case 'COMPLETED':
     case 'EXPIRED': {
-      const referenceMs = match.endsAt ? match.endsAt.getTime() : endOfScheduledDay(match.scheduledDate).getTime();
+      const referenceMs = match.endsAt ? match.endsAt.getTime() : rangeStartAt(match).getTime();
       return nowMs - referenceMs < HOME_VISIBILITY_WINDOW_MS;
     }
     default:

@@ -1,7 +1,44 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
-import { clerkAuthMock, mockClubs, mockMeState, mockMyInvitations } from './setup';
+import type { MatchSummaryDto } from '@rondo/contracts';
+import { clerkAuthMock, mockClubs, mockMeState, mockMyInvitations, mockMyMatches } from './setup';
+
+function fixtureMatch(overrides: Partial<MatchSummaryDto> = {}): MatchSummaryDto {
+  const now = new Date().toISOString();
+  return {
+    id: 'match-status-fixture',
+    status: 'ORGANIZING',
+    clubId: 'club-1',
+    clubName: 'Club Señor Pato',
+    venueType: 'CLUB',
+    customVenueName: null,
+    sportId: 'sport-football',
+    sportModalityId: 'modality-football-5',
+    sportName: 'Fútbol',
+    modalityName: 'Fútbol 5',
+    courtName: 'Cancha 2',
+    minPlayers: 4,
+    maxPlayers: 10,
+    positions: [],
+    participantsCount: 1,
+    scheduledDate: '2026-08-05',
+    availabilityStartMinutes: 17 * 60,
+    availabilityEndMinutes: 22 * 60,
+    durationMinutes: 60,
+    startsAt: '2026-08-05T19:00:00.000Z',
+    endsAt: '2026-08-05T20:00:00.000Z',
+    organizerUserId: 'user-test',
+    organizerDisplayName: 'Federico Femenia',
+    isOrganizer: true,
+    createdAt: now,
+    statusChangedAt: now,
+    statusChangedByType: 'SYSTEM',
+    statusChangedByUser: null,
+    cancellationReason: null,
+    ...overrides,
+  };
+}
 
 async function loginAndReachHome() {
   render(<App />);
@@ -324,5 +361,57 @@ describe('App', () => {
     } finally {
       Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: true });
     }
+  });
+
+  it('shows "Partido en juego" (not "Faltan N jugadores") on Home for an IN_PROGRESS match', async () => {
+    clerkAuthMock.isSignedIn = true;
+    mockMyMatches.push(fixtureMatch({ status: 'IN_PROGRESS', maxPlayers: 10, participantsCount: 3 }));
+    render(<App />);
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
+    expect(await screen.findByText('Partido en juego')).toBeTruthy();
+    expect(screen.queryByText(/faltan \d+ jugadores/i)).toBeFalsy();
+  });
+
+  it('shows "Partido vencido" (not "Faltan N jugadores") on Home for an EXPIRED match', async () => {
+    clerkAuthMock.isSignedIn = true;
+    mockMyMatches.push(fixtureMatch({ status: 'EXPIRED', maxPlayers: 10, participantsCount: 3 }));
+    render(<App />);
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
+    expect(await screen.findByText('Partido vencido')).toBeTruthy();
+    expect(screen.queryByText(/faltan \d+ jugadores/i)).toBeFalsy();
+  });
+
+  it('shows "Partido finalizado" (not "Faltan N jugadores") on Home for a COMPLETED match', async () => {
+    clerkAuthMock.isSignedIn = true;
+    mockMyMatches.push(fixtureMatch({ status: 'COMPLETED', maxPlayers: 10, participantsCount: 3 }));
+    render(<App />);
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
+    expect(await screen.findByText('Partido finalizado')).toBeTruthy();
+    expect(screen.queryByText(/faltan \d+ jugadores/i)).toBeFalsy();
+  });
+
+  it('still shows "Faltan N jugadores" for an ORGANIZING match', async () => {
+    clerkAuthMock.isSignedIn = true;
+    mockMyMatches.push(fixtureMatch({ status: 'ORGANIZING', maxPlayers: 10, participantsCount: 3 }));
+    render(<App />);
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
+    expect(await screen.findByText('Faltan 7 jugadores')).toBeTruthy();
+  });
+
+  it('an IN_PROGRESS or EXPIRED match never generates a pending action (venue/court/time) on the bell', async () => {
+    clerkAuthMock.isSignedIn = true;
+    mockMyMatches.push(
+      fixtureMatch({ id: 'match-in-progress', status: 'IN_PROGRESS', venueType: 'TO_BE_DEFINED', clubId: null, clubName: null, startsAt: null }),
+      fixtureMatch({ id: 'match-expired', status: 'EXPIRED', venueType: 'TO_BE_DEFINED', clubId: null, clubName: null, startsAt: null }),
+    );
+    render(<App />);
+    await screen.findByRole('heading', { name: /hola, federico/i });
+
+    await screen.findByText('Partido en juego');
+    expect(screen.getByLabelText('Notificaciones')).toBeTruthy();
   });
 });

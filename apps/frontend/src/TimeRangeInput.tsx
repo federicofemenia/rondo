@@ -18,10 +18,11 @@ type TimeRangeInputProps = {
   value: [number, number];
   onChange: (value: [number, number]) => void;
   label?: string;
+  disabled?: boolean;
 };
 
 /** Mandatory availability-window picker: the organizer must always choose a franja, even without an exact time. */
-function TimeRangeInput({ value, onChange, label = 'Franja horaria disponible' }: TimeRangeInputProps) {
+function TimeRangeInput({ value, onChange, label = 'Franja horaria disponible', disabled = false }: TimeRangeInputProps) {
   return (
     <Box sx={{ p: 3, borderRadius: '12px', border: '1px solid', borderColor: 'divider' }}>
       <Typography sx={{ fontWeight: 700 }}>{label}</Typography>
@@ -38,6 +39,7 @@ function TimeRangeInput({ value, onChange, label = 'Franja horaria disponible' }
         valueLabelDisplay="auto"
         valueLabelFormat={formatHour}
         disableSwap
+        disabled={disabled}
         getAriaLabel={(index) => (index === 0 ? 'Desde' : 'Hasta')}
         sx={{ mt: 4, color: 'primary.main' }}
       />

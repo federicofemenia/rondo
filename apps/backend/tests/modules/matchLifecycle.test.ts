@@ -5,6 +5,7 @@ import {
   isRatingsEnabled,
   isRatingsOpen,
   isVisibleOnHome,
+  rangeStartAt,
   ratingsCloseAt,
   resolveMatchStatus,
 } from '../../src/modules/matches/matchLifecycle.js';
@@ -12,6 +13,7 @@ import {
 type FakeMatch = {
   status: MatchStatus;
   scheduledDate: Date;
+  availabilityStartMinutes: number;
   startsAt: Date | null;
   endsAt: Date | null;
   statusChangedAt: Date;
@@ -23,6 +25,7 @@ function fakeMatch(overrides: Partial<FakeMatch> = {}): FakeMatch {
   return {
     status: 'ORGANIZING',
     scheduledDate: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())),
+    availabilityStartMinutes: 10 * 60,
     startsAt: new Date(now.getTime() - 3600_000),
     endsAt: new Date(now.getTime() + 3600_000),
     statusChangedAt: now,
@@ -115,24 +118,56 @@ describe('resolveMatchStatus', () => {
     expect(resolveMatchStatus(match, 0, farFuture)).toBe(status);
   });
 
-  it.each<MatchStatus>(['ORGANIZING', 'FULL'])('never auto-transitions %s to IN_PROGRESS/COMPLETED while startsAt/endsAt are undefined', (status) => {
-    const scheduledDate = new Date('2026-03-10T00:00:00Z');
-    const stillSameDay = new Date('2026-03-10T18:00:00Z');
-    const match = fakeMatch({ status, scheduledDate, startsAt: null, endsAt: null });
+  it.each<MatchStatus>(['ORGANIZING', 'FULL'])(
+    'never auto-transitions %s to IN_PROGRESS/COMPLETED while startsAt/endsAt are undefined, up until the proposed window starts',
+    (status) => {
+      // Franja 10:00-18:00 Argentina local on 2026-03-10 -> rangeStartAt is
+      // 2026-03-10T13:00:00Z (10:00 -3h). One minute before it, still not expired.
+      const scheduledDate = new Date('2026-03-10T00:00:00Z');
+      const oneMinuteBeforeWindowStarts = new Date('2026-03-10T12:59:00Z');
+      const match = fakeMatch({ status, scheduledDate, availabilityStartMinutes: 10 * 60, startsAt: null, endsAt: null });
 
-    expect(resolveMatchStatus(match, 0, stillSameDay)).toBe(status);
+      expect(resolveMatchStatus(match, 0, oneMinuteBeforeWindowStarts)).toBe(status);
+    },
+  );
+
+  it.each<MatchStatus>(['ORGANIZING', 'FULL'])(
+    'expires %s the exact instant the proposed window starts, without waiting for it to end',
+    (status) => {
+      const scheduledDate = new Date('2026-03-10T00:00:00Z');
+      const windowStarts = new Date('2026-03-10T13:00:00Z'); // 10:00 Argentina local
+      const match = fakeMatch({ status, scheduledDate, availabilityStartMinutes: 10 * 60, startsAt: null, endsAt: null });
+
+      expect(resolveMatchStatus(match, 0, windowStarts)).toBe('EXPIRED');
+    },
+  );
+
+  it('stays EXPIRED for the rest of the window and past its end -- availabilityEndMinutes never un-expires it', () => {
+    const scheduledDate = new Date('2026-03-10T00:00:00Z');
+    const match = fakeMatch({ status: 'ORGANIZING', scheduledDate, availabilityStartMinutes: 10 * 60, startsAt: null, endsAt: null });
+
+    // Midday, well inside the proposed 10:00-18:00 window.
+    expect(resolveMatchStatus(match, 0, new Date('2026-03-10T15:00:00Z'))).toBe('EXPIRED');
+    // Past 18:01 local (21:01Z), i.e. past where the old end-of-window rule used to expire it.
+    expect(resolveMatchStatus(match, 0, new Date('2026-03-10T21:01:00Z'))).toBe('EXPIRED');
   });
 
-  it.each<MatchStatus>(['ORGANIZING', 'FULL'])('expires %s once the scheduled day is over and no time was ever set', (status) => {
+  it('a later availability window (20:00-23:00) expires at 20:00 local, not 23:00 or midnight', () => {
     const scheduledDate = new Date('2026-03-10T00:00:00Z');
-    const dayOver = new Date('2026-03-11T00:00:00Z');
-    const match = fakeMatch({ status, scheduledDate, startsAt: null, endsAt: null });
+    const match = fakeMatch({ status: 'FULL', scheduledDate, availabilityStartMinutes: 20 * 60, startsAt: null, endsAt: null });
 
-    expect(resolveMatchStatus(match, 0, dayOver)).toBe('EXPIRED');
+    expect(resolveMatchStatus(match, 0, new Date('2026-03-10T22:59:00Z'))).toBe('FULL'); // 19:59 local
+    expect(resolveMatchStatus(match, 0, new Date('2026-03-10T23:00:00Z'))).toBe('EXPIRED'); // 20:00 local
   });
 
   it('endOfScheduledDay returns midnight UTC of the following day', () => {
     expect(endOfScheduledDay(new Date('2026-03-10T15:30:00Z')).toISOString()).toBe('2026-03-11T00:00:00.000Z');
+  });
+
+  it('rangeStartAt converts availabilityStartMinutes to the Argentina-local instant on scheduledDate', () => {
+    const scheduledDate = new Date('2026-03-10T00:00:00Z');
+    expect(rangeStartAt({ scheduledDate, availabilityStartMinutes: 10 * 60 }).toISOString()).toBe('2026-03-10T13:00:00.000Z');
+    expect(rangeStartAt({ scheduledDate, availabilityStartMinutes: 0 }).toISOString()).toBe('2026-03-10T03:00:00.000Z');
   });
 });
 

@@ -11,6 +11,7 @@ export function matchSummaryToEntity(dto: MatchSummaryDto, previous?: MatchEntit
   return {
     id: dto.id,
     status: dto.status,
+    sportId: dto.sportId,
     sport: dto.sportName,
     modality: dto.modalityName,
     sportModalityId: dto.sportModalityId,

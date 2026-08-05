@@ -16,7 +16,7 @@ const bruno = {
   sportId: 'sport-football',
   positions: ['Delantero'],
   matchingAvailability: 'Disponible entre 15:00 y 18:00',
-  ratings: { gameplayAverage: 4.5, conductAverage: 5, count: 18, commentsCount: 3 },
+  ratings: { sportId: 'sport-football', sportName: 'Fútbol', gameplayAverage: 4.5, conductAverage: 5, count: 18, commentsCount: 3 },
 };
 
 const unratedCandidate = {
@@ -26,7 +26,7 @@ const unratedCandidate = {
   sportId: 'sport-football',
   positions: [],
   matchingAvailability: 'Disponible',
-  ratings: { gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 },
+  ratings: { sportId: 'sport-football', sportName: 'Fútbol', gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 },
 };
 
 describe('CandidatesPage', () => {

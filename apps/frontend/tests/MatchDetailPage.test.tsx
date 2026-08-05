@@ -7,6 +7,7 @@ import { mockCandidates } from './setup';
 const baseMatch: MatchEntity = {
   id: 'match-1',
   status: 'ORGANIZING',
+  sportId: 'sport-football',
   sport: 'Fútbol',
   modality: 'Fútbol 5',
   sportModalityId: 'modality-football-5',
@@ -88,7 +89,7 @@ describe('MatchDetailPage', () => {
       sportId: 'sport-football',
       positions: [],
       matchingAvailability: 'Disponible',
-      ratings: { gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 },
+      ratings: { sportId: 'sport-football', sportName: 'Fútbol', gameplayAverage: null, conductAverage: null, count: 0, commentsCount: 0 },
     });
     render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
 
@@ -302,5 +303,48 @@ describe('MatchDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
 
     await waitFor(() => expect(screen.getByText(/el horario elegido no entra dentro de la franja disponible/i)).toBeTruthy());
+  });
+
+  it.each(['IN_PROGRESS', 'EXPIRED', 'COMPLETED'] as const)(
+    'shows the schedule form as read-only (fields disabled, Guardar/Cancelar disabled) for %s',
+    (status) => {
+      render(<MatchDetailPage match={{ ...baseMatch, status }} unlinkedBookings={[]} />);
+
+      expect(screen.getByLabelText(/^editar sede$/i)).toHaveProperty('disabled', true);
+      expect(screen.getByLabelText(/^editar día$/i)).toHaveProperty('disabled', true);
+      expect(screen.getByLabelText(/duración del partido/i)).toHaveProperty('disabled', true);
+      expect(screen.getByRole('button', { name: /^guardar cambios$/i })).toHaveProperty('disabled', true);
+      expect(screen.getByRole('button', { name: /cancelar partido/i })).toHaveProperty('disabled', true);
+    },
+  );
+
+  it('shows the IN_PROGRESS read-only message', () => {
+    render(<MatchDetailPage match={{ ...baseMatch, status: 'IN_PROGRESS' }} unlinkedBookings={[]} />);
+    expect(screen.getAllByText(/este partido está en juego y no puede modificarse/i).length).toBeGreaterThan(0);
+  });
+
+  it('shows the EXPIRED read-only message', () => {
+    render(<MatchDetailPage match={{ ...baseMatch, status: 'EXPIRED' }} unlinkedBookings={[]} />);
+    expect(screen.getAllByText(/este partido venció y ya no puede modificarse/i).length).toBeGreaterThan(0);
+  });
+
+  it('shows the COMPLETED read-only message', () => {
+    render(<MatchDetailPage match={{ ...baseMatch, status: 'COMPLETED' }} unlinkedBookings={[]} />);
+    expect(screen.getAllByText(/este partido finalizó y ya no puede modificarse/i).length).toBeGreaterThan(0);
+  });
+
+  it('keeps the schedule form fully enabled while ORGANIZING or FULL', async () => {
+    render(<MatchDetailPage match={baseMatch} unlinkedBookings={[]} />);
+
+    expect(await screen.findByLabelText(/^editar sede$/i)).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: /cancelar partido/i })).toHaveProperty('disabled', false);
+  });
+
+  it('does not offer "Buscar jugadores" once the match is IN_PROGRESS/EXPIRED/COMPLETED', async () => {
+    render(<MatchDetailPage match={{ ...baseMatch, status: 'IN_PROGRESS' }} unlinkedBookings={[]} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /jugadores/i }));
+    await screen.findByText('👑 Organizador');
+    expect(screen.queryByRole('button', { name: /buscar jugadores/i })).toBeFalsy();
   });
 });

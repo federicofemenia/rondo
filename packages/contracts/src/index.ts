@@ -90,6 +90,7 @@ export interface MatchSummaryDto {
   clubName: string | null;
   venueType: MatchVenueTypeDto;
   customVenueName: string | null;
+  sportId: string;
   sportModalityId: string;
   sportName: string;
   modalityName: string;
@@ -311,18 +312,29 @@ export const rateParticipantInputSchema = z.object({
 export type RateParticipantInputDto = z.infer<typeof rateParticipantInputSchema>;
 
 /**
- * Aggregated across every match a user has ever been rated in (not scoped
- * to one match, unlike RatingDto above). Averages are null — not 0 — when
- * count is 0, so the frontend can render "Sin valoraciones" instead of a
- * misleading zero-star average.
+ * Aggregated across every match a user has been rated in *for one sport*
+ * (never scoped to a single match, unlike RatingDto above, but always
+ * scoped to a sport -- a padel reputation says nothing about how someone
+ * plays football, so the two are never mixed into one average). Averages
+ * are null — not 0 — when count is 0, so the frontend can render "Sin
+ * valoraciones en <deporte>" instead of a misleading zero-star average.
  */
 export interface RatingsSummaryDto {
+  sportId: string;
+  sportName: string;
   gameplayAverage: number | null;
   conductAverage: number | null;
   count: number;
   /** How many of those ratings have actual written text -- same "has real text" rule as GET .../rating-comments (not null, not empty after trim). */
   commentsCount: number;
 }
+
+/** Query param shared by GET .../public-profile and GET .../rating-comments -- both require the caller's sport context so ratings are never returned mixed across sports. */
+export const sportIdQuerySchema = z.object({
+  sportId: z.string().uuid(),
+});
+
+export type SportIdQueryDto = z.infer<typeof sportIdQuerySchema>;
 
 export interface RatingCommentDto {
   id: string;

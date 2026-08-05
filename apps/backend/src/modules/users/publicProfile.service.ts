@@ -4,25 +4,38 @@ import { prisma } from '../../infrastructure/database/prisma.js';
 // would create a cycle (users.service.ts -> matches/ratings.service.ts ->
 // matches/matches.service.ts -> users.service.ts, since matches.service.ts
 // re-exports displayName from here).
+import { MatchServiceError } from '../matches/errors.js';
 import { getRatingsSummary } from '../matches/ratings.service.js';
 import { displayName } from './users.service.js';
 
 /**
  * The public view of a player, shown on the player card opened from a
  * candidate — deliberately excludes email, username, clerkUserId and club
- * memberships. Returns null when the user doesn't exist so the controller
- * can 404.
+ * memberships. Always scoped to one sport: ratings and positions both come
+ * from that sport specifically (a padel reputation/position says nothing
+ * about someone's football game), never a cross-sport blend. Throws (never
+ * returns null) so the controller can use the same sendServiceError
+ * translation the rest of the matches/invitations modules already use.
  */
-export async function getPublicProfile(userId: string): Promise<PublicProfileDto | null> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+export async function getPublicProfile(userId: string, sportId: string): Promise<PublicProfileDto> {
+  const [user, sport] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.sport.findUnique({ where: { id: sportId } }),
+  ]);
+
   if (!user) {
-    return null;
+    throw new MatchServiceError(404, 'USER_NOT_FOUND', 'El usuario indicado no existe.');
+  }
+  if (!sport) {
+    throw new MatchServiceError(404, 'SPORT_NOT_FOUND', 'El deporte indicado no existe.');
   }
 
-  const sportProfiles = await prisma.userSportProfile.findMany({ where: { userId }, select: { positions: true } });
-  const positions = [...new Set(sportProfiles.flatMap((profile) => profile.positions))];
+  const sportProfile = await prisma.userSportProfile.findUnique({
+    where: { userId_sportId: { userId, sportId } },
+    select: { positions: true },
+  });
 
-  const ratings = await getRatingsSummary(userId);
+  const ratings = await getRatingsSummary(userId, sport);
 
   return {
     id: user.id,
@@ -30,7 +43,7 @@ export async function getPublicProfile(userId: string): Promise<PublicProfileDto
     avatarUrl: user.avatarUrl,
     sex: user.sex,
     biography: user.biography,
-    positions,
+    positions: sportProfile?.positions ?? [],
     ratings,
   };
 }

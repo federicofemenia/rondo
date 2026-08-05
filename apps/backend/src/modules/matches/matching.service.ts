@@ -2,7 +2,7 @@ import type { PlayerAvailability, User, UserSportProfile } from '@prisma/client'
 import type { CandidateDto, RatingsSummaryDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
 import { toArgentinaMinutesOfDay } from './argentinaTime.js';
-import { displayName, getConfirmedParticipantIds, getInvitedUserIds, requireMatchWithRelations } from './matches.service.js';
+import { assertMatchEditable, displayName, getConfirmedParticipantIds, getInvitedUserIds, requireMatchWithRelations } from './matches.service.js';
 import { emptyRatingsSummary, getRatingsSummaries } from './ratings.service.js';
 
 type MatchScheduleFields = {
@@ -96,6 +96,8 @@ function toCandidateDto(profile: ProfileWithRelations, matchingAvailability: str
 export async function getMatchCandidates(matchId: string): Promise<CandidateDto[]> {
   const match = await requireMatchWithRelations(matchId);
 
+  assertMatchEditable(match);
+
   const excludedUserIds = await getConfirmedParticipantIds(matchId);
   const invitedUserIds = await getInvitedUserIds(matchId);
   invitedUserIds.forEach((userId) => excludedUserIds.add(userId));
@@ -134,11 +136,19 @@ export async function getMatchCandidates(matchId: string): Promise<CandidateDto[
 
   matches.sort((a, b) => displayName(a.profile.user).localeCompare(displayName(b.profile.user), 'es'));
 
+  // Ratings are scoped to this match's own sport -- a candidate's padel
+  // reputation says nothing about how they'd play in a football match, so
+  // it must never bleed into these numbers.
+  const sport = { id: match.sportModality.sportId, name: match.sportModality.sport.name };
+
   // One grouped query for every matched candidate's ratings, never one per
   // candidate — see ratings.service.ts's getRatingsSummaries.
-  const ratingsSummaries = await getRatingsSummaries(matches.map(({ profile }) => profile.user.id));
+  const ratingsSummaries = await getRatingsSummaries(
+    matches.map(({ profile }) => profile.user.id),
+    sport,
+  );
 
   return matches.map(({ profile, matchingAvailability }) =>
-    toCandidateDto(profile, matchingAvailability, ratingsSummaries.get(profile.user.id) ?? emptyRatingsSummary()),
+    toCandidateDto(profile, matchingAvailability, ratingsSummaries.get(profile.user.id) ?? emptyRatingsSummary(sport)),
   );
 }

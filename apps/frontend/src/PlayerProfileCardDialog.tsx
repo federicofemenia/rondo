@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { PublicProfileDto, RatingCommentDto } from '@rondo/contracts';
+import type { PublicProfileDto } from '@rondo/contracts';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
-import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -21,8 +20,11 @@ import { ApiError, useApi } from './apiClient';
 type PlayerProfileCardDialogProps = {
   open: boolean;
   userId: string | null;
+  sportId: string;
   sportName?: string;
   onClose: () => void;
+  /** "Ver comentarios" never opens a second Dialog on top of this one -- the caller closes this card and opens PlayerRatingCommentsDialog instead. */
+  onShowComments: () => void;
 };
 
 // A collectible-card look per sport, not a copy of any existing brand's card
@@ -37,11 +39,7 @@ function describeError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
 
-function formatCommentDate(iso: string): string {
-  return new Intl.DateTimeFormat('es-AR').format(new Date(iso));
-}
-
-function StarsRow({ label, value }: { label: string; value: number | null }) {
+export function StarsRow({ label, value }: { label: string; value: number | null }) {
   return (
     <Stack direction="row" alignItems="center" spacing={1.5}>
       <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', minWidth: 68 }}>
@@ -63,22 +61,19 @@ function StarsRow({ label, value }: { label: string; value: number | null }) {
 }
 
 /**
- * The "player card" opened by tapping a candidate. Biography comes from
- * GET /:id/public-profile, fetched only once the dialog actually opens for
- * a given userId -- never bundled into the candidates list. Comments are
- * fetched only once "Ver comentarios" is tapped, never before.
+ * The "player card" opened by tapping a candidate. Biography and ratings
+ * come from GET /:id/public-profile, always scoped to the sport of the
+ * match the candidate was found in (never a cross-sport blend) -- fetched
+ * only once the dialog actually opens for a given userId, never bundled
+ * into the candidates list. "Ver comentarios" hands off to
+ * PlayerRatingCommentsDialog instead of nesting a second Dialog in here.
  */
-function PlayerProfileCardDialog({ open, userId, sportName, onClose }: PlayerProfileCardDialogProps) {
+function PlayerProfileCardDialog({ open, userId, sportId, sportName, onClose, onShowComments }: PlayerProfileCardDialogProps) {
   const api = useApi();
 
   const [profile, setProfile] = useState<PublicProfileDto | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState<RatingCommentDto[] | null>(null);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [commentsError, setCommentsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !userId) {
@@ -89,13 +84,10 @@ function PlayerProfileCardDialog({ open, userId, sportName, onClose }: PlayerPro
     setProfile(null);
     setProfileError(null);
     setProfileLoading(true);
-    setShowComments(false);
-    setComments(null);
-    setCommentsError(null);
 
     const load = async () => {
       try {
-        const response = await api.get<{ data: PublicProfileDto }>(`/api/v1/users/${userId}/public-profile`);
+        const response = await api.get<{ data: PublicProfileDto }>(`/api/v1/users/${userId}/public-profile?sportId=${sportId}`);
         if (!cancelled) {
           setProfile(response.data);
         }
@@ -116,25 +108,7 @@ function PlayerProfileCardDialog({ open, userId, sportName, onClose }: PlayerPro
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, userId]);
-
-  const handleShowComments = async () => {
-    setShowComments(true);
-    if (comments !== null || !userId) {
-      return;
-    }
-
-    setCommentsLoading(true);
-    setCommentsError(null);
-    try {
-      const response = await api.get<{ data: RatingCommentDto[] }>(`/api/v1/users/${userId}/rating-comments`);
-      setComments(response.data);
-    } catch (caught) {
-      setCommentsError(describeError(caught, 'No pudimos cargar los comentarios. Reintentá más tarde.'));
-    } finally {
-      setCommentsLoading(false);
-    }
-  };
+  }, [open, userId, sportId]);
 
   const gradient = (sportName && SPORT_GRADIENTS[sportName]) ?? DEFAULT_GRADIENT;
 
@@ -185,6 +159,10 @@ function PlayerProfileCardDialog({ open, userId, sportName, onClose }: PlayerPro
 
             <Divider sx={{ width: '100%', borderColor: 'rgba(255,255,255,0.2)' }} />
 
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Valoraciones en {profile.ratings.sportName}
+            </Typography>
+
             {profile.ratings.count > 0 ? (
               <Stack spacing={1} alignItems="flex-start">
                 <StarsRow label="Juego" value={profile.ratings.gameplayAverage} />
@@ -195,7 +173,7 @@ function PlayerProfileCardDialog({ open, userId, sportName, onClose }: PlayerPro
               </Stack>
             ) : (
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                Sin valoraciones
+                Sin valoraciones en {profile.ratings.sportName}
               </Typography>
             )}
 
@@ -210,52 +188,11 @@ function PlayerProfileCardDialog({ open, userId, sportName, onClose }: PlayerPro
 
             <Button
               variant="outlined"
-              onClick={() => void handleShowComments()}
+              onClick={onShowComments}
               sx={{ mt: 2, borderColor: 'rgba(255,255,255,0.4)', color: '#fff', borderRadius: 999, '&:hover': { borderColor: '#fff' } }}
             >
               {profile.ratings.commentsCount > 0 ? `Ver comentarios (${profile.ratings.commentsCount})` : 'Ver comentarios'}
             </Button>
-
-            {showComments ? (
-              <Box sx={{ width: '100%', mt: 2 }}>
-                {commentsLoading ? (
-                  <Stack alignItems="center" sx={{ py: 3 }}>
-                    <CircularProgress size={24} sx={{ color: '#fff' }} />
-                  </Stack>
-                ) : commentsError ? (
-                  <Alert severity="error">{commentsError}</Alert>
-                ) : comments && comments.length > 0 ? (
-                  <Stack spacing={2}>
-                    {comments.map((comment) => (
-                      <Box key={comment.id} sx={{ p: 3, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.25)', textAlign: 'left' }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                            {comment.authorDisplayName}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                            {formatCommentDate(comment.createdAt)}
-                          </Typography>
-                        </Stack>
-                        <Stack spacing={0.5} sx={{ mb: 1 }}>
-                          <StarsRow label="Juego" value={comment.gameplayScore} />
-                          <StarsRow label="Conducta" value={comment.conductScore} />
-                        </Stack>
-                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                          "{comment.comment}"
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                          {comment.sportName} • {comment.modalityName}
-                        </Typography>
-                      </Box>
-                    ))}
-                  </Stack>
-                ) : (
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>
-                    Todavía no recibió comentarios escritos.
-                  </Typography>
-                )}
-              </Box>
-            ) : null}
           </Stack>
         ) : null}
       </DialogContent>

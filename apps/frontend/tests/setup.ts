@@ -4,6 +4,7 @@ import type {
   MatchChatResponseDto,
   MatchInvitationDto,
   MatchParticipantsResponseDto,
+  MatchSummaryDto,
   PublicProfileDto,
   RatingCommentDto,
   SportDto,
@@ -162,6 +163,9 @@ export const mockSportProfiles: SportProfileDto[] = [];
 /** sportIds added here make every sport-profile request for that sport respond with a 500, to exercise error states. */
 export const mockSportProfileFailingSportIds = new Set<string>();
 
+/** Mutable per-test fixture for GET /api/v1/me/matches; reset to empty before every test. */
+export const mockMyMatches: MatchSummaryDto[] = [];
+
 /** Mutable per-test fixture for GET /api/v1/matches/:matchId/candidates; reset to empty before every test. */
 export const mockCandidates: CandidateDto[] = [];
 /** matchIds added here make the candidates request for that match respond with a 500, to exercise error states. */
@@ -221,6 +225,7 @@ const originalFetch = global.fetch;
 beforeEach(() => {
   mockSportProfiles.length = 0;
   mockSportProfileFailingSportIds.clear();
+  mockMyMatches.length = 0;
   mockCandidates.length = 0;
   mockCandidatesFailingMatchIds.clear();
   mockPublicProfiles.clear();
@@ -274,7 +279,7 @@ beforeEach(() => {
     }
 
     if (url.endsWith('/api/v1/me/matches')) {
-      return json({ data: [] });
+      return json({ data: mockMyMatches });
     }
 
     if (url.endsWith('/api/v1/me/pending-tasks')) {
@@ -485,7 +490,7 @@ beforeEach(() => {
       return json({ data: mockCandidates });
     }
 
-    const publicProfileMatch = url.match(/\/api\/v1\/users\/([^/]+)\/public-profile$/);
+    const publicProfileMatch = url.match(/\/api\/v1\/users\/([^/]+)\/public-profile(?:\?.*)?$/);
     if (method === 'GET' && publicProfileMatch) {
       const userId = publicProfileMatch[1]!;
       if (mockPublicProfileFailingIds.has(userId)) {
@@ -498,7 +503,7 @@ beforeEach(() => {
       return json({ data: profile });
     }
 
-    const ratingCommentsMatch = url.match(/\/api\/v1\/users\/([^/]+)\/rating-comments$/);
+    const ratingCommentsMatch = url.match(/\/api\/v1\/users\/([^/]+)\/rating-comments(?:\?.*)?$/);
     if (method === 'GET' && ratingCommentsMatch) {
       const userId = ratingCommentsMatch[1]!;
       if (mockRatingCommentsFailingIds.has(userId)) {

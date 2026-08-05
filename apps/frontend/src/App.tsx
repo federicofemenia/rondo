@@ -595,9 +595,15 @@ function App() {
               meta:
                 entity.status === 'FULL'
                   ? 'Equipo completo'
-                  : missingPlayers === 1
-                    ? 'Falta 1 jugador'
-                    : `Faltan ${missingPlayers} jugadores`,
+                  : entity.status === 'IN_PROGRESS'
+                    ? 'Partido en juego'
+                    : entity.status === 'COMPLETED'
+                      ? 'Partido finalizado'
+                      : entity.status === 'EXPIRED'
+                        ? 'Partido vencido'
+                        : missingPlayers === 1
+                          ? 'Falta 1 jugador'
+                          : `Faltan ${missingPlayers} jugadores`,
               chipLabel: MATCH_STATUS_LABELS[entity.status],
               chipColor: MATCH_STATUS_CHIP_STYLES[entity.status],
               onClick: () => openMatchDetail(entity.id),

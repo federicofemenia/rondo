@@ -1,15 +1,7 @@
 import type { MatchParticipantsResponseDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
-import { displayName, requireMatchWithRelations } from './matches.service.js';
+import { assertMatchEditable, displayName, requireMatchWithRelations } from './matches.service.js';
 import { MatchServiceError } from './errors.js';
-
-const NON_EDITABLE_STATUSES = ['IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'EXPIRED'] as const;
-
-function assertRosterEditable(status: string): void {
-  if (NON_EDITABLE_STATUSES.includes(status as (typeof NON_EDITABLE_STATUSES)[number])) {
-    throw new MatchServiceError(409, 'MATCH_NOT_EDITABLE', 'No se pueden modificar los jugadores de un partido en este estado.');
-  }
-}
 
 /**
  * Full roster for the Jugadores tab: organizer first, then confirmed
@@ -112,7 +104,7 @@ export async function removeParticipant(
     throw new MatchServiceError(422, 'CANNOT_REMOVE_ORGANIZER', 'El organizador no puede quitarse a sí mismo.');
   }
 
-  assertRosterEditable(match.status);
+  assertMatchEditable(match);
 
   const participant = await prisma.matchParticipant.findUnique({ where: { matchId_userId: { matchId, userId: targetUserId } } });
   if (!participant) {
@@ -129,7 +121,7 @@ export async function leaveMatch(matchId: string, actingUserId: string, now: Dat
     throw new MatchServiceError(422, 'ORGANIZER_CANNOT_LEAVE', 'El organizador no puede abandonar su propio partido.');
   }
 
-  assertRosterEditable(match.status);
+  assertMatchEditable(match);
 
   const participant = await prisma.matchParticipant.findUnique({ where: { matchId_userId: { matchId, userId: actingUserId } } });
   if (!participant) {

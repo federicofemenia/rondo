@@ -11,8 +11,6 @@ import { MatchServiceError } from './errors.js';
 import { displayName } from '../users/users.service.js';
 export { displayName };
 
-const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'EXPIRED'] as const;
-
 const matchInclude = {
   club: true,
   sportModality: { include: { sport: true } },
@@ -51,6 +49,25 @@ export async function listUserMatches(userId: string, now: Date = new Date()): P
   return resolved.filter((match) => isVisibleOnHome(match, now));
 }
 
+/**
+ * A match can be modified by its organizer only while it's ORGANIZING or
+ * FULL. Both of those already imply it hasn't reached its start/expiry
+ * instant yet (see matchLifecycle.ts's resolveMatchStatus): once that
+ * instant passes, the match itself transitions to IN_PROGRESS/EXPIRED/
+ * COMPLETED, so this check is only meaningful right after lifecycle has
+ * been resolved with the same `now` -- every caller gets the match via
+ * requireMatchWithRelations/findMatchWithRelations first, which always does.
+ */
+export function isMatchEditable(match: Pick<MatchWithRelations, 'status'>): boolean {
+  return match.status === 'ORGANIZING' || match.status === 'FULL';
+}
+
+export function assertMatchEditable(match: Pick<MatchWithRelations, 'status'>): void {
+  if (!isMatchEditable(match)) {
+    throw new MatchServiceError(409, 'MATCH_NOT_EDITABLE', 'El partido ya comenzó, venció o finalizó y no puede modificarse.');
+  }
+}
+
 export function toMatchSummaryDto(match: MatchWithRelations, currentUserId: string): MatchSummaryDto {
   return {
     id: match.id,
@@ -59,6 +76,7 @@ export function toMatchSummaryDto(match: MatchWithRelations, currentUserId: stri
     clubName: match.club?.name ?? match.customVenueName ?? null,
     venueType: match.venueType,
     customVenueName: match.customVenueName,
+    sportId: match.sportModality.sportId,
     sportModalityId: match.sportModalityId,
     sportName: match.sportModality.sport.name,
     modalityName: match.sportModality.name,
@@ -210,9 +228,7 @@ export async function updateMatchSchedule(
 ): Promise<MatchWithRelations> {
   const match = await requireMatchWithRelations(matchId, now);
 
-  if (TERMINAL_STATUSES.includes(match.status as (typeof TERMINAL_STATUSES)[number])) {
-    throw new MatchServiceError(409, 'MATCH_ALREADY_FINAL', 'No se puede editar el horario de un partido en un estado final.');
-  }
+  assertMatchEditable(match);
 
   if (match.organizerUserId !== actingUserId) {
     throw new MatchServiceError(403, 'NOT_ORGANIZER', 'Solo el organizador puede editar el horario del partido.');
@@ -241,9 +257,7 @@ export async function updateMatchSchedule(
 export async function cancelMatch(matchId: string, actingUserId: string, reason: string | undefined, now: Date = new Date()): Promise<MatchWithRelations> {
   const match = await requireMatchWithRelations(matchId, now);
 
-  if (TERMINAL_STATUSES.includes(match.status as (typeof TERMINAL_STATUSES)[number])) {
-    throw new MatchServiceError(409, 'MATCH_ALREADY_FINAL', 'El partido ya está en un estado final y no puede cancelarse.');
-  }
+  assertMatchEditable(match);
 
   if (match.organizerUserId !== actingUserId) {
     throw new MatchServiceError(403, 'NOT_ORGANIZER', 'Solo el organizador puede cancelar el partido.');
