@@ -14,6 +14,7 @@ import { registerParticipantRoutes } from '../modules/matches/participants.contr
 import { registerMatchChatRoutes } from '../modules/matches/chat.controller.js';
 import { registerSportProfileRoutes } from '../modules/sportProfiles/sportProfiles.controller.js';
 import { registerPushRoutes } from '../modules/push/push.controller.js';
+import { registerAdminRoutes } from '../modules/admin/admin.controller.js';
 import { configureWebPush } from '../modules/push/push.service.js';
 import { createClerkAuthAdapter } from '../infrastructure/auth/clerkAuthAdapter.js';
 import type { AuthAdapter } from '../infrastructure/auth/authAdapter.js';
@@ -76,6 +77,7 @@ export async function buildServer(env: BuildServerEnv, deps: BuildServerDeps = {
   registerParticipantRoutes(app);
   registerMatchChatRoutes(app);
   registerPushRoutes(app);
+  registerAdminRoutes(app);
 
   return app;
 }

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, vi } from 'vitest';
 import type {
+  AdminClubDetailDto,
+  AdminClubSummaryDto,
+  AdminUserSearchResultDto,
   CandidateDto,
+  ClubAdminUserDto,
+  CourtAdminDto,
   MatchChatResponseDto,
   MatchInvitationDto,
   MatchParticipantsResponseDto,
@@ -220,6 +225,19 @@ export const mockPushState = {
   testResult: { sent: 1, removed: 0 },
 };
 
+/** Mutable per-test fixture for GET /api/v1/admin/clubs; empty by default (no admin access), matching the default non-admin test persona. */
+export const mockAdminClubs: AdminClubSummaryDto[] = [];
+/** Keyed by clubId; drives GET/PUT /api/v1/admin/clubs/:clubId. POST /api/v1/admin/clubs adds an entry here too. */
+export const mockAdminClubDetails = new Map<string, AdminClubDetailDto>();
+/** Keyed by clubId; drives GET/POST/PUT .../courts. */
+export const mockAdminCourtsByClubId = new Map<string, CourtAdminDto[]>();
+/** Keyed by clubId; drives GET/POST/DELETE .../admins. */
+export const mockAdminAdminsByClubId = new Map<string, ClubAdminUserDto[]>();
+/** Drives GET /api/v1/admin/users/search, regardless of the query string. */
+export const mockAdminUserSearchResults: AdminUserSearchResultDto[] = [];
+/** clubIds added here make every /api/v1/admin/clubs/:clubId* request for that club respond with a 403, simulating an unrelated club-admin. */
+export const mockAdminAccessDeniedClubIds = new Set<string>();
+
 function findSportName(sportId: string): string {
   return mockSportsCatalog.find((sport) => sport.id === sportId)?.name ?? '';
 }
@@ -258,6 +276,12 @@ beforeEach(() => {
   mockPushState.deleteFailing = false;
   mockPushState.testFailing = false;
   mockPushState.testResult = { sent: 1, removed: 0 };
+  mockAdminClubs.length = 0;
+  mockAdminClubDetails.clear();
+  mockAdminCourtsByClubId.clear();
+  mockAdminAdminsByClubId.clear();
+  mockAdminUserSearchResults.length = 0;
+  mockAdminAccessDeniedClubIds.clear();
 });
 
 beforeEach(() => {
@@ -682,6 +706,150 @@ beforeEach(() => {
       }
       if (method === 'GET') {
         return json({ data: { enabled: false, subscriptions: [] } });
+      }
+    }
+
+    if (method === 'GET' && url.endsWith('/api/v1/admin/clubs')) {
+      return json({ data: mockAdminClubs });
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/admin/clubs')) {
+      const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+      const id = `admin-club-${mockAdminClubDetails.size + 1}`;
+      const detail: AdminClubDetailDto = {
+        id,
+        name: (body.name as string) ?? '',
+        description: (body.description as string | null | undefined) ?? null,
+        city: (body.city as string | null | undefined) ?? null,
+        address: (body.address as string | null | undefined) ?? null,
+        isActive: true,
+        activeCourtsCount: 0,
+        activeAdminsCount: 0,
+        myRole: 'SUPERADMIN',
+      };
+      mockAdminClubDetails.set(id, detail);
+      mockAdminCourtsByClubId.set(id, []);
+      mockAdminAdminsByClubId.set(id, []);
+      mockAdminClubs.push({ id, name: detail.name, city: detail.city, isActive: true, courtsCount: 0, myRole: 'SUPERADMIN' });
+      return json({ data: detail }, 201);
+    }
+
+    if (method === 'GET' && url.includes('/api/v1/admin/users/search')) {
+      return json({ data: mockAdminUserSearchResults });
+    }
+
+    const adminClubAdminsMatch = url.match(/\/api\/v1\/admin\/clubs\/([^/]+)\/admins(?:\/([^/?]+))?/);
+    if (adminClubAdminsMatch) {
+      const clubId = adminClubAdminsMatch[1]!;
+      const targetUserId = adminClubAdminsMatch[2];
+      if (mockAdminAccessDeniedClubIds.has(clubId)) {
+        return json({ error: { code: 'CLUB_MANAGEMENT_ACCESS_DENIED', message: 'No tenés permisos para administrar este club.' } }, 403);
+      }
+      const admins = mockAdminAdminsByClubId.get(clubId) ?? [];
+
+      if (method === 'GET') {
+        return json({ data: admins });
+      }
+      if (method === 'POST') {
+        const body = init?.body ? (JSON.parse(init.body as string) as { userId: string }) : { userId: '' };
+        const user = mockAdminUserSearchResults.find((candidate) => candidate.id === body.userId);
+        const newAdmin: ClubAdminUserDto = user
+          ? { id: user.id, displayName: user.displayName, username: user.username, avatarUrl: user.avatarUrl }
+          : { id: body.userId, displayName: 'Usuario', username: null, avatarUrl: null };
+        const updated = [...admins.filter((admin) => admin.id !== newAdmin.id), newAdmin];
+        mockAdminAdminsByClubId.set(clubId, updated);
+        return json({ data: updated }, 201);
+      }
+      if (method === 'DELETE' && targetUserId) {
+        const updated = admins.filter((admin) => admin.id !== targetUserId);
+        mockAdminAdminsByClubId.set(clubId, updated);
+        return json({ data: updated });
+      }
+    }
+
+    const adminCourtMatch = url.match(/\/api\/v1\/admin\/clubs\/([^/]+)\/courts(?:\/([^/?]+))?/);
+    if (adminCourtMatch) {
+      const clubId = adminCourtMatch[1]!;
+      const courtId = adminCourtMatch[2];
+      if (mockAdminAccessDeniedClubIds.has(clubId)) {
+        return json({ error: { code: 'CLUB_MANAGEMENT_ACCESS_DENIED', message: 'No tenés permisos para administrar este club.' } }, 403);
+      }
+      const courts = mockAdminCourtsByClubId.get(clubId) ?? [];
+
+      if (method === 'GET') {
+        return json({ data: courts });
+      }
+      if (method === 'POST') {
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        const modality = mockSportsCatalog
+          .flatMap((sport) => sport.modalities.map((candidate) => ({ ...candidate, sportName: sport.name })))
+          .find((candidate) => candidate.id === body.sportModalityId);
+        const newCourt: CourtAdminDto = {
+          id: `admin-court-${courts.length + 1}`,
+          name: (body.name as string) ?? '',
+          sportModalityId: (body.sportModalityId as string) ?? '',
+          sportName: modality?.sportName ?? '',
+          modalityName: modality?.name ?? '',
+          description: (body.description as string | null | undefined) ?? null,
+          isActive: true,
+        };
+        mockAdminCourtsByClubId.set(clubId, [...courts, newCourt]);
+        return json({ data: newCourt }, 201);
+      }
+      if (method === 'PUT' && courtId) {
+        const existing = courts.find((court) => court.id === courtId);
+        if (!existing) {
+          return json({ error: { code: 'COURT_NOT_FOUND', message: 'La cancha no existe en este club.' } }, 404);
+        }
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        const updated: CourtAdminDto = {
+          ...existing,
+          ...(body.name !== undefined ? { name: body.name as string } : {}),
+          ...(body.description !== undefined ? { description: body.description as string | null } : {}),
+          ...(body.isActive !== undefined ? { isActive: body.isActive as boolean } : {}),
+        };
+        mockAdminCourtsByClubId.set(
+          clubId,
+          courts.map((court) => (court.id === courtId ? updated : court)),
+        );
+        return json({ data: updated });
+      }
+    }
+
+    const adminClubDetailMatch = url.match(/\/api\/v1\/admin\/clubs\/([^/?]+)$/);
+    if (adminClubDetailMatch) {
+      const clubId = adminClubDetailMatch[1]!;
+      if (mockAdminAccessDeniedClubIds.has(clubId)) {
+        return json({ error: { code: 'CLUB_MANAGEMENT_ACCESS_DENIED', message: 'No tenés permisos para administrar este club.' } }, 403);
+      }
+      const existing = mockAdminClubDetails.get(clubId);
+      if (!existing) {
+        return json({ error: { code: 'CLUB_NOT_FOUND', message: 'El club no existe.' } }, 404);
+      }
+      if (method === 'GET') {
+        return json({ data: existing });
+      }
+      if (method === 'PUT') {
+        const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        const updated: AdminClubDetailDto = {
+          ...existing,
+          ...(body.name !== undefined ? { name: body.name as string } : {}),
+          ...(body.description !== undefined ? { description: body.description as string | null } : {}),
+          ...(body.city !== undefined ? { city: body.city as string | null } : {}),
+          ...(body.address !== undefined ? { address: body.address as string | null } : {}),
+          ...(body.isActive !== undefined ? { isActive: body.isActive as boolean } : {}),
+        };
+        mockAdminClubDetails.set(clubId, updated);
+        const summaryIndex = mockAdminClubs.findIndex((club) => club.id === clubId);
+        if (summaryIndex >= 0) {
+          mockAdminClubs[summaryIndex] = {
+            ...mockAdminClubs[summaryIndex]!,
+            name: updated.name,
+            city: updated.city,
+            isActive: updated.isActive,
+          };
+        }
+        return json({ data: updated });
       }
     }
 

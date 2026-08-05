@@ -290,6 +290,26 @@ describe('GET /api/v1/me/clubs', () => {
     await app.close();
   });
 
+  it('also grants the global SUPERADMIN role to the bootstrap admin, alongside the Señor Pato membership', async () => {
+    const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_CLERK_USER_ID: TEST_ADMIN_CLERK_USER_ID }, { authAdapter });
+    await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
+
+    const user = await prisma.user.findUnique({ where: { clerkUserId: TEST_ADMIN_CLERK_USER_ID } });
+    expect(user?.role).toBe('SUPERADMIN');
+
+    await app.close();
+  });
+
+  it('never grants SUPERADMIN to a regular, non-bootstrap user', async () => {
+    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
+    await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
+
+    const user = await prisma.user.findUnique({ where: { clerkUserId: TEST_CLERK_USER_ID } });
+    expect(user?.role).toBe('USER');
+
+    await app.close();
+  });
+
   it('auto-grants admin membership when BOOTSTRAP_ADMIN_USERNAME matches (dev-only fallback)', async () => {
     const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_USERNAME: 'fede' }, { authAdapter });
     const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer username-admin-token' } });

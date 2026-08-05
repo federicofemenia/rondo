@@ -70,4 +70,23 @@ describe('AppHeader', () => {
     expect(screen.getByText(/perfil deportivo/i)).toBeTruthy();
     expect(screen.getByText(/cerrar sesión/i)).toBeTruthy();
   });
+
+  it('hides Administración by default', () => {
+    render(<AppHeader />);
+
+    fireEvent.click(screen.getByLabelText('Menú'));
+
+    expect(screen.queryByText(/administración/i)).toBeFalsy();
+  });
+
+  it('shows Administración when showAdmin is true, and invokes onOpenAdmin on click', () => {
+    const onOpenAdmin = vi.fn();
+    render(<AppHeader showAdmin onOpenAdmin={onOpenAdmin} />);
+
+    fireEvent.click(screen.getByLabelText('Menú'));
+    expect(screen.getByText(/administración/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/administración/i));
+    expect(onOpenAdmin).toHaveBeenCalled();
+  });
 });

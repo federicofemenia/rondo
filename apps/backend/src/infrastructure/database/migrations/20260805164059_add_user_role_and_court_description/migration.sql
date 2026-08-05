@@ -1,0 +1,8 @@
+-- CreateEnum
+CREATE TYPE "UserRole" AS ENUM ('USER', 'SUPERADMIN');
+
+-- AlterTable
+ALTER TABLE "courts" ADD COLUMN     "description" TEXT;
+
+-- AlterTable
+ALTER TABLE "users" ADD COLUMN     "role" "UserRole" NOT NULL DEFAULT 'USER';

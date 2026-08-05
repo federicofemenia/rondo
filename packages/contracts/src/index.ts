@@ -676,3 +676,116 @@ export interface PushNotificationPayloadDto {
     ratingId?: string;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Club administration
+// ---------------------------------------------------------------------------
+
+/** Global platform role (User.role) -- orthogonal to ClubMembershipRoleDto, which is per-club. Never conflate the two (see docs in schema.prisma). */
+export type UserRoleDto = 'USER' | 'SUPERADMIN';
+
+/**
+ * One row of GET /api/v1/admin/clubs -- every club the *authenticated*
+ * user can manage (all of them for a SUPERADMIN, only their own for a
+ * CLUB_ADMIN). `myRole` is this actor's access level for *this* club
+ * specifically, not their global role -- a SUPERADMIN who also happens to
+ * hold a CLUB_ADMIN membership somewhere still sees 'SUPERADMIN' here,
+ * since that's the more powerful access level actually in effect.
+ */
+export interface AdminClubSummaryDto {
+  id: string;
+  name: string;
+  city: string | null;
+  isActive: boolean;
+  courtsCount: number;
+  myRole: 'SUPERADMIN' | 'CLUB_ADMIN';
+}
+
+export interface AdminClubDetailDto {
+  id: string;
+  name: string;
+  description: string | null;
+  city: string | null;
+  address: string | null;
+  isActive: boolean;
+  activeCourtsCount: number;
+  activeAdminsCount: number;
+  myRole: 'SUPERADMIN' | 'CLUB_ADMIN';
+}
+
+const clubTextFieldSchema = z.string().trim().max(500).nullable().optional();
+
+export const createClubInputSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: clubTextFieldSchema,
+  city: z.string().trim().max(120).nullable().optional(),
+  address: z.string().trim().max(200).nullable().optional(),
+});
+
+export type CreateClubInputDto = z.infer<typeof createClubInputSchema>;
+
+/**
+ * Same shape for both actors -- SUPERADMIN and CLUB_ADMIN alike send
+ * whichever subset of fields they're editing. The backend is the actual
+ * authority on which fields a given role may change (name/isActive are
+ * SUPERADMIN-only; see adminClubs.service.ts) -- this schema only validates
+ * shape, not who's allowed to send what.
+ */
+export const updateClubInputSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  description: clubTextFieldSchema,
+  city: z.string().trim().max(120).nullable().optional(),
+  address: z.string().trim().max(200).nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export type UpdateClubInputDto = z.infer<typeof updateClubInputSchema>;
+
+/** GET /api/v1/admin/users/search result row -- deliberately excludes email/clerkUserId/any private field, same as CandidateDto elsewhere. */
+export interface AdminUserSearchResultDto {
+  id: string;
+  displayName: string;
+  username: string | null;
+  avatarUrl: string | null;
+}
+
+/** One row of GET /api/v1/admin/clubs/:clubId/admins -- always an ACTIVE CLUB_ADMIN membership (a degraded/removed admin simply stops appearing here, see adminClubAdmins.service.ts). */
+export interface ClubAdminUserDto {
+  id: string;
+  displayName: string;
+  username: string | null;
+  avatarUrl: string | null;
+}
+
+export const assignClubAdminInputSchema = z.object({
+  userId: z.string().uuid(),
+});
+
+export type AssignClubAdminInputDto = z.infer<typeof assignClubAdminInputSchema>;
+
+export interface CourtAdminDto {
+  id: string;
+  name: string;
+  sportModalityId: string;
+  sportName: string;
+  modalityName: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+export const createCourtInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  sportModalityId: z.string().uuid(),
+  description: z.string().trim().max(300).nullable().optional(),
+});
+
+export type CreateCourtInputDto = z.infer<typeof createCourtInputSchema>;
+
+export const updateCourtInputSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  sportModalityId: z.string().uuid().optional(),
+  description: z.string().trim().max(300).nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export type UpdateCourtInputDto = z.infer<typeof updateCourtInputSchema>;

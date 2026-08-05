@@ -32,6 +32,18 @@ export function displayName(user: {
 }
 
 export async function syncUserFromClerk(profile: AuthenticatedClerkProfile, bootstrapAdmin?: BootstrapAdminConfig): Promise<User> {
+  // seed_-prefixed identities are the deterministic dev/test fixtures from
+  // seed.ts (never a real Clerk account, see SEED_TESTER... / seedAuthAdapter):
+  // their sport-profile state is precisely scripted by the seed and by
+  // individual tests, so the default-availability backfill is skipped for
+  // them entirely rather than organically mutating that fixture data.
+  const isSeedFixture = profile.clerkUserId.startsWith('seed_');
+
+  const isBootstrapAdmin =
+    !isSeedFixture &&
+    ((Boolean(bootstrapAdmin?.clerkUserId) && profile.clerkUserId === bootstrapAdmin?.clerkUserId) ||
+      (Boolean(bootstrapAdmin?.username) && Boolean(profile.username) && profile.username === bootstrapAdmin?.username));
+
   const user = await prisma.user.upsert({
     where: { clerkUserId: profile.clerkUserId },
     update: {
@@ -41,6 +53,12 @@ export async function syncUserFromClerk(profile: AuthenticatedClerkProfile, boot
       firstName: profile.firstName,
       lastName: profile.lastName,
       avatarUrl: profile.avatarUrl,
+      // Only ever promotes to SUPERADMIN, never demotes — this branch is
+      // silent (no role field) for everyone else so an admin manually
+      // promoted through the club-admin panel is never clobbered back to
+      // USER on their next login just because they aren't the bootstrap
+      // identity.
+      ...(isBootstrapAdmin ? { role: 'SUPERADMIN' as const } : {}),
     },
     create: {
       clerkUserId: profile.clerkUserId,
@@ -50,25 +68,17 @@ export async function syncUserFromClerk(profile: AuthenticatedClerkProfile, boot
       firstName: profile.firstName,
       lastName: profile.lastName,
       avatarUrl: profile.avatarUrl,
+      role: isBootstrapAdmin ? 'SUPERADMIN' : 'USER',
     },
   });
 
-  // seed_-prefixed identities are the deterministic dev/test fixtures from
-  // seed.ts (never a real Clerk account, see SEED_TESTER... / seedAuthAdapter):
-  // their sport-profile state is precisely scripted by the seed and by
-  // individual tests, so the default-availability backfill is skipped for
-  // them entirely rather than organically mutating that fixture data.
-  const isSeedFixture = profile.clerkUserId.startsWith('seed_');
-
   if (!isSeedFixture) {
-    const isBootstrapAdmin =
-      (Boolean(bootstrapAdmin?.clerkUserId) && profile.clerkUserId === bootstrapAdmin?.clerkUserId) ||
-      (Boolean(bootstrapAdmin?.username) && Boolean(profile.username) && profile.username === bootstrapAdmin?.username);
-
     // No account is auto-enrolled in any club — there is no default club,
     // and users only ever appear in useMyClubs once they've actually joined
     // one (not implemented yet). The bootstrap admin is the sole exception,
-    // seeded in as Señor Pato's CLUB_ADMIN so there's an initial owner.
+    // seeded in as Señor Pato's CLUB_ADMIN so there's an initial owner (kept
+    // alongside their global SUPERADMIN role, which grants access to every
+    // other club too).
     if (isBootstrapAdmin) {
       await grantSenorPatoAdminMembership(user.id);
     }

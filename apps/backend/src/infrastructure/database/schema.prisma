@@ -7,6 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Global platform role, orthogonal to any per-club ClubMembershipRole below
+/// -- a SUPERADMIN can manage every club regardless of membership, while
+/// CLUB_ADMIN/MEMBER only ever mean "this user's role within one specific
+/// club". Never conflate the two: checking club-management access always
+/// means "is this user's global role SUPERADMIN, OR do they have an ACTIVE
+/// ClubMembership with role CLUB_ADMIN for *this* club" (see
+/// modules/admin/adminAuth.ts), never "SUPERADMIN implies a ClubMembership
+/// row exists everywhere".
+enum UserRole {
+  USER
+  SUPERADMIN
+}
+
 enum ClubStatus {
   ACTIVE
   INACTIVE
@@ -75,6 +88,7 @@ model User {
   avatarUrl   String?  @map("avatar_url")
   sex         UserSex?
   biography   String?
+  role        UserRole @default(USER)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -169,7 +183,14 @@ model Court {
   sportModalityId     String   @map("sport_modality_id")
   code                String
   name                String
+  description         String?
   displayOrder        Int      @map("display_order")
+  // Pricing/scheduling fields below predate the admin CRUD in this slice and
+  // aren't editable through it yet -- createCourt seeds sensible defaults
+  // (the sport modality's own durationMinutes; price 0) so this table's
+  // existing NOT NULL columns don't force a pricing UI ahead of schedule.
+  // The next slice (precios y configuración semanal) replaces these
+  // placeholders with real admin-editable values.
   slotDurationMinutes Int      @map("slot_duration_minutes")
   pricePerHour        Decimal  @map("price_per_hour") @db.Decimal(10, 2)
   active              Boolean  @default(true)

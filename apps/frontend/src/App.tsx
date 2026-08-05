@@ -15,8 +15,10 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import HelpOutlineRoundedIcon from '@mui/icons-material/HelpOutlineRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import { ApiError, useApi } from './apiClient';
+import AdminDashboardPage from './AdminDashboardPage';
 import AppHeader from './AppHeader';
 import BookingDetailPage from './BookingDetailPage';
+import ClubAdminPage from './ClubAdminPage';
 import CandidatesPage from './CandidatesPage';
 import CreateMatchPage from './CreateMatchPage';
 import type { MatchDraft } from './CreateMatchPage';
@@ -41,6 +43,7 @@ import SportProfilePage from './SportProfilePage';
 import type { BookingEntity, MatchEntity, PendingAction } from './types';
 import { apiBaseUrl } from './runtimeConfig';
 import { retryWithBackoff } from './apiRetry';
+import { useAdminClubs } from './useAdminClubs';
 import { useMyClubs } from './useMyClubs';
 import { useOnlineStatus } from './useOnlineStatus';
 import { useVisiblePolling } from './useVisiblePolling';
@@ -60,7 +63,9 @@ type View =
   | 'booking-detail'
   | 'edit-profile'
   | 'sport-profile'
-  | 'invitations';
+  | 'invitations'
+  | 'admin-dashboard'
+  | 'club-admin';
 
 const wizardSteps = [
   { key: 'create', label: 'Armar partido' },
@@ -84,6 +89,8 @@ function App() {
   const isOnline = useOnlineStatus();
   const { clubs: myClubs } = useMyClubs();
   const myClub = myClubs[0] ?? null;
+  const { clubs: adminClubs } = useAdminClubs();
+  const hasAdminAccess = adminClubs.length > 0;
 
   const [status, setStatus] = useState('Verificando conexión…');
   const [currentView, setCurrentView] = useState<View>('login');
@@ -108,6 +115,7 @@ function App() {
   const [initialMatchTab, setInitialMatchTab] = useState<MatchDetailTab | undefined>(undefined);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [reservationMatchContext, setReservationMatchContext] = useState<string | null>(null);
+  const [selectedAdminClubId, setSelectedAdminClubId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadStatus = async () => {
@@ -374,6 +382,11 @@ function App() {
   const openEditProfile = () => setCurrentView('edit-profile');
   const openSportProfile = () => setCurrentView('sport-profile');
   const openInvitations = () => setCurrentView('invitations');
+  const openAdminDashboard = () => setCurrentView('admin-dashboard');
+  const openClubAdmin = (clubId: string) => {
+    setSelectedAdminClubId(clubId);
+    setCurrentView('club-admin');
+  };
 
   const handleLogout = async () => {
     setCurrentView('login');
@@ -524,6 +537,18 @@ function App() {
           onLeftMatch={handleLeftMatch}
         />
       );
+    }
+
+    if (currentView === 'admin-dashboard') {
+      return <AdminDashboardPage onBack={() => setCurrentView('home')} onOpenClub={openClubAdmin} />;
+    }
+
+    if (currentView === 'club-admin') {
+      if (!selectedAdminClubId) {
+        setCurrentView('admin-dashboard');
+        return null;
+      }
+      return <ClubAdminPage clubId={selectedAdminClubId} onBack={() => setCurrentView('admin-dashboard')} />;
     }
 
     if (currentView === 'invitations') {
@@ -718,6 +743,8 @@ function App() {
           onEditSportProfile={openSportProfile}
           onLogout={() => void handleLogout()}
           pendingActions={pendingActions}
+          showAdmin={hasAdminAccess}
+          onOpenAdmin={openAdminDashboard}
         />
       ) : null}
       {renderView()}

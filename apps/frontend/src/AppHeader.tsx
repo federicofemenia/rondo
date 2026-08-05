@@ -17,6 +17,7 @@ import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneR
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
 import SportsSoccerRoundedIcon from '@mui/icons-material/SportsSoccerRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import logoIcon from './assets/logo-icon.png';
 import type { PendingAction } from './types';
@@ -26,9 +27,11 @@ type AppHeaderProps = {
   onEditSportProfile?: () => void;
   onLogout?: () => void;
   pendingActions?: PendingAction[];
+  showAdmin?: boolean;
+  onOpenAdmin?: () => void;
 };
 
-function AppHeader({ onEditProfile, onEditSportProfile, onLogout, pendingActions = [] }: AppHeaderProps) {
+function AppHeader({ onEditProfile, onEditSportProfile, onLogout, pendingActions = [], showAdmin = false, onOpenAdmin }: AppHeaderProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const menuOpen = Boolean(menuAnchor);
   const closeMenu = () => setMenuAnchor(null);
@@ -104,6 +107,19 @@ function AppHeader({ onEditProfile, onEditSportProfile, onLogout, pendingActions
           </ListItemIcon>
           Perfil deportivo
         </MenuItem>
+        {showAdmin ? (
+          <MenuItem
+            onClick={() => {
+              closeMenu();
+              onOpenAdmin?.();
+            }}
+          >
+            <ListItemIcon>
+              <AdminPanelSettingsRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            Administración
+          </MenuItem>
+        ) : null}
         <Divider />
         <MenuItem
           onClick={() => {
