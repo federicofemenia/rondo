@@ -583,3 +583,66 @@ export interface PublicProfileDto {
   positions: string[];
   ratings: RatingsSummaryDto;
 }
+
+// ---------------------------------------------------------------------------
+// Web Push subscriptions
+// ---------------------------------------------------------------------------
+
+/**
+ * Body of POST /api/v1/me/push-subscriptions -- the raw shape the browser's
+ * PushManager.subscribe() resolves to (PushSubscriptionJSON), narrowed to
+ * the fields the backend actually persists. userId is never part of this
+ * body: it always comes from the authenticated caller.
+ */
+export const pushSubscriptionInputSchema = z.object({
+  endpoint: z.string().url(),
+  keys: z.object({
+    p256dh: z.string().min(1),
+    auth: z.string().min(1),
+  }),
+});
+
+export type PushSubscriptionInputDto = z.infer<typeof pushSubscriptionInputSchema>;
+
+/** One row of GET .../push-subscriptions -- never includes p256dh/auth, the backend never needs to hand those back to the client. */
+export interface PushSubscriptionSummaryDto {
+  id: string;
+  endpoint: string;
+  createdAt: string;
+  userAgent: string | null;
+}
+
+export interface PushSubscriptionStatusDto {
+  enabled: boolean;
+  subscriptions: PushSubscriptionSummaryDto[];
+}
+
+/** DELETE /api/v1/me/push-subscriptions body: the endpoint identifies which of the caller's own subscriptions to remove. */
+export const deletePushSubscriptionInputSchema = z.object({
+  endpoint: z.string().url(),
+});
+
+export type DeletePushSubscriptionInputDto = z.infer<typeof deletePushSubscriptionInputSchema>;
+
+/** POST .../push-subscriptions/test result: how many of the caller's subscriptions actually received the test push. */
+export interface TestPushResponseDto {
+  sent: number;
+  removed: number;
+}
+
+/**
+ * Shape of the JSON payload the backend sends as the push message body, and
+ * that the service worker's `push` handler expects to parse (see
+ * apps/frontend/src/sw.ts). Not sent over HTTP as a Rondo API response --
+ * documented here as the one shared source of truth for both sides anyway,
+ * same as every other cross-module contract in this package.
+ */
+export interface PushNotificationPayloadDto {
+  title: string;
+  body: string;
+  url: string;
+  tag?: string;
+  icon?: string;
+  badge?: string;
+  data?: Record<string, unknown>;
+}

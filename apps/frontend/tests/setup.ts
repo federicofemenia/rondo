@@ -212,6 +212,14 @@ export const mockChatLoadFailingMatchIds = new Set<string>();
 /** matchIds added here make POST .../chat/messages respond with a 500. */
 export const mockChatSendFailingMatchIds = new Set<string>();
 
+/** Controls the three push-subscription mock endpoints; reset before every test. testResult is what POST .../test resolves with when not failing. */
+export const mockPushState = {
+  saveFailing: false,
+  deleteFailing: false,
+  testFailing: false,
+  testResult: { sent: 1, removed: 0 },
+};
+
 function findSportName(sportId: string): string {
   return mockSportsCatalog.find((sport) => sport.id === sportId)?.name ?? '';
 }
@@ -246,6 +254,10 @@ beforeEach(() => {
   mockChatAccessDeniedMatchIds.clear();
   mockChatLoadFailingMatchIds.clear();
   mockChatSendFailingMatchIds.clear();
+  mockPushState.saveFailing = false;
+  mockPushState.deleteFailing = false;
+  mockPushState.testFailing = false;
+  mockPushState.testResult = { sent: 1, removed: 0 };
 });
 
 beforeEach(() => {
@@ -643,6 +655,33 @@ beforeEach(() => {
           mockChatByMatchId.set(matchId, { matchId, canSend: true, closed: false, closesAt: null, messages: [message] });
         }
         return json({ data: message }, 201);
+      }
+    }
+
+    if (url.endsWith('/api/v1/me/push-subscriptions/test')) {
+      if (method === 'POST') {
+        if (mockPushState.testFailing) {
+          return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+        }
+        return json({ data: mockPushState.testResult });
+      }
+    }
+
+    if (url.endsWith('/api/v1/me/push-subscriptions')) {
+      if (method === 'POST') {
+        if (mockPushState.saveFailing) {
+          return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+        }
+        return json({ data: { enabled: true, subscriptions: [] } });
+      }
+      if (method === 'DELETE') {
+        if (mockPushState.deleteFailing) {
+          return json({ error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado.' } }, 500);
+        }
+        return new Response(null, { status: 204 });
+      }
+      if (method === 'GET') {
+        return json({ data: { enabled: false, subscriptions: [] } });
       }
     }
 

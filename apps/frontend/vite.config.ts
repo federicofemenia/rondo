@@ -7,6 +7,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // injectManifest (not generateSW, used before the Web Push slice):
+      // Web Push needs custom `push`/`notificationclick` listeners in the
+      // service worker itself, which generateSW's fully-generated sw.js has
+      // no hook for. src/sw.ts is that hand-written worker -- still the
+      // only service worker Rondo registers, still built from the same
+      // Workbox precaching/routing building blocks generateSW used
+      // internally. See docs/WEB_PUSH.md and docs/PWA.md.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       // Service worker registration is driven manually by useUpdatePrompt
       // (virtual:pwa-register/react) so the app controls exactly when/how
       // the update UI shows -- the plugin's own auto-injected script is
@@ -18,15 +28,11 @@ export default defineConfig({
       // only in a real `vite build`.
       manifest: pwaManifest,
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
-      workbox: {
+      injectManifest: {
         // App shell only: precache the build's own JS/CSS/HTML/icons/fonts.
         // No entry here ever matches /api/v1/* (a different origin in every
         // real deployment anyway) or Clerk's domain, so neither is cached.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],

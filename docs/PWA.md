@@ -1,14 +1,15 @@
 # PWA
 
-Rondo es instalable como Progressive Web App: se puede agregar a la pantalla de inicio en Android e iPhone, abre en modo standalone (sin barra del navegador), tiene un service worker con actualización controlada por el usuario, y un fallback básico cuando no hay conexión. Este documento describe esa capa. **No incluye Web Push** (suscripción del dispositivo y notificaciones) — eso es el próximo slice, ver [Preparación para Web Push](#preparación-para-web-push) al final.
+Rondo es instalable como Progressive Web App: se puede agregar a la pantalla de inicio en Android e iPhone, abre en modo standalone (sin barra del navegador), tiene un service worker con actualización controlada por el usuario, y un fallback básico cuando no hay conexión. Este documento describe esa capa. La suscripción del dispositivo y el envío de notificaciones (Web Push) están documentados aparte en [`docs/WEB_PUSH.md`](./WEB_PUSH.md) — ahí también está el detalle de por qué el service worker pasó de `generateSW` a `injectManifest`.
 
 ---
 
 ## Arquitectura
 
 ```text
-vite-plugin-pwa (workbox-build, estrategia generateSW)
+vite-plugin-pwa (workbox-build, estrategia injectManifest)
   → manifest.webmanifest (generado desde src/pwaManifest.ts)
+  → src/sw.ts (service worker escrito a mano, precache + push + notificationclick)
   → sw.js + workbox-<hash>.js (generados en el build, en apps/frontend/dist)
 ```
 
@@ -94,23 +95,32 @@ No se usaron logos de terceros ni se rediseñó la marca — son recortes/compos
 
 ## Service Worker
 
-Estrategia: `generateSW` (Workbox genera el service worker completo, no hay `sw.ts` manual) con `registerType: 'prompt'`.
+Estrategia: `injectManifest` (`apps/frontend/src/sw.ts`, escrito a mano) con `registerType: 'prompt'`. Antes de la fase de Web Push era `generateSW` (Workbox generaba el service worker completo, sin `sw.ts`); se migró porque `generateSW` no tiene forma de agregar los listeners `push`/`notificationclick` que Web Push necesita — ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md#service-worker-generatesw--injectmanifest) para el detalle completo de esa migración. Sigue habiendo un único service worker, registrado exactamente igual que antes.
 
 ```ts
 // apps/frontend/vite.config.ts
 VitePWA({
+  strategies: 'injectManifest',
+  srcDir: 'src',
+  filename: 'sw.ts',
   injectRegister: false,      // el registro lo maneja UpdatePrompt.tsx a mano, vía el hook
   registerType: 'prompt',
   manifest: pwaManifest,
   includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
-  workbox: {
+  injectManifest: {
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-    cleanupOutdatedCaches: true,
-    clientsClaim: true,
-    navigateFallback: '/index.html',
-    navigateFallbackDenylist: [/^\/api\//],
   },
 })
+```
+
+```ts
+// apps/frontend/src/sw.ts (resumen -- ver el archivo real para push/notificationclick)
+precacheAndRoute(self.__WB_MANIFEST);
+cleanupOutdatedCaches();
+registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html'), { denylist: [/^\/api\//] }));
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
 ```
 
 ### Qué se precachea
@@ -133,15 +143,7 @@ No hay ningún `runtimeCaching` configurado. Eso es intencional:
 
 ### Actualización (`SKIP_WAITING`)
 
-Con `registerType: 'prompt'`, el propio `generateSW` de vite-plugin-pwa agrega este listener al `sw.js` generado (no hay que escribirlo a mano):
-
-```js
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
-});
-```
-
-`UpdatePrompt.tsx` es lo único que dispara ese mensaje, y solo cuando el usuario toca "Actualizar" — ver la sección de abajo.
+Con `generateSW` este listener lo agregaba automáticamente vite-plugin-pwa; con `injectManifest` está escrito a mano en `sw.ts` (mismo comportamiento, ver arriba). `UpdatePrompt.tsx` es lo único que dispara ese mensaje, y solo cuando el usuario toca "Actualizar" — ver la sección de abajo.
 
 ---
 
@@ -217,7 +219,7 @@ Escucha `navigator.onLine` + los eventos `online`/`offline` del `window`. Delibe
 
 ## Limitaciones
 
-- No hay Web Push, permisos de notificaciones, ni background sync (ver [próximo slice](#preparación-para-web-push)).
+- No hay background sync. Web Push sí existe (infraestructura de activación/desactivación/prueba, ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md)), pero todavía no dispara ante eventos reales de negocio (invitaciones, cancelaciones, chat) — ver las limitaciones de ese documento.
 - No hay cache de datos de negocio (partidos, invitaciones, chat) — solo el app shell.
 - No hay funcionamiento offline completo: sin conexión, la app *abre* (si ya se cargó antes) pero no puede leer ni escribir datos reales.
 - No hay edición offline ni cola de mutaciones pendientes.
@@ -291,13 +293,6 @@ Documentado acá; ejecutarlo antes de dar por cerrado este slice contra un build
 
 ---
 
-## Preparación para Web Push
+## Web Push
 
-Deliberadamente fuera de este slice (ver la sección "Fuera de alcance" del pedido original): VAPID, `PushSubscription`, Firebase, OneSignal, notificaciones de invitaciones/chat, background sync, deep links de notificaciones.
-
-Lo que este slice sí deja listo para ese próximo paso:
-
-- El service worker ya existe y ya se registra correctamente (`UpdatePrompt.tsx` + `virtual:pwa-register/react`) — Web Push necesita ese mismo service worker para manejar el evento `push`, no uno aparte.
-- `useOnlineStatus`/`pwaDisplayMode` ya distinguen standalone vs. navegador — la UI de "activar notificaciones" probablemente solo debería ofrecerse una vez instalada la app, y esta detección ya está resuelta.
-- El patrón de banner con descarte-con-expiración (`installDismissal.ts`) es reutilizable tal cual para un futuro "Activá las notificaciones" si se decide pedir el permiso de forma progresiva en vez de al abrir la app.
-- La estrategia `generateSW` de Workbox soporta agregar un listener de `push`/`notificationclick` vía la opción `injectManifest` (estrategia distinta, service worker semi-manual) si `generateSW` no alcanza para eso — es una decisión a tomar en ese slice, no en este.
+Implementado en un slice posterior a este documento — ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md) para arquitectura, el modelo `PushSubscription`, las claves VAPID, los endpoints, la migración `generateSW` → `injectManifest`, y el checklist de validación manual (Android/iPhone).

@@ -20,6 +20,7 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import CameraAltRoundedIcon from '@mui/icons-material/CameraAltRounded';
 import { ApiError, useApi } from './apiClient';
 import PageFooter from './PageFooter';
+import PushNotificationsSettings from './PushNotificationsSettings';
 
 type EditProfilePageProps = {
   onBack?: () => void;
@@ -231,6 +232,10 @@ function EditProfilePage({ onBack }: EditProfilePageProps) {
             ) : null}
           </Stack>
         )}
+
+        <Box sx={{ mt: 6 }}>
+          <PushNotificationsSettings />
+        </Box>
       </Box>
 
       <PageFooter>

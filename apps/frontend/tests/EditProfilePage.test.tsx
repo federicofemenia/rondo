@@ -96,4 +96,12 @@ describe('EditProfilePage', () => {
     expect(await screen.findByText(/no puede superar los 5 mb/i)).toBeTruthy();
     expect(clerkUserMock.setProfileImage).not.toHaveBeenCalled();
   });
+
+  it('shows the Notificaciones section (push settings) below the profile form', async () => {
+    render(<EditProfilePage />);
+    await screen.findByRole('radio', { name: /masculino/i });
+
+    expect(screen.getByText('Notificaciones')).toBeTruthy();
+    expect(screen.getByText(/^estado:/i)).toBeTruthy();
+  });
 });

@@ -16,6 +16,17 @@ const envSchema = z
     BOOTSTRAP_ADMIN_CLERK_USER_ID: z.string().optional(),
     // Dev-only convenience fallback; never the source of truth in beta/production.
     BOOTSTRAP_ADMIN_USERNAME: z.string().optional(),
+    // Web Push (VAPID). Public key is also read by the frontend build
+    // (VITE_VAPID_PUBLIC_KEY, a copy of the same value) -- see docs/WEB_PUSH.md
+    // for how to generate this pair. Never rotate these without also
+    // clearing every stored PushSubscription: existing browser subscriptions
+    // are bound to the public key they were created with and will start
+    // failing (410 Gone-equivalent) against a different key pair.
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    // mailto: or https: contact URI, required by the Web Push protocol itself
+    // (not just Rondo) so a push service can reach the sender about abuse.
+    VAPID_SUBJECT: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV !== 'production') {
@@ -29,6 +40,15 @@ const envSchema = z
     }
     if (!data.FRONTEND_URL) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FRONTEND_URL es obligatorio en producción.', path: ['FRONTEND_URL'] });
+    }
+    if (!data.VAPID_PUBLIC_KEY) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'VAPID_PUBLIC_KEY es obligatorio en producción.', path: ['VAPID_PUBLIC_KEY'] });
+    }
+    if (!data.VAPID_PRIVATE_KEY) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'VAPID_PRIVATE_KEY es obligatorio en producción.', path: ['VAPID_PRIVATE_KEY'] });
+    }
+    if (!data.VAPID_SUBJECT) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'VAPID_SUBJECT es obligatorio en producción.', path: ['VAPID_SUBJECT'] });
     }
   });
 

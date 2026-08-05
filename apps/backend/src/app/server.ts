@@ -13,6 +13,8 @@ import { registerInvitationRoutes } from '../modules/matches/invitations.control
 import { registerParticipantRoutes } from '../modules/matches/participants.controller.js';
 import { registerMatchChatRoutes } from '../modules/matches/chat.controller.js';
 import { registerSportProfileRoutes } from '../modules/sportProfiles/sportProfiles.controller.js';
+import { registerPushRoutes } from '../modules/push/push.controller.js';
+import { configureWebPush } from '../modules/push/push.service.js';
 import { createClerkAuthAdapter } from '../infrastructure/auth/clerkAuthAdapter.js';
 import type { AuthAdapter } from '../infrastructure/auth/authAdapter.js';
 import { attachAuth } from './auth.js';
@@ -24,12 +26,25 @@ export interface BuildServerDeps {
 
 type BuildServerEnv = Pick<
   Env,
-  'NODE_ENV' | 'CLERK_SECRET_KEY' | 'FRONTEND_URL' | 'BOOTSTRAP_ADMIN_CLERK_USER_ID' | 'BOOTSTRAP_ADMIN_USERNAME'
+  | 'NODE_ENV'
+  | 'CLERK_SECRET_KEY'
+  | 'FRONTEND_URL'
+  | 'BOOTSTRAP_ADMIN_CLERK_USER_ID'
+  | 'BOOTSTRAP_ADMIN_USERNAME'
+  | 'VAPID_PUBLIC_KEY'
+  | 'VAPID_PRIVATE_KEY'
+  | 'VAPID_SUBJECT'
 >;
 
 export async function buildServer(env: BuildServerEnv, deps: BuildServerDeps = {}) {
   const app = Fastify({
     logger: env.NODE_ENV !== 'test',
+  });
+
+  configureWebPush({
+    VAPID_PUBLIC_KEY: env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: env.VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: env.VAPID_SUBJECT,
   });
 
   await app.register(cors, {
@@ -60,6 +75,7 @@ export async function buildServer(env: BuildServerEnv, deps: BuildServerDeps = {
   registerInvitationRoutes(app);
   registerParticipantRoutes(app);
   registerMatchChatRoutes(app);
+  registerPushRoutes(app);
 
   return app;
 }

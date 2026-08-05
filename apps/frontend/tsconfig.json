@@ -5,5 +5,5 @@
     "types": ["vitest/globals"]
   },
   "include": ["src", "tests"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules", "src/sw.ts"]
 }

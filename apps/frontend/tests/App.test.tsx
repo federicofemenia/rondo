@@ -414,4 +414,35 @@ describe('App', () => {
     await screen.findByText('Partido en juego');
     expect(screen.getByLabelText('Notificaciones')).toBeTruthy();
   });
+
+  it('never shows the push-notifications activation banner on the Login screen', () => {
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('Notification', { permission: 'default', requestPermission: vi.fn() });
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { ready: new Promise(() => {}) } });
+
+    try {
+      render(<App />);
+      expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('shows the push-notifications activation banner once signed in, when the browser supports it', async () => {
+    clerkAuthMock.isSignedIn = true;
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('Notification', { permission: 'default', requestPermission: vi.fn() });
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: { ready: Promise.resolve({ pushManager: { getSubscription: vi.fn(async () => null) } }) },
+    });
+
+    try {
+      render(<App />);
+      await screen.findByRole('heading', { name: /hola, federico/i });
+      expect(await screen.findByText(/activá las notificaciones/i)).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

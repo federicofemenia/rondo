@@ -95,6 +95,7 @@ El Start Command ejecuta el backend ya compilado (`node dist/main.js` vía el sc
 | `FRONTEND_URL` | `<VERCEL_BETA_URL>` (podés completarlo después del paso 12 y volver a desplegar) — sin barra final |
 | `BOOTSTRAP_ADMIN_CLERK_USER_ID` | el User ID del paso 2 |
 | `BOOTSTRAP_ADMIN_USERNAME` | opcional, no usar en beta (ver más abajo) |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md) — también obligatorias en producción |
 
 **No configures `PORT` manualmente.** Render inyecta su propio `PORT` en runtime y el backend lo lee de `process.env.PORT` (`apps/backend/src/main.ts`) — fijar un valor propio en el dashboard lo pisaría y el health check fallaría.
 
@@ -152,6 +153,7 @@ Output Directory:  apps/frontend/dist
 | `VITE_API_BASE_URL` | `https://<RENDER_BACKEND_URL>` (sin barra final, sin `/api/v1`) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Publishable Key de la instancia de beta de Clerk |
 | `VITE_BETA_SIGN_UP_ENABLED` | `false` (o `true` solo si de verdad querés registro público en la beta) |
+| `VITE_VAPID_PUBLIC_KEY` | la misma clave pública VAPID configurada en Render (ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md)) |
 
 Ningún secreto de backend (`CLERK_SECRET_KEY`, `DATABASE_URL`, `BOOTSTRAP_ADMIN_CLERK_USER_ID`) va en Vercel.
 

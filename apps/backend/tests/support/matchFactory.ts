@@ -34,6 +34,15 @@ export async function createTestMatch(input: CreateTestMatchInput = {}): Promise
   const startsAt = input.startsAt !== undefined ? input.startsAt : defaultStartsAt;
   const endsAt = input.endsAt !== undefined ? input.endsAt : defaultEndsAt;
 
+  // Franja-only matches (startsAt: null) expire the instant `now` passes
+  // scheduledDate + availabilityStartMinutes in Argentina local time (see
+  // matchLifecycle.ts's rangeStartAt). Defaulting scheduledDate to *today*
+  // would put that instant in the past for most of the day (00:00 ART is
+  // usually already behind "now"), silently expiring the fixture before a
+  // test even runs against it -- default to tomorrow instead so it's
+  // reliably still organizable no matter what time of day the suite runs.
+  const defaultScheduledDate = startsAt ? startOfUtcDay(startsAt) : startOfUtcDay(new Date(now.getTime() + 24 * 3600_000));
+
   const match = await prisma.match.create({
     data: {
       id: randomUUID(),
@@ -44,7 +53,7 @@ export async function createTestMatch(input: CreateTestMatchInput = {}): Promise
       organizerUserId: input.organizerUserId ?? SEED_IDS.users.juan,
       minPlayers: input.minPlayers ?? 2,
       maxPlayers: input.maxPlayers ?? 10,
-      scheduledDate: input.scheduledDate ?? startOfUtcDay(startsAt ?? now),
+      scheduledDate: input.scheduledDate ?? defaultScheduledDate,
       availabilityStartMinutes: input.availabilityStartMinutes ?? 0,
       availabilityEndMinutes: input.availabilityEndMinutes ?? 1440,
       durationMinutes: input.durationMinutes ?? 60,

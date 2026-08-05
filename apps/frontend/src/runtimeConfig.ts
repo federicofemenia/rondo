@@ -31,3 +31,11 @@ export const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, a
  * enforce who is allowed to register.
  */
 export const isSignUpEnabled = import.meta.env.VITE_BETA_SIGN_UP_ENABLED === 'true';
+
+/**
+ * Public half of the Web Push VAPID key pair -- safe to ship to the client
+ * (see docs/WEB_PUSH.md). Empty string when unset so callers can feature-gate
+ * on it (`Boolean(vapidPublicKey)`) instead of crashing at import time; the
+ * push activation UI is the only thing that reads this.
+ */
+export const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY ?? '';

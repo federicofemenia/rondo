@@ -61,6 +61,7 @@ export function useApi() {
       request<T>(path, { method: 'PUT', body: payload !== undefined ? JSON.stringify(payload) : undefined }),
     patch: <T>(path: string, payload?: unknown) =>
       request<T>(path, { method: 'PATCH', body: payload !== undefined ? JSON.stringify(payload) : undefined }),
-    delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+    delete: <T>(path: string, payload?: unknown) =>
+      request<T>(path, { method: 'DELETE', body: payload !== undefined ? JSON.stringify(payload) : undefined }),
   };
 }

@@ -88,6 +88,7 @@ model User {
   invitationsReceived MatchInvitation[]  @relation("InvitationInvitedUser")
   invitationsSent     MatchInvitation[]  @relation("InvitationInvitedBy")
   chatMessages        MatchChatMessage[]
+  pushSubscriptions   PushSubscription[]
 
   @@map("users")
 }
@@ -376,4 +377,27 @@ model PlayerAvailability {
   @@unique([userSportProfileId, dayOfWeek, startMinutes, endMinutes])
   @@index([userSportProfileId])
   @@map("player_availabilities")
+}
+
+/// A single browser/device Web Push registration. A user can have several
+/// (phone, desktop, tablet) -- there is deliberately no unique constraint on
+/// userId. `endpoint` is globally unique instead: it's the browser's own
+/// identifier for that specific push registration, so re-subscribing the
+/// same device (even after a logout/login as a different user) upserts this
+/// same row rather than creating a duplicate -- see push.service.ts for the
+/// reassignment rule that follows from that.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
