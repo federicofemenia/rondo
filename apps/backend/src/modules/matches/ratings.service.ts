@@ -7,6 +7,8 @@ import type {
   RatingsSummaryDto,
 } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
+import { ratingReceivedPayload } from '../push/pushCopy.js';
+import { recordAndSendPushEvent } from '../push/pushEvents.service.js';
 import { isRatingsEnabled, isRatingsOpen, ratingsCloseAt } from './matchLifecycle.js';
 import { displayName, getConfirmedParticipantIds, requireMatchWithRelations } from './matches.service.js';
 import { MatchServiceError } from './errors.js';
@@ -113,6 +115,21 @@ export async function rateParticipant(
       conductScore: input.conductScore,
       comment: input.comment ?? null,
     },
+  });
+
+  // Only the rated player -- never the author, never the organizer unless
+  // they're the one rated, never other participants. dedupeKey is the same
+  // rating.id whether this was a create or an update (same composite
+  // unique key), so re-rating (editing a score/comment) never re-notifies:
+  // only the first "you received a rating" send goes out. Score, comment
+  // and the author's identity are deliberately never in the payload -- see
+  // docs/WEB_PUSH.md.
+  await recordAndSendPushEvent({
+    type: 'RATING_RECEIVED',
+    aggregateId: rating.id,
+    dedupeKey: `rating-received-${rating.id}`,
+    recipientUserIds: [targetUserId],
+    payload: ratingReceivedPayload(match.sportModality.sport.name, rating.id),
   });
 
   return toRatingDto(rating);

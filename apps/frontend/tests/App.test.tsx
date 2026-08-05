@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import type { MatchSummaryDto } from '@rondo/contracts';
 import { clerkAuthMock, mockClubs, mockMeState, mockMyInvitations, mockMyMatches } from './setup';
+import { INSTALL_WELCOME_DISMISSAL_KEY } from '../src/installWelcome';
 
 function fixtureMatch(overrides: Partial<MatchSummaryDto> = {}): MatchSummaryDto {
   const now = new Date().toISOString();
@@ -430,6 +431,10 @@ describe('App', () => {
 
   it('shows the push-notifications activation banner once signed in, when the browser supports it', async () => {
     clerkAuthMock.isSignedIn = true;
+    // Installing takes priority over activating push (see docs/PWA.md) --
+    // mark the install-welcome card already dismissed so it doesn't hide
+    // the push banner this test is actually about.
+    localStorage.setItem(INSTALL_WELCOME_DISMISSAL_KEY, String(Date.now()));
     vi.stubGlobal('PushManager', class {});
     vi.stubGlobal('Notification', { permission: 'default', requestPermission: vi.fn() });
     Object.defineProperty(navigator, 'serviceWorker', {
@@ -443,6 +448,42 @@ describe('App', () => {
       expect(await screen.findByText(/activá las notificaciones/i)).toBeTruthy();
     } finally {
       vi.unstubAllGlobals();
+      localStorage.removeItem(INSTALL_WELCOME_DISMISSAL_KEY);
+    }
+  });
+
+  it('never shows the install-welcome card on the Login screen', () => {
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('Notification', { permission: 'default', requestPermission: vi.fn() });
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { ready: new Promise(() => {}) } });
+
+    try {
+      render(<App />);
+      expect(screen.queryByText(/bienvenido a rondo/i)).toBeFalsy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('shows the install-welcome card once signed in, when not already installed or dismissed', async () => {
+    clerkAuthMock.isSignedIn = true;
+    localStorage.removeItem(INSTALL_WELCOME_DISMISSAL_KEY);
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('Notification', { permission: 'default', requestPermission: vi.fn() });
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: { ready: Promise.resolve({ pushManager: { getSubscription: vi.fn(async () => null) } }) },
+    });
+
+    try {
+      render(<App />);
+      await screen.findByRole('heading', { name: /hola, federico/i });
+      expect(await screen.findByText(/bienvenido a rondo/i)).toBeTruthy();
+      // Priority 1 (install) over priority 2 (push) -- see docs/PWA.md.
+      expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
+    } finally {
+      vi.unstubAllGlobals();
+      localStorage.removeItem(INSTALL_WELCOME_DISMISSAL_KEY);
     }
   });
 });

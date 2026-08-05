@@ -1,7 +1,9 @@
 import type { MatchChatMessageDto, MatchChatResponseDto, SendMatchChatMessageInputDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
+import { chatMessagePayload, toMatchPushContext } from '../push/pushCopy.js';
+import { recordAndSendPushEvent } from '../push/pushEvents.service.js';
 import { canSendMatchChatMessage, matchChatClosesAt } from './matchLifecycle.js';
-import { displayName, requireMatchWithRelations } from './matches.service.js';
+import { displayName, getConfirmedParticipantIds, requireMatchWithRelations } from './matches.service.js';
 import { MatchServiceError } from './errors.js';
 
 const MESSAGE_LIST_LIMIT = 100;
@@ -94,6 +96,21 @@ export async function sendChatMessage(
   const created = await prisma.matchChatMessage.create({
     data: { matchId, authorId, content: input.content },
     include: { author: true },
+  });
+
+  // Organizer is already part of getConfirmedParticipantIds (it includes
+  // every MatchParticipant row, and the organizer always has one -- see
+  // createMatch); this is every current recipient with a single query,
+  // no per-recipient lookups (see docs/WEB_PUSH.md).
+  const recipientUserIds = await getConfirmedParticipantIds(matchId);
+  recipientUserIds.delete(authorId);
+
+  await recordAndSendPushEvent({
+    type: 'MATCH_CHAT_MESSAGE',
+    aggregateId: created.id,
+    dedupeKey: `chat-message-${created.id}`,
+    recipientUserIds: [...recipientUserIds],
+    payload: chatMessagePayload(toMatchPushContext(match), displayName(created.author), created.content, created.id),
   });
 
   return toMessageDto(created, authorId);

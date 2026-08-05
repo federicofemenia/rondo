@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "PushEventType" ADD VALUE 'RATING_RECEIVED';

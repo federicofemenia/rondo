@@ -1,6 +1,6 @@
 # Web Push
 
-Rondo puede enviar notificaciones push del navegador/sistema operativo a los dispositivos donde un usuario las activó. Este documento cubre **solo la infraestructura**: activar/desactivar, guardar la suscripción, y una notificación de prueba. Todavía no dispara push automáticamente ante eventos reales (invitaciones, cancelaciones, chat, etc.) — ver [Fuera de alcance de este slice](#fuera-de-alcance-de-este-slice) y [Próximo slice](#próximo-slice-eventos-reales) al final.
+Rondo puede enviar notificaciones push del navegador/sistema operativo a los dispositivos donde un usuario las activó: tanto la infraestructura (activar/desactivar, guardar la suscripción, notificación de prueba) como los eventos reales de negocio que efectivamente disparan una — invitaciones, aceptaciones/rechazos, un partido que se llena, se cancela o termina, y mensajes de chat. Ver [Eventos de dominio](#eventos-de-dominio) más abajo. Lo que queda explícitamente fuera todavía: [Fuera de alcance de este slice](#fuera-de-alcance-de-este-slice).
 
 Este slice reutiliza el service worker de la PWA (ver [`docs/PWA.md`](./PWA.md)) — no hay un segundo service worker.
 
@@ -16,8 +16,9 @@ Usuario toca "Activar"
   → POST /api/v1/me/push-subscriptions { endpoint, keys: { p256dh, auth } }
       → se guarda en PostgreSQL (tabla push_subscriptions), asociada al usuario autenticado
 
-Backend envía una notificación (hoy: solo el botón "Enviar prueba")
-  → busca las PushSubscription del usuario
+Backend envía una notificación -- el botón "Enviar prueba" y los 8 eventos de dominio (invitaciones, cancelación, partido lleno/completado, chat) comparten el mismo camino final:
+  → recordAndSendPushEvent(): registra el evento (idempotencia, ver más abajo) y resuelve destinatarios
+  → sendPushToUser() por destinatario → busca sus PushSubscription
   → web-push.sendNotification(subscription, payload, { vapid keys })
   → si el push service responde 404/410 → esa suscripción quedó inválida → se borra
 
@@ -26,7 +27,7 @@ Service Worker (src/sw.ts)
   → evento "notificationclick" → enfoca una pestaña de Rondo existente, o abre una nueva
 ```
 
-Piezas nuevas de este slice:
+Piezas nuevas de la primera parte de este slice (infraestructura):
 
 ```text
 apps/backend/prisma (schema.prisma + migración)  # tabla push_subscriptions
@@ -40,6 +41,14 @@ apps/frontend/src/usePushNotifications.ts     # hook: supported, permission, ena
 apps/frontend/src/PushNotificationsBanner.tsx # CTA contextual "Activá las notificaciones", descartable 7 días
 apps/frontend/src/PushNotificationsSettings.tsx # sección "Notificaciones" en Editar perfil
 apps/frontend/src/runtimeConfig.ts            # VITE_VAPID_PUBLIC_KEY
+```
+
+Piezas de eventos de dominio (ver [Eventos de dominio](#eventos-de-dominio)):
+
+```text
+apps/backend/prisma (schema.prisma + migración)   # enum PushEventType, tabla push_events (idempotencia)
+apps/backend/src/modules/push/pushCopy.ts          # copy en español de cada evento -- título, cuerpo, tag
+apps/backend/src/modules/push/pushEvents.service.ts # recordAndSendPushEvent: idempotencia + fan-out + nunca lanza
 ```
 
 ---
@@ -178,6 +187,94 @@ Envía una notificación de prueba (`{ title: "Rondo", body: "Las notificaciones
 
 ---
 
+## Eventos de dominio
+
+Nueve eventos disparan una push real. Todos comparten el mismo principio: **se envían recién después de que la operación de negocio ya se confirmó** — una invitación, una aceptación, una cancelación, una valoración o un mensaje de chat nunca se revierten porque el envío del push falle. `recordAndSendPushEvent` (`pushEvents.service.ts`) nunca lanza una excepción bajo ninguna circunstancia; cualquier fallo se loguea (sin el payload completo ni claves) y se traga.
+
+| Evento | Se dispara | Destinatarios | Excluye |
+|---|---|---|---|
+| `MATCH_INVITATION_RECEIVED` | Al crear una invitación | El invitado | El organizador |
+| `MATCH_INVITATION_ACCEPTED` | Al aceptar | El organizador | El que aceptó |
+| `MATCH_PARTICIPANT_JOINED` | Al aceptar (mismo momento que arriba, evento distinto) | Confirmados previos | El organizador (ya recibió `ACCEPTED`), el que aceptó |
+| `MATCH_INVITATION_REJECTED` | Al rechazar | El organizador | Los demás participantes |
+| `MATCH_CANCELLED` | Al cancelar el partido | Confirmados + invitados PENDING | Rechazados/cancelados previos, el organizador que canceló |
+| `MATCH_FULL` | Transición real ORGANIZING → FULL | Todos los confirmados (organizador incluido) | — |
+| `MATCH_COMPLETED_RATINGS_ENABLED` | Transición real → COMPLETED (lazy, ver abajo) | Todos los confirmados (organizador incluido) | — |
+| `MATCH_CHAT_MESSAGE` | Cada mensaje guardado | Confirmados | El autor, pendientes, removidos/quienes abandonaron |
+| `RATING_RECEIVED` | Al guardar una `PlayerRating` | Solo el jugador valorado | Quien valoró; el organizador, salvo que sea el propio valorado |
+
+### `RATING_RECEIVED`: qué no incluye
+
+El título/cuerpo son fijos y genéricos ("Nueva valoración" / "Recibiste una nueva valoración en {deporte}.") -- deliberadamente **sin** cantidad de estrellas, puntuación, comentario, ni identidad de quien valoró. Esos datos siguen existiendo, solo que únicamente se ven dentro de Rondo (`GET /api/v1/matches/:matchId/ratings`), nunca en el texto de una notificación del sistema operativo que cualquiera podría ver de reojo en la pantalla de bloqueo. `dedupeKey` es `rating-received-{ratingId}`: como `rateParticipant` hace `upsert` (mismo `id` al crear o al editar una valoración ya dada), volver a valorar al mismo jugador en el mismo partido nunca reenvía el push -- solo la primera vez cuenta como "recibiste una valoración nueva".
+
+### Por qué `MATCH_INVITATION_ACCEPTED` y `MATCH_PARTICIPANT_JOINED` son eventos separados
+
+Una misma aceptación genera **dos** notificaciones con copy distinto: el organizador recibe "**{jugador}** aceptó tu invitación", y cada participante *ya confirmado* recibe "**{jugador}** se sumó al partido" — nunca ambos mensajes a la misma persona (el organizador no recibe el segundo; el que acaba de aceptar no recibe ninguno de los dos, nunca se notifica a alguien sobre su propia acción).
+
+### Idempotencia: tabla `push_events`
+
+```prisma
+enum PushEventType {
+  MATCH_INVITATION_RECEIVED
+  MATCH_INVITATION_ACCEPTED
+  MATCH_INVITATION_REJECTED
+  MATCH_PARTICIPANT_JOINED
+  MATCH_FULL
+  MATCH_CANCELLED
+  MATCH_COMPLETED_RATINGS_ENABLED
+  MATCH_CHAT_MESSAGE
+  RATING_RECEIVED
+}
+
+model PushEvent {
+  id          String        @id @default(uuid())
+  type        PushEventType
+  aggregateId String
+  dedupeKey   String        @unique
+  payload     Json
+  createdAt   DateTime      @default(now())
+  processedAt DateTime?
+  failedAt    DateTime?
+  attempts    Int           @default(0)
+}
+```
+
+Una fila por **ocurrencia lógica** del evento (no una por destinatario -- una aceptación con 5 confirmados previos genera 1 fila `MATCH_PARTICIPANT_JOINED`, enviada a los 5). La guarda real de idempotencia es la restricción `@unique` de `dedupeKey`: `recordAndSendPushEvent` intenta `create`; si otra llamada (reintento, doble-click, dos resoluciones de lifecycle en paralelo) ya insertó la misma clave, el `create` falla con `P2002` y la función retorna en silencio -- exactamente una fila y una ronda de envíos por evento, garantizado por la base de datos, no por lógica de aplicación que pueda tener una condición de carrera.
+
+`dedupeKey` por tipo de evento:
+
+- Invitación recibida/aceptada/rechazada, jugador sumado: `invitation-{accion}-{invitationId}` -- cada invitación solo puede pasar por cada transición una vez (`status !== 'PENDING'` ya lo impide a nivel de negocio), así que esto es defensa en profundidad, no la única barrera.
+- Partido cancelado: `match-cancelled-{matchId}` -- CANCELLED es terminal, no hay una segunda cancelación posible.
+- Partido completado: `match-completed-{matchId}` -- COMPLETED también es terminal.
+- Mensaje de chat: `chat-message-{messageId}` -- cada mensaje tiene su propio id.
+- Valoración recibida: `rating-received-{ratingId}` -- mismo `id` al crear o editar (es un `upsert`), así que reeditar una valoración nunca reenvía el push.
+- **`MATCH_FULL`: `match-full-{matchId}-{statusChangedAt.toISOString()}`.** A diferencia de los anteriores, FULL no es terminal -- un jugador puede abandonar (vuelve a ORGANIZING) y el partido puede completarse de nuevo más tarde. Se decidió que esa segunda vez **sí** debe notificar de nuevo (es una transición real distinta), así que la clave incluye el instante exacto de la transición (`now` en el momento en que `acceptInvitation` la detecta) en vez de depender solo de `matchId`. Una lectura repetida del mismo partido ya FULL nunca genera una clave nueva (no hay una transición nueva que detectar), así que no duplica.
+
+### `MATCH_COMPLETED_RATINGS_ENABLED` es 100% lazy durante la beta
+
+Todas las transiciones de lifecycle (incluida `IN_PROGRESS → COMPLETED`) se resuelven *lazy*: recién cuando algo pide el partido (`findMatchWithRelations`, llamado por cualquier request normal -- ver un partido, listar `/me/matches`, etc.). No existe ningún job programado ni cron corriendo en segundo plano: si nadie vuelve a pedir ese partido después de que terminó, la transición (y el push que la acompaña) simplemente espera hasta que alguien lo haga. Es una decisión deliberada para este slice, no un descuido -- agregar un disparador programado (Render Cron Job, un endpoint interno con scheduler externo, etc.) es explícitamente [fuera de alcance](#fuera-de-alcance-de-este-slice) por ahora.
+
+`notifyIfJustCompleted` (`matches.service.ts`) sigue siendo el único lugar que dispara `MATCH_COMPLETED_RATINGS_ENABLED`, y sigue siendo idempotente vía `dedupeKey` (`match-completed-{matchId}`) incluso si dos requests concurrentes observan la misma transición.
+
+### Contenido y privacidad
+
+Ningún payload incluye email, username, biografía, comentarios ajenos, ni tokens -- solo nombres visibles (`displayName`) y datos mínimos del partido (deporte, día de la semana, hora si está confirmada, sede si existe). El cuerpo de cada notificación está en `pushCopy.ts`, con ejemplos reales:
+
+- `MATCH_INVITATION_RECEIVED`: "Juan Pérez te invitó a jugar Fútbol el viernes a las 20:00 en La Canchita." (o, sin sede/hora confirmada: "...el viernes. Sede a definir.")
+- `MATCH_CHAT_MESSAGE`: título `"{autor} · {deporte}"`, cuerpo truncado a 100 caracteres en una sola línea (sin interpretar HTML), con "…" si se cortó.
+
+`data` en el payload lleva `{ type, matchId?, invitationId?, messageId? }` -- contexto interno para un futuro deep link, nunca contenido sensible.
+
+### Deep links: todavía `/`
+
+Rondo no tiene routing real por URL (todo es estado interno de React -- ver `docs/BETA_DEPLOYMENT.md#spa-routing`), así que **todo** payload usa `url: "/"`. `data.matchId`/`data.invitationId` ya viajan en cada push para cuando exista routing real; no se inventó un deep link que la app no sabe resolver.
+
+### Usuarios sin suscripción
+
+No tener ninguna `PushSubscription` es el caso normal para la mayoría de los usuarios la mayor parte del tiempo, no un error: `recordAndSendPushEvent` lo trata como un no-op silencioso (sin logs por usuario, para no llenar la consola de warnings repetitivos) — solo loguea si el propio servidor no tiene VAPID configurado (una vez, no por destinatario) o si ocurre algo verdaderamente inesperado.
+
+---
+
 ## Limpieza de suscripciones expiradas (404/410)
 
 Cuando el push service del navegador responde `404` o `410` al intentar enviar (el usuario desinstaló, borró datos del sitio, o la suscripción simplemente venció), `push.service.ts` **borra esa fila automáticamente** — no queda como basura acumulándose. Un fallo de red genérico (no 404/410) **no** borra la suscripción: se reintenta la próxima vez que se envíe algo, y **nunca aborta el envío a las otras suscripciones del mismo usuario** (cada una se envía de forma independiente).
@@ -243,6 +340,18 @@ Funciona tanto en el navegador normal como instalado como PWA — se recomienda 
 - [ ] Minimizar → repetir prueba → confirmar recepción con la app en background.
 - [ ] Tocar la notificación → confirmar que abre Rondo.
 
+### Dos usuarios (eventos de dominio)
+
+Con ambos dispositivos/navegadores logueados y notificaciones activadas:
+
+- [ ] Usuario A crea un partido e invita a B → B recibe "Nueva invitación".
+- [ ] B acepta → A recibe "Invitación aceptada"; cualquier otro participante ya confirmado recibe "Nuevo jugador confirmado" (B no recibe nada sobre su propia aceptación).
+- [ ] Completar el último cupo → todos los confirmados reciben "Equipo completo"; refrescar la app no genera una segunda notificación.
+- [ ] Enviar un mensaje de chat → todos menos el autor lo reciben.
+- [ ] Cancelar el partido → confirmados y pendientes reciben "Partido cancelado"; no se duplica.
+- [ ] Para "Valoraciones habilitadas": usar un partido con `endsAt` ya pasado y volver a abrirlo (Home, o su detalle) — la resolución es lazy (ver [`MATCH_COMPLETED_RATINGS_ENABLED` es 100% lazy](#match_completed_ratings_enabled-es-100-lazy-durante-la-beta)), así que la notificación sale recién en ese momento; confirmar que no se duplica al volver a abrirlo.
+- [ ] A valora a B → B recibe "Nueva valoración" ("Recibiste una nueva valoración en {deporte}."), sin estrellas ni comentario visibles en la notificación; A no recibe nada. Editar la misma valoración no reenvía el push.
+
 ---
 
 ## Troubleshooting
@@ -258,21 +367,16 @@ Funciona tanto en el navegador normal como instalado como PWA — se recomienda 
 ## Limitaciones
 
 - No hay lista de dispositivos en la UI (el backend ya soporta varias suscripciones por usuario, pero Perfil solo muestra un estado agregado para el dispositivo actual, no "tenés push activo en 3 dispositivos, ver cuáles").
-- No hay preferencias por tipo de notificación, ni horarios de silencio, ni "silenciar este partido" — todo eso queda para cuando exista más de un tipo de push real.
-- No hay deep links reales: el único payload que este slice envía usa `url: "/"`. Conectar eventos reales (próximo slice) requiere decidir primero cómo Rondo navega a una pantalla específica (hoy usa estado interno de React, no rutas de URL) antes de poder abrir "directo a la invitación X".
-- No hay reintentos automáticos de envío más allá de lo que ya hace `web-push` internamente por request.
-- No se probó en un dispositivo físico real como parte de esta entrega (ver checklist de arriba).
+- No hay preferencias por tipo de notificación, ni horarios de silencio, ni "silenciar este partido" — el chat en particular notifica *cada* mensaje sin excepción; el propio pedido original ya marca esto como una necesidad futura, no un descuido.
+- No hay deep links reales: todo payload usa `url: "/"`. `data.matchId`/`data.invitationId`/`data.messageId` ya viajan para cuando exista routing real (hoy Rondo usa estado interno de React, no rutas de URL).
+- No hay reintentos automáticos de envío más allá de lo que ya hace `web-push` internamente por request -- una falla no-404/410 simplemente no reintenta hasta el próximo evento real.
+- `MATCH_COMPLETED_RATINGS_ENABLED` es puramente lazy durante la beta (sin job programado, ver [arriba](#match_completed_ratings_enabled-es-100-lazy-durante-la-beta)): si nadie vuelve a abrir un partido después de que terminó, la notificación de "ya podés valorar" no sale hasta que alguien lo haga. Deliberado para este slice, no un descuido.
+- No se probó en un dispositivo físico real como parte de esta entrega (ver checklists de arriba).
 
 ## Fuera de alcance de este slice
 
-Firebase, OneSignal, WebSockets, badge count nativo, agrupación avanzada de notificaciones, analytics de entrega — y, más importante, **ningún evento de negocio dispara push todavía** (invitaciones, cancelaciones, chat, ratings, reservas). Ver la sección siguiente.
+Recordatorio antes del partido, notificaciones de reservas, confirmación al autor de que su valoración se envió correctamente (a diferencia de `RATING_RECEIVED`, que avisa al jugador *valorado*, y de "ya podés valorar", ambas ya implementadas), notificaciones administrativas de clubes, preferencias por evento/silenciamiento de chat, horarios silenciosos, agrupación avanzada, badges nativos, emails, SMS, Firebase, OneSignal, analytics de entrega, deep links complejos, cualquier mecanismo de cron/scheduler/proceso programado (ver arriba).
 
-## Próximo slice: eventos reales
+## Próximo slice
 
-`sendPushToUser(userId, payload)` (`push.service.ts`) ya es genérico y reutilizable — no tiene nada específico de "prueba"; `sendTestNotification` es solo un caller más. El próximo slice conecta, en este orden sugerido:
-
-1. Invitación recibida.
-2. Partido cancelado.
-3. Invitación aceptada/rechazada.
-
-Notificaciones de chat quedan para una fase posterior: necesitan preferencias y algún control de volumen (no todos los mensajes deberían generar un push), que no existen todavía.
+Con los nueve eventos de [Eventos de dominio](#eventos-de-dominio) ya conectados, lo que sigue (no en este slice, ver [Fuera de alcance](#fuera-de-alcance-de-este-slice)) es: recordatorio antes del partido, preferencias por tipo de evento (empezando por poder silenciar el chat, el caso más ruidoso), deep links reales una vez que exista routing por URL, y -- si el volumen de partidos lo justifica más adelante -- algún mecanismo programado para que `MATCH_COMPLETED_RATINGS_ENABLED` no dependa de que alguien vuelva a abrir un partido ya terminado. `recordAndSendPushEvent`/`sendPushToUser` (`pushEvents.service.ts`/`push.service.ts`) ya son genéricos y reutilizables -- conectar un evento nuevo no debería requerir tocar la infraestructura, solo agregar el copy en `pushCopy.ts` y la llamada en el service correspondiente.

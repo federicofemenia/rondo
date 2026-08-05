@@ -1,7 +1,7 @@
-const DISMISSAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_DISMISSAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Whether `storageKey` was dismissed within the last 7 days -- shared by InstallRondoBanner and IosInstallGuide so both "don't nag" the same way. */
-export function isInstallPromptDismissed(storageKey: string): boolean {
+/** Whether `storageKey` was dismissed within `windowMs` (default 7 days) -- shared by every dismissible PWA/push nudge so they all "don't nag" consistently, each with its own key and (optionally) its own window. */
+export function isInstallPromptDismissed(storageKey: string, windowMs: number = DEFAULT_DISMISSAL_WINDOW_MS): boolean {
   const raw = localStorage.getItem(storageKey);
   if (!raw) {
     return false;
@@ -10,7 +10,7 @@ export function isInstallPromptDismissed(storageKey: string): boolean {
   if (!Number.isFinite(dismissedAt)) {
     return false;
   }
-  return Date.now() - dismissedAt < DISMISSAL_WINDOW_MS;
+  return Date.now() - dismissedAt < windowMs;
 }
 
 export function dismissInstallPrompt(storageKey: string): void {

@@ -401,3 +401,39 @@ model PushSubscription {
   @@index([userId])
   @@map("push_subscriptions")
 }
+
+enum PushEventType {
+  MATCH_INVITATION_RECEIVED
+  MATCH_INVITATION_ACCEPTED
+  MATCH_INVITATION_REJECTED
+  MATCH_PARTICIPANT_JOINED
+  MATCH_FULL
+  MATCH_CANCELLED
+  MATCH_COMPLETED_RATINGS_ENABLED
+  MATCH_CHAT_MESSAGE
+  RATING_RECEIVED
+}
+
+/// Idempotency ledger for domain-event push notifications (pushEvents.service.ts):
+/// one row per *logical* business event (not one per recipient -- a single
+/// acceptance, for example, fans out to several recipients from one row).
+/// `dedupeKey` is the actual idempotency guard -- its unique constraint is
+/// what makes a concurrent or retried call to recordAndSendPushEvent a safe
+/// no-op instead of a duplicate notification. Never deleted; small enough
+/// (one row per notifiable event, not per push) to keep indefinitely as an
+/// audit trail.
+model PushEvent {
+  id          String        @id @default(uuid())
+  type        PushEventType
+  aggregateId String        @map("aggregate_id")
+  dedupeKey   String        @unique @map("dedupe_key")
+  payload     Json
+  createdAt   DateTime      @default(now()) @map("created_at")
+  processedAt DateTime?     @map("processed_at")
+  failedAt    DateTime?     @map("failed_at")
+  attempts    Int           @default(0)
+
+  @@index([aggregateId])
+  @@index([processedAt, createdAt])
+  @@map("push_events")
+}

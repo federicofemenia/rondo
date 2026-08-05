@@ -1,6 +1,9 @@
 import { Prisma } from '@prisma/client';
+import type { MatchStatus } from '@prisma/client';
 import type { CreateMatchInputDto, MatchSummaryDto, UpdateMatchScheduleInputDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
+import { matchCancelledPayload, matchCompletedRatingsEnabledPayload, toMatchPushContext } from '../push/pushCopy.js';
+import { recordAndSendPushEvent } from '../push/pushEvents.service.js';
 import { toArgentinaMinutesOfDay } from './argentinaTime.js';
 import { applyMatchLifecycle, isVisibleOnHome } from './matchLifecycle.js';
 import { MatchServiceError } from './errors.js';
@@ -22,12 +25,42 @@ const matchInclude = {
 
 export type MatchWithRelations = Prisma.MatchGetPayload<{ include: typeof matchInclude }>;
 
+/**
+ * Fires MATCH_COMPLETED_RATINGS_ENABLED exactly once per match, the moment
+ * lifecycle resolution *itself* detects a real transition into COMPLETED --
+ * called from every place that resolves lifecycle with full relations
+ * (findMatchWithRelations, listUserMatches). During the beta this is the
+ * only way COMPLETED gets detected: purely lazy, on whatever request
+ * happens to read the match next -- there is deliberately no scheduled job
+ * (see docs/WEB_PUSH.md). PushEvent's dedupeKey still guarantees a single
+ * send even if two concurrent requests both observe the same transition.
+ * Never fired for EXPIRED/IN_PROGRESS -- not in scope.
+ */
+async function notifyIfJustCompleted(match: MatchWithRelations, previousStatus: MatchStatus): Promise<void> {
+  if (previousStatus === match.status || match.status !== 'COMPLETED') {
+    return;
+  }
+
+  const participants = await prisma.matchParticipant.findMany({ where: { matchId: match.id }, select: { userId: true } });
+
+  await recordAndSendPushEvent({
+    type: 'MATCH_COMPLETED_RATINGS_ENABLED',
+    aggregateId: match.id,
+    dedupeKey: `match-completed-${match.id}`,
+    recipientUserIds: participants.map((participant) => participant.userId),
+    payload: matchCompletedRatingsEnabledPayload(toMatchPushContext(match)),
+  });
+}
+
 export async function findMatchWithRelations(matchId: string, now: Date = new Date()): Promise<MatchWithRelations | null> {
   const match = await prisma.match.findUnique({ where: { id: matchId }, include: matchInclude });
   if (!match) {
     return null;
   }
-  return applyMatchLifecycle(match, match._count.participants, now);
+  const previousStatus = match.status;
+  const resolved = await applyMatchLifecycle(match, match._count.participants, now);
+  await notifyIfJustCompleted(resolved, previousStatus);
+  return resolved;
 }
 
 export async function requireMatchWithRelations(matchId: string, now: Date = new Date()): Promise<MatchWithRelations> {
@@ -45,7 +78,14 @@ export async function listUserMatches(userId: string, now: Date = new Date()): P
     orderBy: [{ scheduledDate: 'asc' }, { startsAt: 'asc' }],
   });
 
-  const resolved = await Promise.all(matches.map((match) => applyMatchLifecycle(match, match._count.participants, now)));
+  const resolved = await Promise.all(
+    matches.map(async (match) => {
+      const previousStatus = match.status;
+      const next = await applyMatchLifecycle(match, match._count.participants, now);
+      await notifyIfJustCompleted(next, previousStatus);
+      return next;
+    }),
+  );
   return resolved.filter((match) => isVisibleOnHome(match, now));
 }
 
@@ -263,6 +303,11 @@ export async function cancelMatch(matchId: string, actingUserId: string, reason:
     throw new MatchServiceError(403, 'NOT_ORGANIZER', 'Solo el organizador puede cancelar el partido.');
   }
 
+  const [confirmedParticipantIds, pendingInvitations] = await Promise.all([
+    getConfirmedParticipantIds(matchId),
+    prisma.matchInvitation.findMany({ where: { matchId, status: 'PENDING' }, select: { invitedUserId: true } }),
+  ]);
+
   await prisma.match.update({
     where: { id: matchId },
     data: {
@@ -272,6 +317,20 @@ export async function cancelMatch(matchId: string, actingUserId: string, reason:
       statusChangedByUserId: actingUserId,
       cancellationReason: reason ?? null,
     },
+  });
+
+  // Confirmed participants (organizer included, by construction -- see
+  // createMatch) + still-pending invitees, minus whoever actually pulled
+  // the trigger: the organizer already knows, having just done it.
+  const recipientUserIds = new Set([...confirmedParticipantIds, ...pendingInvitations.map((invitation) => invitation.invitedUserId)]);
+  recipientUserIds.delete(actingUserId);
+
+  await recordAndSendPushEvent({
+    type: 'MATCH_CANCELLED',
+    aggregateId: matchId,
+    dedupeKey: `match-cancelled-${matchId}`,
+    recipientUserIds: [...recipientUserIds],
+    payload: matchCancelledPayload(toMatchPushContext(match)),
   });
 
   return requireMatchWithRelations(matchId, now);

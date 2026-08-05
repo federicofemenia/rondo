@@ -1,6 +1,15 @@
 import type { Prisma } from '@prisma/client';
 import type { CreateInvitationInputDto, MatchInvitationDto } from '@rondo/contracts';
 import { prisma } from '../../infrastructure/database/prisma.js';
+import {
+  invitationAcceptedPayload,
+  invitationReceivedPayload,
+  invitationRejectedPayload,
+  matchFullPayload,
+  participantJoinedPayload,
+  toMatchPushContext,
+} from '../push/pushCopy.js';
+import { recordAndSendPushEvent } from '../push/pushEvents.service.js';
 import { assertMatchEditable, displayName, getConfirmedParticipantIds, requireMatchWithRelations } from './matches.service.js';
 import { getMatchCandidates } from './matching.service.js';
 import { MatchServiceError } from './errors.js';
@@ -136,6 +145,14 @@ export async function createInvitation(
     },
   });
 
+  await recordAndSendPushEvent({
+    type: 'MATCH_INVITATION_RECEIVED',
+    aggregateId: created.id,
+    dedupeKey: `invitation-received-${created.id}`,
+    recipientUserIds: [input.invitedUserId],
+    payload: invitationReceivedPayload(toMatchPushContext(match), displayName(match.organizer), created.id),
+  });
+
   return toInvitationDto(await requireInvitation(created.id));
 }
 
@@ -164,8 +181,13 @@ export async function acceptInvitation(invitationId: string, actingUserId: strin
     throw new MatchServiceError(409, 'MATCH_NOT_ACCEPTING_PARTICIPANTS', 'El partido ya no acepta nuevos participantes.');
   }
 
+  let previouslyConfirmedUserIds: string[] = [];
+  let becameFull = false;
+
   await prisma.$transaction(async (tx) => {
-    const participantsCount = await tx.matchParticipant.count({ where: { matchId: invitation.matchId } });
+    const confirmedBefore = await tx.matchParticipant.findMany({ where: { matchId: invitation.matchId }, select: { userId: true } });
+    previouslyConfirmedUserIds = confirmedBefore.map((participant) => participant.userId);
+    const participantsCount = previouslyConfirmedUserIds.length;
     if (participantsCount >= match.maxPlayers) {
       throw new MatchServiceError(409, 'MATCH_FULL', 'El partido ya no tiene lugares disponibles.');
     }
@@ -179,8 +201,51 @@ export async function acceptInvitation(invitationId: string, actingUserId: strin
         where: { id: invitation.matchId },
         data: { status: 'FULL', statusChangedAt: now, statusChangedByType: 'USER', statusChangedByUserId: actingUserId },
       });
+      becameFull = true;
     }
   });
+
+  const context = toMatchPushContext(match);
+  const accepterName = displayName(invitation.invitedUser);
+
+  // Organizer gets the specific "aceptó tu invitación" message; every
+  // *other* already-confirmed participant gets the generic "se sumó al
+  // partido" one (MATCH_PARTICIPANT_JOINED, below) -- the organizer is
+  // deliberately excluded from that second list so they never get both for
+  // the same acceptance, and the acceptor never gets notified about their
+  // own action.
+  await recordAndSendPushEvent({
+    type: 'MATCH_INVITATION_ACCEPTED',
+    aggregateId: invitationId,
+    dedupeKey: `invitation-accepted-${invitationId}`,
+    recipientUserIds: [match.organizerUserId],
+    payload: invitationAcceptedPayload(context, accepterName, invitationId),
+  });
+
+  const otherConfirmedUserIds = previouslyConfirmedUserIds.filter((userId) => userId !== actingUserId && userId !== match.organizerUserId);
+  if (otherConfirmedUserIds.length > 0) {
+    await recordAndSendPushEvent({
+      type: 'MATCH_PARTICIPANT_JOINED',
+      aggregateId: invitationId,
+      dedupeKey: `participant-joined-${invitationId}`,
+      recipientUserIds: otherConfirmedUserIds,
+      payload: participantJoinedPayload(context, accepterName, invitationId),
+    });
+  }
+
+  if (becameFull) {
+    // dedupeKey includes the transition instant (not just matchId): if a
+    // player later leaves and the match refills to FULL again, that's a
+    // *new* real transition and should notify again -- see docs/WEB_PUSH.md
+    // for the "cycle" decision this MVP made.
+    await recordAndSendPushEvent({
+      type: 'MATCH_FULL',
+      aggregateId: invitation.matchId,
+      dedupeKey: `match-full-${invitation.matchId}-${now.toISOString()}`,
+      recipientUserIds: [...previouslyConfirmedUserIds, actingUserId],
+      payload: matchFullPayload(context),
+    });
+  }
 
   return toInvitationDto(await requireInvitation(invitationId));
 }
@@ -197,6 +262,14 @@ export async function rejectInvitation(invitationId: string, actingUserId: strin
   }
 
   await prisma.matchInvitation.update({ where: { id: invitationId }, data: { status: 'REJECTED', respondedAt: now } });
+
+  await recordAndSendPushEvent({
+    type: 'MATCH_INVITATION_REJECTED',
+    aggregateId: invitationId,
+    dedupeKey: `invitation-rejected-${invitationId}`,
+    recipientUserIds: [invitation.match.organizerUserId],
+    payload: invitationRejectedPayload(toMatchPushContext(invitation.match), displayName(invitation.invitedUser), invitationId),
+  });
 
   return toInvitationDto(await requireInvitation(invitationId));
 }

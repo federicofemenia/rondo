@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PushNotificationsBanner from '../src/PushNotificationsBanner';
+import { INSTALL_WELCOME_DISMISSAL_KEY } from '../src/installWelcome';
 
 const DISMISSAL_STORAGE_KEY = 'rondo-push-banner-dismissed-at';
 
@@ -33,6 +34,14 @@ function stubSupportedBrowser(permission: NotificationPermission) {
 }
 
 describe('PushNotificationsBanner', () => {
+  // Installing takes priority over activating push (see docs/PWA.md): every
+  // test below is about the push banner's OWN behavior, not the sequencing
+  // with InstallWelcomeDialog, so it's marked dismissed by default here --
+  // the dedicated sequencing test further down clears it back out.
+  beforeEach(() => {
+    localStorage.setItem(INSTALL_WELCOME_DISMISSAL_KEY, String(Date.now()));
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     localStorage.clear();
@@ -123,5 +132,13 @@ describe('PushNotificationsBanner', () => {
 
     expect(requestPermission).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy());
+  });
+
+  it('stays hidden while the install-welcome card is still eligible to show (installing takes priority)', () => {
+    localStorage.removeItem(INSTALL_WELCOME_DISMISSAL_KEY);
+    stubSupportedBrowser('default');
+    render(<PushNotificationsBanner />);
+
+    expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
   });
 });

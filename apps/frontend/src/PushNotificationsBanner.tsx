@@ -8,6 +8,7 @@ import Typography from '@mui/material/Typography';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import NotificationsActiveRoundedIcon from '@mui/icons-material/NotificationsActiveRounded';
 import { dismissInstallPrompt, isInstallPromptDismissed } from './installDismissal';
+import { useInstallWelcomeVisible } from './installWelcome';
 import { isIosDevice, isStandaloneDisplayMode } from './pwaDisplayMode';
 import { usePushNotifications } from './usePushNotifications';
 
@@ -16,21 +17,26 @@ const DISMISSAL_STORAGE_KEY = 'rondo-push-banner-dismissed-at';
 /**
  * Contextual "activate push" nudge -- only ever mounted while the user is
  * authenticated (see App.tsx; never on Login/Register). Reuses the same
- * dismiss-with-7-day-expiry pattern as InstallRondoBanner/IosInstallGuide
- * (installDismissal.ts), under its own storage key so dismissing one banner
- * never dismisses the other. Permission is never requested automatically --
- * only "Activar" (a real user interaction) triggers it, per docs/WEB_PUSH.md.
+ * dismiss-with-expiry pattern as InstallWelcomeDialog (installDismissal.ts),
+ * under its own storage key so dismissing one nudge never dismisses the
+ * other. Permission is never requested automatically -- only "Activar" (a
+ * real user interaction) triggers it, per docs/WEB_PUSH.md.
+ *
+ * Installing takes priority over activating push (see docs/PWA.md): while
+ * InstallWelcomeDialog is eligible to show, this banner stays hidden so the
+ * two never compete for the user's attention at once.
  */
 function PushNotificationsBanner() {
   const { supported, permission, enable, loading } = usePushNotifications();
   const [dismissed, setDismissed] = useState(() => isInstallPromptDismissed(DISMISSAL_STORAGE_KEY));
+  const installWelcomeVisible = useInstallWelcomeVisible();
 
   const handleDismiss = () => {
     dismissInstallPrompt(DISMISSAL_STORAGE_KEY);
     setDismissed(true);
   };
 
-  if (dismissed) {
+  if (dismissed || installWelcomeVisible) {
     return null;
   }
 

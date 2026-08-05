@@ -24,17 +24,18 @@ apps/frontend/index.html           # meta tags (theme-color, apple-*, favicon, v
 apps/frontend/public/              # iconos (pwa-192x192.png, pwa-512x512.png, maskable-icon-512x512.png, apple-touch-icon.png, favicon.ico)
 apps/frontend/src/useOnlineStatus.ts       # hook: navigator.onLine + eventos online/offline
 apps/frontend/src/pwaDisplayMode.ts        # detección: standalone, iOS, iOS Safari
-apps/frontend/src/useInstallPrompt.ts      # hook: wrapea beforeinstallprompt
-apps/frontend/src/installDismissal.ts      # helper: descarte con expiración de 7 días en localStorage
-apps/frontend/src/InstallRondoBanner.tsx   # banner de instalación (Android/Chrome/Edge)
-apps/frontend/src/IosInstallGuide.tsx      # guía de instalación manual (iOS Safari)
+apps/frontend/src/installPrompt.ts         # módulo único: captura beforeinstallprompt/appinstalled apenas se importa (no en un efecto de React)
+apps/frontend/src/useInstallPrompt.ts      # hook: lee installPrompt.ts vía useSyncExternalStore
+apps/frontend/src/installWelcome.ts        # elegibilidad del aviso de bienvenida + su descarte de 3 días
+apps/frontend/src/installDismissal.ts      # helper genérico: descarte con expiración configurable (7 días por defecto) en localStorage
+apps/frontend/src/InstallWelcomeDialog.tsx # aviso "Bienvenido a Rondo" del primer ingreso autenticado (Android + iOS)
 apps/frontend/src/UpdatePrompt.tsx         # aviso de nueva versión (virtual:pwa-register/react)
 apps/frontend/src/OfflineBanner.tsx        # franja discreta "Sin conexión" (no bloquea la app)
 apps/frontend/src/OfflineScreen.tsx        # pantalla completa "Sin conexión" (solo si todavía no cargó nada)
-apps/frontend/src/PwaChrome.tsx            # agrupa los cuatro anteriores, montado una vez en main.tsx
+apps/frontend/src/PwaChrome.tsx            # agrupa offline + update, montado una vez en main.tsx
 ```
 
-`PwaChrome` se monta en `main.tsx`, como hermano de `<App />` (no adentro) — así funciona incluso en la pantalla de login, antes de que `isSignedIn` sea `true`.
+`PwaChrome` se monta en `main.tsx`, como hermano de `<App />` (no adentro) — así funciona incluso en la pantalla de login, antes de que `isSignedIn` sea `true`. `InstallWelcomeDialog` **no** vive en `PwaChrome`: solo tiene sentido una vez autenticado ("primer ingreso"), así que `App.tsx` lo monta él mismo, condicionado a `isSignedIn` — ver [Aviso de instalación en el primer ingreso](#aviso-de-instalación-en-el-primer-ingreso) más abajo.
 
 ---
 
@@ -89,7 +90,7 @@ No se usaron logos de terceros ni se rediseñó la marca — son recortes/compos
 
 `apple-mobile-web-app-status-bar-style` es `black` (barra de estado opaca) y no `black-translucent`: la app no maneja `env(safe-area-inset-top)` en todas las pantallas todavía, así que `black-translucent` (contenido debajo de la barra de estado) podría tapar contenido. Es un ajuste seguro por ahora, no una limitación de la librería.
 
-`viewport-fit=cover` está en el `<meta name="viewport">` porque los banners (`InstallRondoBanner`, `IosInstallGuide`, `UpdatePrompt`) usan `env(safe-area-inset-bottom)` para no quedar debajo del home indicator de iPhone.
+`viewport-fit=cover` está en el `<meta name="viewport">` porque los avisos fijos (`InstallWelcomeDialog`, `UpdatePrompt`, `PushNotificationsBanner`) usan `env(safe-area-inset-bottom)` para no quedar debajo del home indicator de iPhone.
 
 ---
 
@@ -147,26 +148,57 @@ Con `generateSW` este listener lo agregaba automáticamente vite-plugin-pwa; con
 
 ---
 
-## Instalación en Android / Chrome / Edge
+## Aviso de instalación en el primer ingreso
 
-`InstallRondoBanner.tsx` escucha el evento real `beforeinstallprompt` (nunca asume que la app es instalable — si el navegador no lo dispara, el banner no aparece). Reglas:
+### Por qué no aparecía
 
-- Solo se muestra si `beforeinstallprompt` disparó (`useInstallPrompt`) **y** la app no está corriendo en modo standalone (`isStandaloneDisplayMode()`).
-- "Instalar" llama a `event.prompt()` y espera `event.userChoice`; si el resultado es `dismissed`, se guarda el descarte igual que "Ahora no".
-- "Ahora no" guarda `Date.now()` en `localStorage` (`rondo-install-banner-dismissed-at`) y el banner no vuelve a aparecer hasta que pasen 7 días (`installDismissal.ts`).
-- El evento `appinstalled` limpia el estado interno apenas se instala, sin esperar a la próxima carga.
+Antes de este slice existían `InstallRondoBanner.tsx`/`IosInstallGuide.tsx`: dos banners fijos, montados siempre (en `PwaChrome`, incluso antes del login), cada uno con su propio `useState` local para el evento capturado. La causa concreta de que el aviso pareciera no aparecer nunca en el primer ingreso era una combinación de dos cosas, no un único bug:
+
+1. **No existía ningún aviso scoped a "primer ingreso autenticado".** Los banners viejos eran genéricos (mostrados en cualquier pantalla, autenticada o no) con un descarte de 7 días — si alguien los había cerrado alguna vez (incluso en una sesión de prueba), quedaban ocultos toda una semana sin relación con si esa sesión era "la primera" o no.
+2. **El listener vivía dentro de un hook por componente** (`useInstallPrompt`'s propio `useEffect`), no en un módulo cargado apenas arranca la app. En la práctica esto rara vez perdía el evento (`InstallRondoBanner` ya se montaba temprano vía `PwaChrome`), pero sí significaba que **cualquier componente que quisiera reaccionar al mismo evento tenía su propio estado desincronizado** del de los demás — no había una única fuente de verdad para "¿ya se capturó el evento?" ni "¿ya se instaló?" que sobreviviera más allá del ciclo de vida de un componente puntual.
+
+### La solución
+
+- **`installPrompt.ts`** es ahora el único dueño de los listeners `beforeinstallprompt`/`appinstalled`, registrados **al importar el módulo** (no dentro de un efecto de React) — así el evento se captura sin importar qué componente esté montado en ese instante, incluso antes del login.
+- El estado (`deferredEvent`, `installed`) vive en ese módulo como un store simple con `subscribe`/`getSnapshot`; `useInstallPrompt.ts` lo expone vía `useSyncExternalStore`, así que **todo componente que use el hook ve exactamente el mismo estado**, sin duplicación.
+- `installed` además se persiste en `localStorage` (`rondo-pwa-installed`) apenas dispara `appinstalled` — así una visita *futura* en una pestaña normal (no standalone, p. ej. un link compartido abierto en Chrome) sabe que la app ya está instalada y no vuelve a insistir.
+- **`InstallWelcomeDialog.tsx`** es el nuevo aviso, scoped explícitamente al primer ingreso autenticado: `App.tsx` lo monta solo con `isSignedIn === true` (nunca en Login/Register — a diferencia de los banners viejos, que vivían en `PwaChrome` y por lo tanto también existían, ocultos o no, en la pantalla de login).
+- Descarte propio de 3 días (no 7): `installWelcome.ts`, clave `rondo-install-welcome-dismissed-at`, vía el mismo `installDismissal.ts` (ahora con una ventana configurable en vez de fija en 7 días).
+
+### Comportamiento esperado
+
+Card no-modal, centrada, superpuesta (nunca un `Dialog` de MUI — ver la nota de abajo), con el texto:
+
+> Bienvenido a Rondo
+> Instalá la app en tu celular para acceder más rápido y recibí notificaciones aunque no tengas Rondo abierta.
+
+y, debajo, una de tres variantes según la plataforma:
+
+- **Android/Chromium con `beforeinstallprompt` capturado:** "Instalá Rondo" + botones **Instalar ahora** / **Más tarde**. "Instalar ahora" llama a `event.prompt()`, espera `event.userChoice`, y en cualquier caso (`accepted`, `dismissed`, o `unavailable` si el evento se perdió) cierra el aviso — nunca afirma éxito si el usuario no confirmó.
+- **iOS Safari, no instalada:** "Instalá Rondo en tu iPhone" + 4 pasos (Compartir → Agregar a pantalla de inicio → Abrir desde el ícono → "desde la app instalada vas a poder activar las notificaciones") + botones **Entendido** / **Recordarme más tarde** (ambos descartan; iOS no tiene ninguna acción programática de instalar). Nunca intenta usar `beforeinstallprompt` en iOS — ni siquiera se evalúa esa rama.
+- **Sin `beforeinstallprompt` todavía (Android/Chromium antes de que el navegador decida ofrecerlo, o un navegador que nunca lo va a disparar):** una explicación genérica, sin botón de instalar roto ni deshabilitado — solo **Más tarde**. Si el evento llega mientras el aviso sigue en pantalla, se actualiza solo (vía el mismo store reactivo) a la variante de Android de arriba.
+
+### Por qué no es un `Dialog` de MUI
+
+Un `Dialog` real de MUI aplica un `FocusTrap` y marca `aria-hidden="true"` en el resto de la página mientras está abierto — es decir, literalmente hace inaccesible el resto de Rondo, lo cual choca con el requisito explícito de "no bloquear el uso de Rondo". `InstallWelcomeDialog` es (a pesar del nombre del archivo) una `Card` fija centrada, sin `FocusTrap`, sin `aria-hidden` en el resto — el usuario puede seguir interactuando con lo que esté debajo si quiere, igual que los demás avisos.
+
+### Persistencia y limpieza en desarrollo
+
+Tres estados posibles, todos en `localStorage`, ninguno en PostgreSQL:
+
+| Estado | Clave |
+|---|---|
+| Instalada (Android, vía `appinstalled`) | `rondo-pwa-installed` |
+| Descartada temporalmente ("Más tarde"/"Entendido"/"Recordarme más tarde") | `rondo-install-welcome-dismissed-at` (3 días) |
+| Nunca mostrada | ninguna clave presente todavía |
+
+Para reiniciar el estado durante desarrollo (sin recargar la página): `resetInstallPromptStateForDev()`, exportada desde `installPrompt.ts` — limpia el snapshot en memoria y la clave `rondo-pwa-installed`. Para limpiar también el descarte de 3 días, borrar `rondo-install-welcome-dismissed-at` de `localStorage` (DevTools → Application → Local Storage, o `localStorage.removeItem(...)` en la consola).
 
 ---
 
-## Instalación en iPhone (iOS Safari)
+## Prioridad frente a las notificaciones push
 
-iOS Safari nunca dispara `beforeinstallprompt` — no hay API nativa para engancharse. `IosInstallGuide.tsx` en cambio hace *feature detection* (no parseo frágil de user-agent más allá de lo necesario) vía `pwaDisplayMode.ts`:
-
-- `isIosDevice()`: user-agent de iPhone/iPad, o `navigator.platform === 'MacIntel'` con `maxTouchPoints > 1` (así reporta iPadOS 13+).
-- `isIosSafariBrowser()`: Safari real, no Chrome/Firefox/Edge sobre iOS (esos tampoco pueden instalar así, así que no tiene sentido mostrarles la guía).
-- Se oculta con `isStandaloneDisplayMode()` igual que el banner de Android — ahí, además del `matchMedia('(display-mode: standalone)')` estándar, entra `navigator.standalone`, que es la única señal que expone iOS.
-
-La guía muestra los 3 pasos (Compartir → Agregar a pantalla de inicio → Abrir desde el icono), se puede cerrar, y reutiliza el mismo mecanismo de descarte de 7 días (`rondo-ios-install-guide-dismissed-at`) que el banner de Android, por consistencia.
+`InstallWelcomeDialog` tiene prioridad 1, `PushNotificationsBanner` prioridad 2 — nunca se muestran los dos a la vez. `PushNotificationsBanner` consulta `useInstallWelcomeVisible()` (`installWelcome.ts`, el mismo store reactivo) y se oculta mientras esa card siga siendo elegible; en cuanto se descarta o se instala, el banner de push puede aparecer en el siguiente render, sin esperar un remount. En iPhone sin instalar, además, no tiene sentido pedir permiso de notificaciones todavía (Web Push en iOS requiere estar instalada) — mostrar primero cómo instalar y recién después ofrecer activar notificaciones es tanto una cuestión de secuencia de UX como una limitación técnica real. Ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md).
 
 ---
 
@@ -219,11 +251,11 @@ Escucha `navigator.onLine` + los eventos `online`/`offline` del `window`. Delibe
 
 ## Limitaciones
 
-- No hay background sync. Web Push sí existe (infraestructura de activación/desactivación/prueba, ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md)), pero todavía no dispara ante eventos reales de negocio (invitaciones, cancelaciones, chat) — ver las limitaciones de ese documento.
+- No hay background sync. Web Push sí existe, incluyendo los eventos reales de negocio (invitaciones, cancelaciones, partidos completos/llenos, chat) — ver [`docs/WEB_PUSH.md`](./WEB_PUSH.md) por el detalle y sus propias limitaciones (recordatorios previos al partido, preferencias por tipo, etc. quedan fuera de este slice).
 - No hay cache de datos de negocio (partidos, invitaciones, chat) — solo el app shell.
 - No hay funcionamiento offline completo: sin conexión, la app *abre* (si ya se cargó antes) pero no puede leer ni escribir datos reales.
 - No hay edición offline ni cola de mutaciones pendientes.
-- El banner de instalación de Android depende pura y exclusivamente de que el navegador dispare `beforeinstallprompt` — algunos navegadores Chromium tienen su propia heurística de "engagement" antes de disparar el evento, fuera del control de la app.
+- El aviso de instalación (Android/Chromium) depende pura y exclusivamente de que el navegador dispare `beforeinstallprompt` — algunos navegadores Chromium tienen su propia heurística de "engagement" antes de disparar el evento, fuera del control de la app; mientras tanto se muestra una explicación genérica, no un botón roto (ver arriba).
 - `apple-mobile-web-app-status-bar-style: black` (no `black-translucent`) hasta que se audite `env(safe-area-inset-top)` en todas las pantallas.
 
 ---
@@ -250,7 +282,7 @@ Como el service worker solo se registra en un build real (`vite preview` o un de
 **Chrome/Edge DevTools:**
 
 1. `Application` → `Service Workers` → botón `Unregister` en el service worker de Rondo.
-2. `Application` → `Storage` → botón `Clear site data` (esto también borra `localStorage`, incluyendo los descartes de `InstallRondoBanner`/`IosInstallGuide`).
+2. `Application` → `Storage` → botón `Clear site data` (esto también borra `localStorage`, incluyendo `rondo-pwa-installed` y `rondo-install-welcome-dismissed-at`). Para limpiar solo eso sin perder otros datos, ver [Persistencia y limpieza en desarrollo](#persistencia-y-limpieza-en-desarrollo) más arriba.
 
 **Consola** (alternativa rápida):
 
@@ -269,20 +301,23 @@ Documentado acá; ejecutarlo antes de dar por cerrado este slice contra un build
 
 ### Android Chrome
 
-- [ ] Abrir Rondo (HTTPS real o `vite preview` en la misma red).
-- [ ] Esperar el banner de instalación.
-- [ ] Instalar.
+- [ ] Limpiar `localStorage` (`rondo-pwa-installed`, `rondo-install-welcome-dismissed-at`) para simular un dispositivo nuevo.
+- [ ] Abrir Rondo (HTTPS real o `vite preview` en la misma red) e iniciar sesión.
+- [ ] Confirmar que aparece "Bienvenido a Rondo" apenas se llega a Home (primer ingreso autenticado), y que **no** aparecía en la pantalla de Login.
+- [ ] Instalar desde "Instalar ahora".
 - [ ] Abrir desde el ícono en la pantalla de inicio.
 - [ ] Confirmar que abre en modo standalone (sin barra de direcciones del navegador).
 - [ ] Cerrar y volver a abrir la app instalada.
 - [ ] Activar modo avión después de haber cargado la app al menos una vez; confirmar que el shell abre y se ve el mensaje de sin conexión (no una pantalla en blanco ni datos falsos).
 - [ ] Volver a activar la red; confirmar que se puede reintentar y los datos reales cargan.
 - [ ] Publicar un build nuevo y confirmar que aparece el aviso de actualización, y que "Actualizar" recarga una sola vez.
+- [ ] Abrir Rondo de nuevo en una pestaña normal (no instalada) y confirmar que el aviso de bienvenida ya **no** vuelve a aparecer (quedó marcado como instalado).
 
 ### iPhone Safari
 
-- [ ] Abrir Rondo.
-- [ ] Ver la guía de instalación (3 pasos).
+- [ ] Limpiar datos del sitio (Ajustes → Safari → Avanzado → Datos de sitios web) para simular un dispositivo nuevo.
+- [ ] Abrir Rondo e iniciar sesión.
+- [ ] Confirmar que aparece "Bienvenido a Rondo" con la guía de 4 pasos para iPhone (no la variante de Android).
 - [ ] Compartir → Agregar a pantalla de inicio.
 - [ ] Abrir desde el ícono nuevo.
 - [ ] Confirmar modo standalone (`navigator.standalone === true`, sin chrome de Safari).

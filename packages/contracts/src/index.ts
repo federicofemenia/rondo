@@ -631,18 +631,48 @@ export interface TestPushResponseDto {
 }
 
 /**
+ * Every domain event that can trigger a push notification (see
+ * apps/backend/src/modules/push/pushEvents.service.ts and docs/WEB_PUSH.md).
+ * Mirrors the Prisma `PushEventType` enum -- kept as a plain string union
+ * here (not generated from Prisma) since contracts has no Prisma
+ * dependency, same as every other DTO in this package.
+ */
+export type PushEventType =
+  | 'MATCH_INVITATION_RECEIVED'
+  | 'MATCH_INVITATION_ACCEPTED'
+  | 'MATCH_INVITATION_REJECTED'
+  | 'MATCH_PARTICIPANT_JOINED'
+  | 'MATCH_FULL'
+  | 'MATCH_CANCELLED'
+  | 'MATCH_COMPLETED_RATINGS_ENABLED'
+  | 'MATCH_CHAT_MESSAGE'
+  | 'RATING_RECEIVED';
+
+/**
  * Shape of the JSON payload the backend sends as the push message body, and
  * that the service worker's `push` handler expects to parse (see
  * apps/frontend/src/sw.ts). Not sent over HTTP as a Rondo API response --
  * documented here as the one shared source of truth for both sides anyway,
  * same as every other cross-module contract in this package.
+ *
+ * `version` is forward-compatible bookkeeping only -- nothing branches on
+ * it yet, it just lets a future payload shape change identify itself.
+ * `data` deliberately excludes anything private (email, username,
+ * biography, comment text, tokens) -- see docs/WEB_PUSH.md.
  */
 export interface PushNotificationPayloadDto {
+  version?: number;
   title: string;
   body: string;
   url: string;
   tag?: string;
   icon?: string;
   badge?: string;
-  data?: Record<string, unknown>;
+  data?: {
+    type?: PushEventType | string;
+    matchId?: string;
+    invitationId?: string;
+    messageId?: string;
+    ratingId?: string;
+  };
 }

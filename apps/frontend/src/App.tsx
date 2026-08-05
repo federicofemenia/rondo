@@ -33,6 +33,7 @@ import RegisterPage from './RegisterPage';
 import ReservationFlowPage from './ReservationFlowPage';
 import type { ConfirmedBooking } from './ReservationFlowPage';
 import OfflineScreen from './OfflineScreen';
+import InstallWelcomeDialog from './InstallWelcomeDialog';
 import PushNotificationsBanner from './PushNotificationsBanner';
 import { buildIsoDateTime, describeSchedule } from './scheduleFormat';
 import type { ScheduleUpdateInput } from './scheduleFormat';
@@ -720,6 +721,7 @@ function App() {
         />
       ) : null}
       {renderView()}
+      {isSignedIn ? <InstallWelcomeDialog /> : null}
       {isSignedIn ? <PushNotificationsBanner /> : null}
       <Snackbar open={globalError !== null} autoHideDuration={5000} onClose={() => setGlobalError(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="error" onClose={() => setGlobalError(null)} sx={{ width: '100%' }}>

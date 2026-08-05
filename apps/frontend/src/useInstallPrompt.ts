@@ -1,54 +1,29 @@
-import { useEffect, useState } from 'react';
-
-/** Non-standard event Chrome/Edge/Android fire when the app becomes installable; not yet in lib.dom.d.ts. */
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-};
+import { useSyncExternalStore } from 'react';
+import { getInstallPromptSnapshot, subscribeToInstallPrompt, triggerInstallPrompt } from './installPrompt';
 
 type UseInstallPromptResult = {
   /** True once the browser has told us the app is installable (Android Chrome/Edge only -- iOS Safari never fires this). */
   isInstallable: boolean;
+  /** True once `appinstalled` fired (this session or a previous one -- see installPrompt.ts). */
+  isInstalled: boolean;
   /** Shows the native install prompt; resolves once the user has answered it. */
   promptInstall: () => Promise<'accepted' | 'dismissed' | 'unavailable'>;
 };
 
 /**
- * Wraps the `beforeinstallprompt` event: Chromium browsers fire it once,
- * ahead of time, and expect the page to have stashed it if it wants to
- * trigger the native prompt later (from our own banner instead of a browser
- * popup). Consumed by InstallRondoBanner.
+ * Reads the module-level install-prompt singleton (installPrompt.ts) via
+ * `useSyncExternalStore`, so every component using this hook re-renders the
+ * instant `beforeinstallprompt`/`appinstalled` fire, no matter which
+ * component (if any) was mounted when the browser actually fired the event
+ * -- the listener itself lives in installPrompt.ts, registered at import
+ * time, not in a `useEffect` here.
  */
 export function useInstallPrompt(): UseInstallPromptResult {
-  const [deferredEvent, setDeferredEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const snapshot = useSyncExternalStore(subscribeToInstallPrompt, getInstallPromptSnapshot, getInstallPromptSnapshot);
 
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setDeferredEvent(event as BeforeInstallPromptEvent);
-    };
-    // Fired once the app is actually installed, whether via our banner or
-    // the browser's own menu -- either way, there's nothing left to prompt.
-    const handleAppInstalled = () => setDeferredEvent(null);
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
-    };
-  }, []);
-
-  const promptInstall = async (): Promise<'accepted' | 'dismissed' | 'unavailable'> => {
-    if (!deferredEvent) {
-      return 'unavailable';
-    }
-    await deferredEvent.prompt();
-    const { outcome } = await deferredEvent.userChoice;
-    setDeferredEvent(null);
-    return outcome;
+  return {
+    isInstallable: snapshot.deferredEvent !== null,
+    isInstalled: snapshot.installed,
+    promptInstall: triggerInstallPrompt,
   };
-
-  return { isInstallable: deferredEvent !== null, promptInstall };
 }
