@@ -62,14 +62,14 @@ describe('App', () => {
     expect(screen.getByText(/esta beta requiere una cuenta asignada/i)).toBeTruthy();
   });
 
-  it('renders the home dashboard with the primary quick actions and empty state after logging in', async () => {
+  it('renders the home dashboard with the primary quick actions, and hides Próximos partidos when there is nothing upcoming', async () => {
     await loginAndReachHome();
 
     expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /club señor pato/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /armar partido/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /reservar cancha/i })).toBeTruthy();
-    expect(screen.getByText(/todavía no tenés partidos próximos/i)).toBeTruthy();
+    expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
   });
 
   it('opens the 2-step armar partido flow from the home screen', async () => {
@@ -213,7 +213,7 @@ describe('App', () => {
       fireEvent.click(screen.getByRole('button', { name: /^rechazar$/i }));
 
       await vi.waitFor(() => expect(screen.queryByText(/^invitaciones$/i)).toBeFalsy());
-      expect(screen.getByText(/todavía no tenés partidos próximos/i)).toBeTruthy();
+      expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
     } finally {
       vi.useRealTimers();
     }
@@ -371,37 +371,39 @@ describe('App', () => {
     expect(screen.queryByText(/faltan \d+ jugadores/i)).toBeFalsy();
   });
 
-  it('never shows an EXPIRED match on Home -- Próximos partidos stops mixing in cancelled/expired/old matches', async () => {
+  it('shows an EXPIRED match under Partidos finalizados, not Próximos partidos', async () => {
     clerkAuthMock.isSignedIn = true;
     mockMyMatches.push(fixtureMatch({ status: 'EXPIRED', maxPlayers: 10, participantsCount: 3 }));
     render(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
-    await screen.findByText(/todavía no tenés partidos próximos/i);
-    expect(screen.queryByText('Partido vencido')).toBeFalsy();
+    await screen.findByText(/^partidos finalizados$/i);
+    expect(screen.getByText('Partido vencido')).toBeTruthy();
+    expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
     expect(screen.queryByText(/faltan \d+ jugadores/i)).toBeFalsy();
   });
 
-  it('never shows a CANCELLED match on Home', async () => {
+  it('shows a CANCELLED match under Partidos finalizados, not Próximos partidos', async () => {
     clerkAuthMock.isSignedIn = true;
     mockMyMatches.push(fixtureMatch({ status: 'CANCELLED', maxPlayers: 10, participantsCount: 3 }));
     render(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
-    await screen.findByText(/todavía no tenés partidos próximos/i);
-    expect(screen.queryByText('Partido cancelado')).toBeFalsy();
+    await screen.findByText(/^partidos finalizados$/i);
+    expect(screen.getByText('Partido cancelado')).toBeTruthy();
+    expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
   });
 
-  it('drops a COMPLETED match from Home once it is older than the 24h recently-completed window', async () => {
+  it('keeps showing an old COMPLETED match under Partidos finalizados regardless of age', async () => {
     clerkAuthMock.isSignedIn = true;
     const staleCompletedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     mockMyMatches.push(fixtureMatch({ status: 'COMPLETED', maxPlayers: 10, participantsCount: 3, statusChangedAt: staleCompletedAt }));
     render(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
-    await screen.findByText(/todavía no tenés partidos próximos/i);
-    expect(screen.queryByText('Partido finalizado')).toBeFalsy();
-    expect(screen.queryByText(/finalizados recientemente/i)).toBeFalsy();
+    await screen.findByText(/^partidos finalizados$/i);
+    expect(screen.getByText('Partido finalizado')).toBeTruthy();
+    expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
   });
 
   it('shows "Partido finalizado" (not "Faltan N jugadores") on Home for a COMPLETED match', async () => {

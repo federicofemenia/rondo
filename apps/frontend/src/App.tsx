@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { HealthResponse, MatchInvitationDto, MatchSummaryDto, PendingTaskDto, UserDto } from '@rondo/contracts';
+import type { HealthResponse, MatchInvitationDto, MatchStatusDto, MatchSummaryDto, PendingTaskDto, UserDto } from '@rondo/contracts';
 import { useAuth, useClerk } from '@clerk/react';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
@@ -50,8 +50,6 @@ import { usePushNavigation } from './usePushNavigation';
 import { useVisiblePolling } from './useVisiblePolling';
 
 const HOME_POLL_INTERVAL_MS = 20_000;
-/** How long a COMPLETED match stays visible on Home at all, in its own "Finalizados recientemente" subsection -- matches the visibility window already implied by the existing pending-ratings lifecycle, not a new business rule (see docs/PWA.md). */
-const RECENTLY_COMPLETED_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const BOOKING_CHIP_COLOR = { bgcolor: 'rgba(77, 163, 255, 0.16)', color: 'info.main' };
 
@@ -714,31 +712,15 @@ function App() {
     }
 
     if (!isWizardStep(currentView)) {
-      const now = Date.now();
       const upcomingEvents: UpcomingEventItem[] = [];
-      const recentlyCompletedEvents: UpcomingEventItem[] = [];
+      const finishedEvents: UpcomingEventItem[] = [];
+      const ACTIVE_MATCH_STATUSES: MatchStatusDto[] = ['ORGANIZING', 'FULL', 'IN_PROGRESS'];
 
       [...matches, ...bookings]
         .slice()
         .sort((a, b) => a.createdAt - b.createdAt)
         .forEach((entity) => {
           if ('sport' in entity) {
-            // Home's "Próximos partidos" never mixes in cancelled, expired,
-            // or long-finished matches -- CANCELLED/EXPIRED stop appearing
-            // here entirely (still fully viewable via MatchDetailPage, e.g.
-            // from a push deep link), and a COMPLETED match only gets a
-            // brief "Finalizados recientemente" appearance for 24h before
-            // it, too, drops off. IN_PROGRESS needs no extra time check: the
-            // backend's lazy lifecycle resolution already guarantees it only
-            // shows up while the match is genuinely happening right now.
-            if (entity.status === 'CANCELLED' || entity.status === 'EXPIRED') {
-              return;
-            }
-            const isRecentlyCompleted = entity.status === 'COMPLETED' && now - Date.parse(entity.statusChangedAt) < RECENTLY_COMPLETED_WINDOW_MS;
-            if (entity.status === 'COMPLETED' && !isRecentlyCompleted) {
-              return;
-            }
-
             const schedule = describeSchedule(entity);
             const missingPlayers = Number(entity.maxPlayers) - entity.participantsCount;
             const item: UpcomingEventItem = {
@@ -755,15 +737,23 @@ function App() {
                     ? 'Partido en juego'
                     : entity.status === 'COMPLETED'
                       ? 'Partido finalizado'
-                      : missingPlayers === 1
-                        ? 'Falta 1 jugador'
-                        : `Faltan ${missingPlayers} jugadores`,
+                      : entity.status === 'CANCELLED'
+                        ? 'Partido cancelado'
+                        : entity.status === 'EXPIRED'
+                          ? 'Partido vencido'
+                          : missingPlayers === 1
+                            ? 'Falta 1 jugador'
+                            : `Faltan ${missingPlayers} jugadores`,
               chipLabel: MATCH_STATUS_LABELS[entity.status],
               chipColor: MATCH_STATUS_CHIP_STYLES[entity.status],
               onClick: () => openMatchDetail(entity.id),
             };
 
-            (isRecentlyCompleted ? recentlyCompletedEvents : upcomingEvents).push(item);
+            // Home keeps only ORGANIZING/FULL/IN_PROGRESS under "Próximos
+            // partidos" -- everything else (COMPLETED, CANCELLED, EXPIRED)
+            // goes into one combined "Partidos finalizados" section instead
+            // of being mixed in or filtered by age.
+            (ACTIVE_MATCH_STATUSES.includes(entity.status) ? upcomingEvents : finishedEvents).push(item);
             return;
           }
 
@@ -786,7 +776,7 @@ function App() {
             playerName={playerName || undefined}
             clubName={myClub?.name ?? null}
             upcomingEvents={upcomingEvents}
-            recentlyCompletedEvents={recentlyCompletedEvents}
+            finishedEvents={finishedEvents}
             pendingInvitations={myInvitations.filter((invitation) => invitation.status === 'PENDING')}
             respondingInvitationId={respondingInvitationId}
             invitationRespondErrors={invitationRespondErrors}

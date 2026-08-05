@@ -37,9 +37,10 @@ type HomePageProps = {
   playerName?: string;
   clubName?: string | null;
   connectionStatus?: string;
+  /** ORGANIZING/FULL/IN_PROGRESS matches plus bookings -- section is hidden entirely when empty (no CTA card). */
   upcomingEvents?: UpcomingEventItem[];
-  /** COMPLETED matches still within their 24h Home-visibility window -- shown in their own subsection, never merged into upcomingEvents. */
-  recentlyCompletedEvents?: UpcomingEventItem[];
+  /** COMPLETED/CANCELLED/EXPIRED matches, all together regardless of age -- its own section, hidden entirely when empty. */
+  finishedEvents?: UpcomingEventItem[];
   pendingInvitations?: MatchInvitationDto[];
   respondingInvitationId?: string | null;
   invitationRespondErrors?: Record<string, string>;
@@ -124,7 +125,7 @@ function HomePage({
   clubName = null,
   connectionStatus,
   upcomingEvents = [],
-  recentlyCompletedEvents = [],
+  finishedEvents = [],
   pendingInvitations = [],
   respondingInvitationId = null,
   invitationRespondErrors = {},
@@ -185,6 +186,39 @@ function HomePage({
           {clubName}
         </Button>
       ) : null}
+
+      {/* 2. Acciones rápidas -- back at the top, so it's the first thing after the header. */}
+      <Box sx={{ mb: 8 }}>
+        <SectionHeader title="Acciones rápidas" />
+        <Stack direction="row" spacing={2}>
+          {quickActions.map(({ key, label, icon: Icon }) => (
+            <Card
+              key={key}
+              variant="outlined"
+              component="button"
+              onClick={actionHandlers[key]}
+              sx={{
+                flex: 1,
+                p: 3,
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                color: 'text.primary',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 1,
+                font: 'inherit',
+              }}
+            >
+              <Icon sx={{ color: 'primary.main' }} />
+              <Typography variant="caption" sx={{ fontWeight: 600, textAlign: 'center' }}>
+                {label}
+              </Typography>
+            </Card>
+          ))}
+        </Stack>
+      </Box>
 
       {/* 3. Invitaciones -- only when there is at least one pending, shown directly (no separate screen). */}
       {pendingInvitations.length > 0 ? (
@@ -254,36 +288,21 @@ function HomePage({
         </Box>
       ) : null}
 
-      {/* 4. Próximos partidos, with recently-finished matches in their own subsection. */}
-      <Box sx={{ mb: 8 }}>
-        <SectionHeader title="Próximos partidos" />
-        {upcomingEvents.length > 0 ? (
+      {/* 4. Próximos partidos -- hidden entirely (no empty-state card) when there is nothing upcoming. */}
+      {upcomingEvents.length > 0 ? (
+        <Box sx={{ mb: 8 }}>
+          <SectionHeader title="Próximos partidos" />
           <EventList events={upcomingEvents} />
-        ) : (
-          <Card variant="outlined" sx={{ p: 3, display: 'flex', gap: 3, alignItems: 'center', borderColor: 'divider', bgcolor: 'background.paper' }}>
-            <Avatar sx={{ bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
-              <SportsSoccerRoundedIcon sx={{ color: 'text.secondary' }} />
-            </Avatar>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body1" sx={{ fontWeight: 700, mb: 2 }}>
-                Todavía no tenés partidos próximos.
-              </Typography>
-              <Button variant="outlined" size="small" onClick={onCreateMatch}>
-                Organizar partido
-              </Button>
-            </Box>
-          </Card>
-        )}
+        </Box>
+      ) : null}
 
-        {recentlyCompletedEvents.length > 0 ? (
-          <Box sx={{ mt: 5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Finalizados recientemente
-            </Typography>
-            <EventList events={recentlyCompletedEvents} />
-          </Box>
-        ) : null}
-      </Box>
+      {/* Partidos finalizados -- everything that isn't ORGANIZING/FULL/IN_PROGRESS (COMPLETED, CANCELLED, EXPIRED), grouped together; hidden entirely when empty. */}
+      {finishedEvents.length > 0 ? (
+        <Box sx={{ mb: 8 }}>
+          <SectionHeader title="Partidos finalizados" />
+          <EventList events={finishedEvents} />
+        </Box>
+      ) : null}
 
       {/* 5. Tareas pendientes -- hidden entirely when there is nothing real to do. */}
       {pendingTaskItems.length > 0 ? (
@@ -313,7 +332,7 @@ function HomePage({
       ) : null}
 
       {/* 6. Club: novedades if there is an active membership, otherwise the no-club card -- never both. */}
-      <Box sx={{ mb: 8 }}>
+      <Box>
         {clubName ? (
           <>
             <SectionHeader title={`Novedades de ${clubName}`} />
@@ -334,39 +353,6 @@ function HomePage({
         ) : (
           <NoClubMembershipCard />
         )}
-      </Box>
-
-      {/* 7. Acciones principales -- last, per the reorg (never duplicated elsewhere). */}
-      <Box>
-        <SectionHeader title="Acciones rápidas" />
-        <Stack direction="row" spacing={2}>
-          {quickActions.map(({ key, label, icon: Icon }) => (
-            <Card
-              key={key}
-              variant="outlined"
-              component="button"
-              onClick={actionHandlers[key]}
-              sx={{
-                flex: 1,
-                p: 3,
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-                color: 'text.primary',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1,
-                font: 'inherit',
-              }}
-            >
-              <Icon sx={{ color: 'primary.main' }} />
-              <Typography variant="caption" sx={{ fontWeight: 600, textAlign: 'center' }}>
-                {label}
-              </Typography>
-            </Card>
-          ))}
-        </Stack>
       </Box>
     </Box>
   );

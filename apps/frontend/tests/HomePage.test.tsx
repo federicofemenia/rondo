@@ -121,16 +121,14 @@ describe('HomePage', () => {
     expect(screen.getByText(/novedades de club señor pato/i)).toBeTruthy();
   });
 
-  it('shows the empty state with an Organizar partido CTA when there are no upcoming events', () => {
-    const onCreateMatch = vi.fn();
-    render(<HomePage upcomingEvents={[]} onCreateMatch={onCreateMatch} />);
+  it('hides Próximos partidos entirely (no empty-state card) when there are no upcoming events', () => {
+    render(<HomePage upcomingEvents={[]} />);
 
-    expect(screen.getByText(/todavía no tenés partidos próximos/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^organizar partido$/i }));
-    expect(onCreateMatch).toHaveBeenCalled();
+    expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
+    expect(screen.queryByText(/todavía no tenés partidos próximos/i)).toBeFalsy();
   });
 
-  it('orders sections: Invitaciones before Próximos partidos, before Club/NoClub, before Acciones rápidas (last)', () => {
+  it('orders sections: Acciones rápidas first, then Invitaciones, then Próximos partidos, then Club/NoClub', () => {
     render(
       <HomePage
         pendingInvitations={[pendingInvitation]}
@@ -140,33 +138,39 @@ describe('HomePage', () => {
     );
 
     const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+    const accionesIndex = headings.findIndex((text) => text === 'Acciones rápidas');
     const invitationsIndex = headings.findIndex((text) => text === 'Invitaciones');
     const proximosIndex = headings.findIndex((text) => text === 'Próximos partidos');
     const novedadesIndex = headings.findIndex((text) => text?.startsWith('Novedades de'));
-    const accionesIndex = headings.findIndex((text) => text === 'Acciones rápidas');
 
-    expect(invitationsIndex).toBeGreaterThanOrEqual(0);
+    // Acciones rápidas must be the very first section, never duplicated elsewhere.
+    expect(accionesIndex).toBe(0);
+    expect(accionesIndex).toBeLessThan(invitationsIndex);
     expect(invitationsIndex).toBeLessThan(proximosIndex);
     expect(proximosIndex).toBeLessThan(novedadesIndex);
-    expect(novedadesIndex).toBeLessThan(accionesIndex);
-    // Acciones rápidas must be the very last section, never duplicated elsewhere.
-    expect(accionesIndex).toBe(headings.length - 1);
     expect(screen.getAllByRole('button', { name: /armar partido/i })).toHaveLength(1);
   });
 
-  it('shows a "Finalizados recientemente" subsection only when there are recently-completed matches, distinct from Próximos partidos', () => {
-    const { rerender } = render(<HomePage upcomingEvents={[fixtureEvent()]} recentlyCompletedEvents={[]} />);
-    expect(screen.queryByText(/finalizados recientemente/i)).toBeFalsy();
+  it('shows a "Partidos finalizados" section only when there are finished matches, distinct from Próximos partidos', () => {
+    const { rerender } = render(<HomePage upcomingEvents={[fixtureEvent()]} finishedEvents={[]} />);
+    expect(screen.queryByText(/^partidos finalizados$/i)).toBeFalsy();
 
     rerender(
       <HomePage
         upcomingEvents={[fixtureEvent({ id: 'upcoming-1' })]}
-        recentlyCompletedEvents={[fixtureEvent({ id: 'completed-1', title: 'Pádel • Dobles', meta: 'Partido finalizado' })]}
+        finishedEvents={[fixtureEvent({ id: 'completed-1', title: 'Pádel • Dobles', meta: 'Partido finalizado' })]}
       />,
     );
-    expect(screen.getByText(/finalizados recientemente/i)).toBeTruthy();
+    expect(screen.getByText(/^partidos finalizados$/i)).toBeTruthy();
     expect(screen.getByText('Fútbol • Fútbol 5')).toBeTruthy();
     expect(screen.getByText('Pádel • Dobles')).toBeTruthy();
+  });
+
+  it('hides Partidos finalizados entirely when there are no finished matches, even with nothing upcoming either', () => {
+    render(<HomePage upcomingEvents={[]} finishedEvents={[]} />);
+
+    expect(screen.queryByText(/^próximos partidos$/i)).toBeFalsy();
+    expect(screen.queryByText(/^partidos finalizados$/i)).toBeFalsy();
   });
 
   it('hides the Tareas pendientes section entirely when there are no pending tasks', () => {
