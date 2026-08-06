@@ -1,7 +1,20 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import RegisterPage from '../src/RegisterPage';
-import { signUpMock } from './setup';
+import { clerkAuthMock, signUpMock } from './setup';
+
+function fillAndSubmit(overrides: { displayName?: string; username?: string; password?: string; confirmPassword?: string } = {}) {
+  const { displayName = 'Fede', username = 'fede', password = 'unaClave123', confirmPassword = password } = overrides;
+  fireEvent.change(screen.getByLabelText(/nombre visible/i), { target: { value: displayName } });
+  fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: username } });
+  fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: password } });
+  fireEvent.change(screen.getByLabelText(/confirmar contraseña/i), { target: { value: confirmPassword } });
+  const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+  if (!checkbox.checked) {
+    fireEvent.click(checkbox);
+  }
+  fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
+}
 
 describe('RegisterPage', () => {
   it('renders only Nombre visible, Usuario, Contraseña and Confirmar contraseña', () => {
@@ -103,5 +116,88 @@ describe('RegisterPage', () => {
     fireEvent.click(screen.getByText(/iniciar sesión/i));
 
     expect(onNavigateToLogin).toHaveBeenCalled();
+  });
+
+  it('only calls finalize (session activation) once status is complete and a session was actually created', async () => {
+    const onRegister = vi.fn();
+    render(<RegisterPage onRegister={onRegister} />);
+
+    fillAndSubmit();
+
+    await waitFor(() => expect(signUpMock.finalize).toHaveBeenCalled());
+    expect(onRegister).toHaveBeenCalled();
+  });
+
+  it('never calls onRegister (and never enters Home) before finalize actually resolves', async () => {
+    const onRegister = vi.fn();
+    let resolveFinalize!: (value: { error: null }) => void;
+    signUpMock.finalize.mockReset().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFinalize = resolve;
+        }),
+    );
+    render(<RegisterPage onRegister={onRegister} />);
+
+    fillAndSubmit();
+
+    // password() has resolved (status is 'complete' with a session id in
+    // the mock) but finalize() is still pending -- onRegister must not
+    // have fired yet.
+    await waitFor(() => expect(signUpMock.finalize).toHaveBeenCalled());
+    expect(onRegister).not.toHaveBeenCalled();
+    expect(clerkAuthMock.isSignedIn).toBe(false);
+
+    resolveFinalize({ error: null });
+    await waitFor(() => expect(onRegister).toHaveBeenCalled());
+  });
+
+  it('does not navigate and shows a real message when status never reaches complete (e.g. missing requirements)', async () => {
+    signUpMock.status = 'missing_requirements';
+    signUpMock.createdSessionId = null;
+    signUpMock.missingFields = ['password'];
+    const onRegister = vi.fn();
+    render(<RegisterPage onRegister={onRegister} />);
+
+    fillAndSubmit();
+
+    expect(await screen.findByText(/todavía falta completar/i)).toBeTruthy();
+    expect(onRegister).not.toHaveBeenCalled();
+    expect(signUpMock.finalize).not.toHaveBeenCalled();
+  });
+
+  it('does not navigate when status is complete but Clerk never attached a session (defensive createdSessionId check)', async () => {
+    signUpMock.status = 'complete';
+    signUpMock.createdSessionId = null;
+    const onRegister = vi.fn();
+    render(<RegisterPage onRegister={onRegister} />);
+
+    fillAndSubmit();
+
+    expect(await screen.findByText(/no pudimos completar el registro/i)).toBeTruthy();
+    expect(onRegister).not.toHaveBeenCalled();
+    expect(signUpMock.finalize).not.toHaveBeenCalled();
+  });
+
+  it('shows the real Clerk error and does not navigate when finalize() itself fails', async () => {
+    signUpMock.finalize.mockReset().mockResolvedValueOnce({ error: { message: 'No pudimos activar tu sesión.' } });
+    const onRegister = vi.fn();
+    render(<RegisterPage onRegister={onRegister} />);
+
+    fillAndSubmit();
+
+    expect(await screen.findByText(/no pudimos activar tu sesión/i)).toBeTruthy();
+    expect(onRegister).not.toHaveBeenCalled();
+  });
+
+  it('clears a previous error as soon as a new submit attempt starts', async () => {
+    signUpMock.password.mockResolvedValueOnce({ error: { message: 'El usuario ya está en uso.' } });
+    render(<RegisterPage />);
+
+    fillAndSubmit();
+    expect(await screen.findByText(/el usuario ya está en uso/i)).toBeTruthy();
+
+    fillAndSubmit();
+    await waitFor(() => expect(screen.queryByText(/el usuario ya está en uso/i)).toBeFalsy());
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '@clerk/react';
 import type { UserClubDto } from '@rondo/contracts';
 import { useApi } from './apiClient';
 
@@ -8,14 +9,32 @@ type UseMyClubsResult = {
   error: boolean;
 };
 
+/**
+ * Re-fetches whenever the signed-in identity changes (userId, or
+ * isSignedIn flipping) -- App.tsx is never unmounted across
+ * logout/login/register, so without this a club list fetched for one
+ * account would otherwise keep showing after a different account signs in
+ * on the same tab.
+ */
 export function useMyClubs(): UseMyClubsResult {
   const api = useApi();
+  const { userId, isSignedIn } = useAuth();
   const [clubs, setClubs] = useState<UserClubDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!isSignedIn) {
+      setClubs([]);
+      setError(false);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(false);
 
     const load = async () => {
       try {
@@ -40,7 +59,7 @@ export function useMyClubs(): UseMyClubsResult {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userId, isSignedIn]);
 
   return { clubs, loading, error };
 }

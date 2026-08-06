@@ -1,7 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CreateMatchPage from '../src/CreateMatchPage';
 import { buildDayOptions } from '../src/dateOptions';
+import { clerkAuthMock } from './setup';
+
+// CreateMatchPage reads the current user's clubs (useMyClubs) for the venue
+// selector, which only fetches while signed in -- this page is only ever
+// reached authenticated in the real app.
+beforeEach(() => {
+  clerkAuthMock.isSignedIn = true;
+});
 
 async function selectFootball() {
   await screen.findByRole('option', { name: 'Fútbol' });

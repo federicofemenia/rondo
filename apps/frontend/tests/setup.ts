@@ -63,6 +63,8 @@ export const signInMock = {
 
 export const signUpMock = {
   status: 'complete' as string,
+  createdSessionId: 'session_test' as string | null,
+  missingFields: [] as string[],
   unverifiedFields: [] as string[],
   password: vi.fn(async (): Promise<{ error: MockClerkError | null }> => ({ error: null })),
   finalize: vi.fn(async (): Promise<{ error: MockClerkError | null }> => ({ error: null })),
@@ -119,12 +121,25 @@ vi.mock('@clerk/react', () => ({
 function resetClerkMocks() {
   signInMock.status = 'complete';
   signInMock.password.mockReset().mockResolvedValue({ error: null });
-  signInMock.finalize.mockReset().mockResolvedValue({ error: null });
+  // Mirrors the real Clerk behavior: finalize() is what actually activates
+  // the session, which is what flips useAuth()'s isSignedIn -- tests that
+  // drive the real LoginPage UI (as opposed to poking clerkAuthMock
+  // directly) rely on this to reach an authenticated App.tsx.
+  signInMock.finalize.mockReset().mockImplementation(async () => {
+    clerkAuthMock.isSignedIn = true;
+    return { error: null };
+  });
 
   signUpMock.status = 'complete';
+  signUpMock.createdSessionId = 'session_test';
+  signUpMock.missingFields = [];
   signUpMock.unverifiedFields = [];
   signUpMock.password.mockReset().mockResolvedValue({ error: null });
-  signUpMock.finalize.mockReset().mockResolvedValue({ error: null });
+  // Same rationale as signInMock.finalize above, for the register flow.
+  signUpMock.finalize.mockReset().mockImplementation(async () => {
+    clerkAuthMock.isSignedIn = true;
+    return { error: null };
+  });
   signUpMock.verifications.sendEmailCode.mockReset().mockResolvedValue({ error: null });
   signUpMock.verifications.verifyEmailCode.mockReset().mockResolvedValue({ error: null });
 
@@ -132,7 +147,12 @@ function resetClerkMocks() {
   clerkAuthMock.isSignedIn = false;
   clerkAuthMock.getToken.mockReset().mockResolvedValue('test-token');
 
-  clerkSignOutMock.mockReset().mockResolvedValue(undefined);
+  // Mirrors real Clerk sign-out flipping isSignedIn back to false, so
+  // App.tsx's own sign-out effect (state cleanup) is exercised the same
+  // way it would be for a real session ending.
+  clerkSignOutMock.mockReset().mockImplementation(async () => {
+    clerkAuthMock.isSignedIn = false;
+  });
 
   mockMeProfile.avatarUrl = null;
   mockMeProfile.sex = null;

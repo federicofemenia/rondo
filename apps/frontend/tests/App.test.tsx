@@ -1,9 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
-import type { MatchSummaryDto } from '@rondo/contracts';
-import { clerkAuthMock, mockClubs, mockMeState, mockMyInvitations, mockMyMatches } from './setup';
+import type { MatchSummaryDto, UserClubDto } from '@rondo/contracts';
+import { clerkAuthMock, mockClubs, mockMeProfile, mockMeState, mockMyInvitations, mockMyMatches } from './setup';
 import { INSTALL_WELCOME_DISMISSAL_KEY } from '../src/installWelcome';
+
+function logout() {
+  fireEvent.click(screen.getByLabelText('Menú'));
+  fireEvent.click(screen.getByText(/cerrar sesión/i));
+}
 
 function fixtureMatch(overrides: Partial<MatchSummaryDto> = {}): MatchSummaryDto {
   const now = new Date().toISOString();
@@ -496,6 +501,88 @@ describe('App', () => {
       expect(screen.queryByText(/bienvenido a rondo/i)).toBeFalsy();
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+
+  it('clears matches, invitations and club data on logout, and a fresh sign-in never shows the previous account\'s data', async () => {
+    // RegisterPage.tsx's onRegister prop resolves to the exact same
+    // `setCurrentView('home')` call as LoginPage's onLogin (see App.tsx), and
+    // both flip isSignedIn via the same Clerk `finalize()` mock -- so driving
+    // this through the login flow twice exercises the identical App.tsx
+    // state-cleanup mechanism (resetUserScopedState + useMyClubs/useAdminClubs
+    // refetching on isSignedIn) that a logout-then-register sequence would.
+    // The register link itself is gated behind VITE_BETA_SIGN_UP_ENABLED,
+    // which vite.config.ts pins to 'false' for all tests, so it isn't
+    // reachable through the real UI here.
+    const originalDisplayName = mockMeProfile.displayName;
+    const clubsBackup: UserClubDto[] = mockClubs.slice();
+    try {
+      mockMyMatches.push(fixtureMatch({ id: 'match-user-a', sportId: 'sport-padel', sportModalityId: 'modality-padel-doubles', sportName: 'Pádel', modalityName: 'Dobles' }));
+      mockMyInvitations.push({
+        id: 'invitation-user-a',
+        matchId: 'match-invite-a',
+        status: 'PENDING',
+        position: null,
+        invitedUserId: 'user-test',
+        invitedUserDisplayName: 'Federico Femenia',
+        invitedById: 'organizer-1',
+        organizerDisplayName: 'Juan Pérez',
+        sportName: 'Fútbol',
+        modalityName: 'Fútbol 5',
+        clubName: null,
+        scheduledDate: '2026-08-07',
+        availabilityStartMinutes: 20 * 60,
+        availabilityEndMinutes: 21 * 60,
+        startsAt: null,
+        endsAt: null,
+        createdAt: '2026-08-01T00:00:00.000Z',
+        respondedAt: null,
+      });
+
+      await loginAndReachHome();
+      expect(screen.getByRole('button', { name: /pádel • dobles/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /club señor pato/i })).toBeTruthy();
+
+      logout();
+      await waitFor(() => expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeTruthy());
+
+      // Simulate a different account signing in on the same tab: the
+      // "backend" now returns entirely different matches/invitations/clubs.
+      mockMyMatches.length = 0;
+      mockMyInvitations.length = 0;
+      mockClubs.splice(0, mockClubs.length);
+      mockMyMatches.push(fixtureMatch({ id: 'match-user-b' }));
+      mockMeProfile.displayName = 'Otro Usuario';
+
+      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+      await screen.findByRole('heading', { name: /hola, otro usuario/i });
+
+      expect(screen.getByRole('button', { name: /fútbol • fútbol 5/i })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /pádel • dobles/i })).toBeFalsy();
+      expect(screen.queryByRole('button', { name: /club señor pato/i })).toBeFalsy();
+      expect(screen.queryByText(/juan pérez te invitó/i)).toBeFalsy();
+    } finally {
+      mockMeProfile.displayName = originalDisplayName;
+      mockClubs.splice(0, mockClubs.length, ...clubsBackup);
+    }
+  });
+
+  it('does not leave stale club data behind when a club-less account logs in right after one that had clubs', async () => {
+    await loginAndReachHome();
+    expect(screen.getByRole('button', { name: /club señor pato/i })).toBeTruthy();
+
+    logout();
+    await waitFor(() => expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeTruthy());
+
+    const backup = mockClubs.splice(0, mockClubs.length);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+      await screen.findByRole('heading', { name: /hola, federico/i });
+
+      expect(screen.queryByRole('button', { name: /club señor pato/i })).toBeFalsy();
+      expect(screen.getByText(/todavía no estás asociado a ningún club/i)).toBeTruthy();
+    } finally {
+      mockClubs.push(...backup);
     }
   });
 

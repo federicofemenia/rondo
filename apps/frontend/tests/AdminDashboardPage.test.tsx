@@ -1,8 +1,14 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminClubSummaryDto } from '@rondo/contracts';
 import AdminDashboardPage from '../src/AdminDashboardPage';
-import { mockAdminClubs } from './setup';
+import { clerkAuthMock, mockAdminClubs } from './setup';
+
+// useAdminClubs only fetches while signed in -- this page is only ever
+// reached authenticated in the real app.
+beforeEach(() => {
+  clerkAuthMock.isSignedIn = true;
+});
 
 function fixtureClub(overrides: Partial<AdminClubSummaryDto> = {}): AdminClubSummaryDto {
   return {

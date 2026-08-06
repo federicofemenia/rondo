@@ -135,6 +135,30 @@ function App() {
     void loadStatus();
   }, []);
 
+  // Everything that belongs to one specific signed-in identity -- never
+  // left over for the next person to sign in (or register) on this same
+  // browser/tab. Called both when isSignedIn transitions to false below,
+  // and directly from handleLogout for immediacy (no need to wait an extra
+  // render for Clerk's own state to settle).
+  const resetUserScopedState = () => {
+    setPlayerName('');
+    setGlobalError(null);
+    setMatches([]);
+    setBookings([]);
+    setPendingTasks([]);
+    setMyInvitations([]);
+    setRespondingInvitationId(null);
+    setInvitationRespondErrors({});
+    setMatchDraft(null);
+    setCreatedMatchId(null);
+    setSelectedMatchId(null);
+    setInitialMatchTab(undefined);
+    setSelectedBookingId(null);
+    setReservationMatchContext(null);
+    setSelectedAdminClubId(null);
+    setHighlightInvitationId(null);
+  };
+
   useEffect(() => {
     if (!authLoaded) {
       return;
@@ -143,10 +167,7 @@ function App() {
       setCurrentView((current) => (current === 'login' || current === 'register' ? 'home' : current));
     } else {
       setCurrentView('login');
-      setMatches([]);
-      setPendingTasks([]);
-      setMyInvitations([]);
-      setPlayerName('');
+      resetUserScopedState();
     }
   }, [authLoaded, isSignedIn]);
 
@@ -488,6 +509,7 @@ function App() {
 
   const handleLogout = async () => {
     setCurrentView('login');
+    resetUserScopedState();
     await signOut();
   };
 

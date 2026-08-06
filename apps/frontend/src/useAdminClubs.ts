@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '@clerk/react';
 import type { AdminClubSummaryDto } from '@rondo/contracts';
 import { useApi } from './apiClient';
 
@@ -15,9 +16,15 @@ type UseAdminClubsResult = {
  * only actively-administered ones for a CLUB_ADMIN, none for a MEMBER), so
  * an empty result here doubles as "this user has no admin access at all"
  * for gating the Administración menu item.
+ *
+ * Re-fetches whenever the signed-in identity changes (userId, or
+ * isSignedIn flipping) -- same rationale as useMyClubs: App.tsx never
+ * unmounts across logout/login/register, so without this a previous
+ * account's admin-club list would keep showing after someone else signs in.
  */
 export function useAdminClubs(): UseAdminClubsResult {
   const api = useApi();
+  const { userId, isSignedIn } = useAuth();
   const [clubs, setClubs] = useState<AdminClubSummaryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -25,6 +32,14 @@ export function useAdminClubs(): UseAdminClubsResult {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!isSignedIn) {
+      setClubs([]);
+      setError(false);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
     const load = async () => {
@@ -51,7 +66,7 @@ export function useAdminClubs(): UseAdminClubsResult {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadToken]);
+  }, [userId, isSignedIn, reloadToken]);
 
   const reload = useCallback(() => setReloadToken((token) => token + 1), []);
 

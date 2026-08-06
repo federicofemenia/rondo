@@ -1,8 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MatchDetailPage from '../src/MatchDetailPage';
 import type { MatchEntity } from '../src/types';
-import { mockCandidates } from './setup';
+import { clerkAuthMock, mockCandidates } from './setup';
+
+// MatchDetailPage reads the current user's clubs (useMyClubs) for the "Editar sede" selector, which only fetches while signed in -- this page is only ever reached authenticated in the real app.
+beforeEach(() => {
+  clerkAuthMock.isSignedIn = true;
+});
 
 const baseMatch: MatchEntity = {
   id: 'match-1',
