@@ -10,7 +10,10 @@ export function buildDayOptions(count = 10): DayOption[] {
   for (let i = 0; i < count; i += 1) {
     const date = new Date();
     date.setDate(date.getDate() + i);
-    const value = date.toISOString().slice(0, 10);
+    // Local calendar date, not toISOString().slice(0, 10) -- that converts
+    // to UTC first, which silently rolls the value to the next day for any
+    // local time from 21:00 onward in Argentina (UTC-3).
+    const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     const formatted = weekdayFormatter.format(date);
     const label = i === 0 ? `Hoy • ${formatted}` : i === 1 ? `Mañana • ${formatted}` : formatted;
     options.push({ value, label });
