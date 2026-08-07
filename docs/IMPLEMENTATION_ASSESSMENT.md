@@ -1,5 +1,7 @@
 # IMPLEMENTATION ASSESSMENT
 
+> **Nota (auth nativa):** las menciones a Clerk en esta evaluación temprana están desactualizadas — Clerk fue removido por completo. Ver [`docs/AUTHENTICATION.md`](./AUTHENTICATION.md) para el estado real de autenticación. El resto de este documento se conserva como referencia histórica.
+
 ## 1. Resumen ejecutivo
 
 La documentación de Rondo define un producto con una propuesta clara: un MVP para organizar partidos deportivos de forma sencilla, con foco en jugadores, clubes y experiencias compartidas. El núcleo del producto está bien identificado en los documentos de producto, negocio y arquitectura: registro, perfil, partidos, participantes, chat, valoraciones y notificaciones.

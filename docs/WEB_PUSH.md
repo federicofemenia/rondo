@@ -123,9 +123,9 @@ model PushSubscription {
 
   > **Reasignación de dispositivo compartido:** si el mismo `endpoint` (mismo navegador/dispositivo) se vuelve a suscribir bajo otro usuario autenticado, `saveSubscription` hace un `upsert` por `endpoint` y **reasigna la fila al usuario actual**. Es decir: si en un navegador compartido el Usuario A activó notificaciones y después el Usuario B inicia sesión ahí y también activa, la suscripción pasa a ser de B — A deja de recibir push en ese dispositivo. Se prefirió esto sobre rechazar la reasignación porque una misma suscripción de browser siempre representa "el dispositivo actual", nunca a dos personas a la vez.
 
-- **Nunca se guardan tokens de Clerk** ni ningún dato de autenticación en esta tabla — solo lo que el propio `PushSubscriptionJSON` del navegador entrega (`endpoint`, `keys.p256dh`, `keys.auth`) más `userAgent` (informativo, para que el usuario reconozca "cuál dispositivo es cuál" si en el futuro se muestra una lista).
+- **Nunca se guardan tokens de sesión** ni ningún dato de autenticación en esta tabla — solo lo que el propio `PushSubscriptionJSON` del navegador entrega (`endpoint`, `keys.p256dh`, `keys.auth`) más `userAgent` (informativo, para que el usuario reconozca "cuál dispositivo es cuál" si en el futuro se muestra una lista).
 - **Migración:** `20260805111209_add_push_subscriptions` (nueva, no se modificó ninguna migración anterior). Aplicada con `prisma migrate dev` contra la base local; en producción se aplica con el `predeploy` existente (`prisma migrate deploy`), sin pasos manuales adicionales.
-- **Logout:** cerrar sesión **no borra** la suscripción del dispositivo — sigue asociada al usuario hasta que la desactive manualmente o hasta que otro usuario la reasigne al volver a suscribirse en el mismo navegador (ver arriba). Es una decisión deliberada: si se borrara en cada logout, el usuario tendría que reactivar notificaciones cada vez que cierra sesión en su propio celular.
+- **Logout:** `POST /api/v1/auth/logout` acepta un `pushEndpoint` opcional (el frontend lo obtiene de `navigator.serviceWorker.ready` antes de cerrar sesión) y **desasocia** esa fila del usuario que cierra sesión — un dispositivo compartido nunca sigue recibiendo pushes del usuario anterior una vez que cerró sesión ahí, sin necesidad de que otro usuario se loguee después para "pisar" la suscripción. La suscripción del *browser* en sí no se fuerza a `unsubscribe()` — solo se elimina la fila en `push_subscriptions`, así que reactivar notificaciones en la próxima sesión (de cualquier usuario en ese dispositivo) es instantáneo. Ver [docs/AUTHENTICATION.md](./AUTHENTICATION.md#push-en-dispositivo-compartido) para el detalle completo.
 
 ---
 
@@ -153,7 +153,7 @@ Esto imprime un par `Public Key` / `Private Key` (base64 URL-safe). **Generar un
 | `VAPID_PRIVATE_KEY` | la clave privada generada arriba |
 | `VAPID_SUBJECT` | `mailto:...` o `https://...` |
 
-Las tres son **obligatorias en producción** (`NODE_ENV=production`) — el arranque falla con un mensaje claro si falta alguna (`apps/backend/src/config/env.ts`, mismo patrón que `DATABASE_URL`/`CLERK_SECRET_KEY`/`FRONTEND_URL`).
+Las tres son **obligatorias en producción** (`NODE_ENV=production`) — el arranque falla con un mensaje claro si falta alguna (`apps/backend/src/config/env.ts`, mismo patrón que `DATABASE_URL`/`FRONTEND_URL`).
 
 **Vercel (frontend):**
 
@@ -317,7 +317,7 @@ Con la **app ya abierta**, `notificationclick` hace `client.focus()` y **no** `c
 
 ### Cuándo se aplica el destino: nunca antes de que la app esté lista
 
-`App.tsx` solo intenta aplicar un destino pendiente cuando `bootPhase === 'ready'` -- es decir, después de que Clerk cargó, el usuario está autenticado, y `/me`, `/me/matches`, `/me/pending-tasks` y `/me/invitations` ya respondieron. Mientras tanto el destino sigue ahí, sin perderse ni reintentarse antes de tiempo.
+`App.tsx` solo intenta aplicar un destino pendiente cuando `bootPhase === 'ready'` -- es decir, después de que se resolvió la sesión (`AuthProvider`'s `GET /api/v1/auth/session`), el usuario está autenticado, y `/me`, `/me/matches`, `/me/pending-tasks` y `/me/invitations` ya respondieron. Mientras tanto el destino sigue ahí, sin perderse ni reintentarse antes de tiempo.
 
 **Sesión vencida:** si se toca una push con la sesión caída, la app arranca en Login con el `?open=...` todavía en la URL -- nada lo toca mientras `currentView === 'login'`, porque el efecto que consume el destino está condicionado a `bootPhase === 'ready'`, que nunca se alcanza sin sesión. Una vez que el usuario inicia sesión y el boot completa, el mismo efecto corre y aplica el destino que seguía esperando en la URL. No hace falta guardarlo aparte en `sessionStorage`: la URL nunca cambió durante todo el login (es una sola SPA, sin navegación real de por medio), así que "dejarlo en la URL hasta consumirlo" sale gratis con esta arquitectura.
 

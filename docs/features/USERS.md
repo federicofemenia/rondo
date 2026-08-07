@@ -1,5 +1,7 @@
 # USERS
 
+> **Nota (auth nativa):** este documento es un diseño conceptual temprano y, en varias secciones (relación con Clerk, campos de registro, gestión de contraseña), quedó desactualizado respecto a lo realmente implementado incluso antes de este cambio. Clerk fue removido por completo — Rondo administra identidad, contraseñas y sesiones de punta a punta. Para el estado real y autoritativo de autenticación, ver [`docs/AUTHENTICATION.md`](../AUTHENTICATION.md). El resto de este documento (perfil, privacidad, relación con clubes/partidos/reputación) se mantiene como referencia conceptual del dominio.
+
 # Objetivo
 
 Este documento define el dominio de usuarios de Rondo.

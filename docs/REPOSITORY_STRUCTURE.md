@@ -336,7 +336,7 @@ infrastructure/
 
 Aquí vivirán implementaciones como:
 
-* ClerkAuthAdapter;
+* SessionAuthAdapter;
 * BrowserLocationAdapter;
 * WebCameraAdapter;
 * BrowserStorageAdapter;
@@ -646,7 +646,7 @@ Aquí podrán existir:
 
 * conexión a Neon;
 * cliente ORM;
-* integración con Clerk;
+* hashing de contraseñas y sesiones;
 * Object Storage;
 * servicio de email;
 * push notifications;

@@ -1,10 +1,12 @@
 # AUTHORIZATION
 
+> **Nota (auth nativa):** Clerk fue removido por completo — Rondo administra autenticación de punta a punta. Ver [`docs/AUTHENTICATION.md`](../AUTHENTICATION.md) para el diseño real. Las reglas de autorización (roles, guards) descriptas debajo siguen vigentes sin cambios: son independientes del mecanismo de autenticación.
+
 # Objetivo
 
 Este documento define cómo se controlan los permisos dentro de Rondo.
 
-La autenticación será responsabilidad de **Clerk**.
+La autenticación es responsabilidad de Rondo (ver nota arriba).
 
 Este dominio únicamente define qué acciones puede realizar un usuario una vez autenticado.
 

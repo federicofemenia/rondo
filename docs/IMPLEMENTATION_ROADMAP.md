@@ -1,5 +1,7 @@
 # IMPLEMENTATION ROADMAP
 
+> **Nota (auth nativa):** las menciones a Clerk en este roadmap temprano (incluyendo nombres de paquetes que nunca coincidieron con los realmente instalados) están desactualizadas — Clerk fue removido por completo. Ver [`docs/AUTHENTICATION.md`](./AUTHENTICATION.md) para el estado real de autenticación. El resto de este documento se conserva como referencia histórica de planificación.
+
 ## 1. Alcance definitivo del MVP
 
 El MVP de Rondo debe centrarse en un flujo claro y verificable:

@@ -132,11 +132,10 @@ Solo el app shell — todo lo que sale del propio build de Vite: `index.html`, e
 
 No hay ningún `runtimeCaching` configurado. Eso es intencional:
 
-- **`/api/v1/*`**: en todo despliegue real, el backend vive en un dominio distinto al frontend (Vercel vs. Render — ver `docs/BETA_DEPLOYMENT.md`), así que ni siquiera es el mismo origin que el service worker controla por defecto. No hay ninguna entrada de `runtimeCaching` que lo capture, así que esas requests pasan derecho a la red, sin pasar por ningún cache.
-- **Clerk**: mismo caso — dominio propio de Clerk, ningún patrón lo referencia.
-- **Tokens, headers `Authorization`, datos personales, mensajes de chat, invitaciones, perfiles**: nunca tocan Cache Storage porque viajan dentro de esas mismas respuestas de `/api/v1/*` sin cachear.
+- **`/api/v1/*`**: con la auth nativa por cookie, `/api/v1/*` pasa a ser **same-origin** con el propio scope del service worker (proxy de Vite en dev, rewrite de Vercel en producción — ver `docs/AUTHENTICATION.md#proxy-same-origin`), a diferencia de la arquitectura anterior donde el backend vivía en un dominio distinto (Vercel vs. Render) y por lo tanto ni siquiera compartía origin con el SW. Esto hace que `navigateFallbackDenylist: [/^\/api\//]` (ver abajo) sea más importante de lo que era antes: ya no es una segunda barrera redundante sobre un cross-origin que el SW nunca iba a interceptar de todas formas — ahora es la barrera real que evita que una navegación a `/api/v1/algo` (si alguna vez ocurriera) sirva `index.html` desde cache en vez de dejar pasar la request. No hay ninguna entrada de `runtimeCaching` que capture `/api/v1/*`, así que esas requests (incluida la cookie de sesión que viajan) pasan derecho a la red, sin pasar por Cache Storage.
+- **Tokens de sesión, la cookie `rondo_session`, datos personales, mensajes de chat, invitaciones, perfiles**: nunca tocan Cache Storage porque viajan dentro de esas mismas respuestas de `/api/v1/*` sin cachear. La cookie en sí es `httpOnly` — ni siquiera el propio código del SW (que corre JS) puede leerla vía `document.cookie`.
 
-`navigateFallbackDenylist: [/^\/api\//]` es una segunda barrera, aunque en la práctica `navigateFallback` solo aplica a *navegaciones* (`mode: 'navigate'`, o sea cargar una URL en la barra de direcciones), nunca a los `fetch()` que hace `apiClient.ts` — así que esta regla es defensiva, no la que hace el trabajo principal.
+`navigateFallbackDenylist: [/^\/api\//]` solo aplica a *navegaciones* (`mode: 'navigate'`, o sea cargar una URL en la barra de direcciones), nunca a los `fetch()` que hace `apiClient.ts` (esos ni siquiera pasan por `navigateFallback`) — pero dado que `/api/*` es same-origin ahora, vale la pena re-verificar esta regla cada vez que se toque el service worker, en vez de asumir que sigue siendo un caso imposible.
 
 ### Fallback SPA (`navigateFallback`)
 

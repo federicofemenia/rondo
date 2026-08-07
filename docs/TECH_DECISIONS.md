@@ -233,7 +233,7 @@ Autenticación
 
 ## Estado
 
-Pendiente
+Aceptada (revisada)
 
 ## Alternativas
 
@@ -247,9 +247,13 @@ Supabase Auth
 
 Firebase Auth
 
-## Estado
+## Decisión
 
-Se decidirá durante la implementación.
+Se adoptó Clerk inicialmente (username + password, sin proveedores sociales) para llegar rápido a una beta funcional. Tras un tiempo en producción, se decidió reemplazarlo por autenticación nativa: contraseñas con Argon2id, sesiones persistidas en PostgreSQL, cookie httpOnly + sameSite=lax, sin ningún proveedor externo. Ver [`docs/AUTHENTICATION.md`](./AUTHENTICATION.md) para el diseño completo.
+
+## Justificación de la reversión
+
+Simplifica el stack (una dependencia externa menos, sin acoplarse a la disponibilidad/pricing/API de un tercero para algo tan central), y da control total sobre el modelo de sesión (cookie same-origin vía proxy, revocación server-side, reset administrativo) sin las limitaciones del plan gratuito de Clerk. El costo asumido: Rondo pasa a ser responsable de la seguridad de auth (hashing, gestión de sesiones, CSRF) en vez de delegarla a un proveedor auditado — mitigado con Argon2id, tokens de sesión aleatorios de 256 bits nunca almacenados en texto plano, y un guard de CSRF dedicado.
 
 ---
 
