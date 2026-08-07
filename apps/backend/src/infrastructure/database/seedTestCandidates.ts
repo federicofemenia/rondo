@@ -8,8 +8,9 @@ import { prisma } from './prisma.js';
  * to line up a specific day/time with the narrower matching demo data in
  * seed.ts. Idempotent (upsert throughout), safe to rerun.
  *
- * Like seedBeta.ts, these are NOT real Clerk identities and can never log
- * in — never run this against beta/production, only against your local
+ * Like seedBeta.ts, these are NOT real accounts and can never log in
+ * (their passwordHash is a fixed, publicly-documented, unusable sentinel)
+ * — never run this against beta/production, only against your local
  * rondo_dev database.
  *
  *   pnpm --filter @rondo/backend seed:candidates
@@ -20,12 +21,15 @@ const FULL_DAY_END_MINUTES = 1440;
 
 const FOOTBALL_POSITIONS = ['Arquero', 'Defensor', 'Mediocampista', 'Delantero'];
 
+/** Same fixture sentinel used by seed.ts -- hash of the literal string 'rondo-seed-fixture-not-a-real-password'. Never a valid login. */
+const SEED_FIXTURE_PASSWORD_HASH = '$argon2id$v=19$m=19456,t=2,p=1$hX9qqfk9StB6ODXEtpWWMg$/YUsAGGNLZLaE0tPaqr2TDVdrcjtP+pyxfFh/LUUPgQ';
+
 const TEST_CANDIDATES = [
-  { clerkUserId: 'test_candidate_1', email: 'candidato1.test@rondo.local', firstName: 'Candidato', lastName: 'Uno', sportCode: 'football', positions: FOOTBALL_POSITIONS },
-  { clerkUserId: 'test_candidate_2', email: 'candidato2.test@rondo.local', firstName: 'Candidato', lastName: 'Dos', sportCode: 'football', positions: FOOTBALL_POSITIONS },
-  { clerkUserId: 'test_candidate_3', email: 'candidato3.test@rondo.local', firstName: 'Candidato', lastName: 'Tres', sportCode: 'football', positions: FOOTBALL_POSITIONS },
-  { clerkUserId: 'test_candidate_4', email: 'candidato4.test@rondo.local', firstName: 'Candidato', lastName: 'Cuatro', sportCode: 'padel', positions: [] },
-  { clerkUserId: 'test_candidate_5', email: 'candidato5.test@rondo.local', firstName: 'Candidato', lastName: 'Cinco', sportCode: 'padel', positions: [] },
+  { username: 'test_candidate_1', email: 'candidato1.test@rondo.local', firstName: 'Candidato', lastName: 'Uno', sportCode: 'football', positions: FOOTBALL_POSITIONS },
+  { username: 'test_candidate_2', email: 'candidato2.test@rondo.local', firstName: 'Candidato', lastName: 'Dos', sportCode: 'football', positions: FOOTBALL_POSITIONS },
+  { username: 'test_candidate_3', email: 'candidato3.test@rondo.local', firstName: 'Candidato', lastName: 'Tres', sportCode: 'football', positions: FOOTBALL_POSITIONS },
+  { username: 'test_candidate_4', email: 'candidato4.test@rondo.local', firstName: 'Candidato', lastName: 'Cuatro', sportCode: 'padel', positions: [] },
+  { username: 'test_candidate_5', email: 'candidato5.test@rondo.local', firstName: 'Candidato', lastName: 'Cinco', sportCode: 'padel', positions: [] },
 ] as const;
 
 async function run(): Promise<void> {
@@ -38,9 +42,9 @@ async function run(): Promise<void> {
     }
 
     const user = await prisma.user.upsert({
-      where: { clerkUserId: candidate.clerkUserId },
+      where: { username: candidate.username },
       update: { email: candidate.email, firstName: candidate.firstName, lastName: candidate.lastName },
-      create: { clerkUserId: candidate.clerkUserId, email: candidate.email, firstName: candidate.firstName, lastName: candidate.lastName },
+      create: { username: candidate.username, passwordHash: SEED_FIXTURE_PASSWORD_HASH, email: candidate.email, firstName: candidate.firstName, lastName: candidate.lastName },
     });
 
     const profile = await prisma.userSportProfile.upsert({

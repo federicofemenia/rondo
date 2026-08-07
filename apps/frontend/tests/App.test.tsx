@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import type { MatchSummaryDto, UserClubDto } from '@rondo/contracts';
-import { clerkAuthMock, mockClubs, mockMeProfile, mockMeState, mockMyInvitations, mockMyMatches } from './setup';
+import { mockAuthState, mockClubs, mockMeProfile, mockMeState, mockMyInvitations, mockMyMatches } from './setup';
 import { INSTALL_WELCOME_DISMISSAL_KEY } from '../src/installWelcome';
+import { renderWithAuth } from './testUtils';
 
 function logout() {
   fireEvent.click(screen.getByLabelText('Menú'));
@@ -47,21 +48,22 @@ function fixtureMatch(overrides: Partial<MatchSummaryDto> = {}): MatchSummaryDto
 }
 
 async function loginAndReachHome() {
-  render(<App />);
-  fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+  renderWithAuth(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /iniciar sesión/i }));
   await screen.findByRole('heading', { name: /hola, federico/i });
 }
 
 describe('App', () => {
-  it('renders the login screen first', () => {
-    render(<App />);
+  it('renders the login screen first', async () => {
+    renderWithAuth(<App />);
 
-    expect(screen.getByAltText(/rondo/i)).toBeTruthy();
+    expect(await screen.findByAltText(/rondo/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeTruthy();
   });
 
-  it('hides the register link and shows the closed-beta message by default (VITE_BETA_SIGN_UP_ENABLED unset)', () => {
-    render(<App />);
+  it('hides the register link and shows the closed-beta message by default (VITE_BETA_SIGN_UP_ENABLED unset)', async () => {
+    renderWithAuth(<App />);
+    await screen.findByRole('button', { name: /iniciar sesión/i });
 
     expect(screen.queryByText(/registrate gratis/i)).toBeFalsy();
     expect(screen.getByText(/esta beta requiere una cuenta asignada/i)).toBeTruthy();
@@ -146,8 +148,8 @@ describe('App', () => {
   it('shows a full pending invitation card on Home, and accepting it removes it from Invitaciones pendientes', async () => {
     vi.useFakeTimers();
     try {
-      render(<App />);
-      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+      renderWithAuth(<App />);
+      fireEvent.click(await vi.waitFor(() => screen.getByRole('button', { name: /iniciar sesión/i })));
       await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
 
       mockMyInvitations.push({
@@ -187,8 +189,8 @@ describe('App', () => {
   it('lets the user reject a pending invitation from Home, which drops it without touching Próximos eventos', async () => {
     vi.useFakeTimers();
     try {
-      render(<App />);
-      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+      renderWithAuth(<App />);
+      fireEvent.click(await vi.waitFor(() => screen.getByRole('button', { name: /iniciar sesión/i })));
       await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
 
       mockMyInvitations.push({
@@ -227,8 +229,8 @@ describe('App', () => {
   it('shows a new pending-invitation action on Home automatically after a background refresh', async () => {
     vi.useFakeTimers();
     try {
-      render(<App />);
-      fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+      renderWithAuth(<App />);
+      fireEvent.click(await vi.waitFor(() => screen.getByRole('button', { name: /iniciar sesión/i })));
       await vi.waitFor(() => expect(screen.getByRole('heading', { name: /hola, federico/i })).toBeTruthy());
       expect(screen.queryByText(/tenés una invitación pendiente/i)).toBeFalsy();
       expect(screen.getByLabelText('Notificaciones')).toBeTruthy();
@@ -303,12 +305,12 @@ describe('App', () => {
   });
 
   it('shows a waking-up screen, then reaches Home once transient failures stop', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     mockMeState.failuresRemaining = 2;
 
     vi.useFakeTimers();
     try {
-      render(<App />);
+      renderWithAuth(<App />);
       await vi.waitFor(() => expect(screen.getByText(/estamos iniciando el servidor de rondo/i)).toBeTruthy());
 
       await vi.advanceTimersByTimeAsync(1500);
@@ -320,12 +322,12 @@ describe('App', () => {
   });
 
   it('shows a retry option after exhausting attempts, and recovers on click', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     mockMeState.failuresRemaining = 999;
 
     vi.useFakeTimers();
     try {
-      render(<App />);
+      renderWithAuth(<App />);
       await vi.waitFor(() => expect(screen.getByText(/estamos iniciando el servidor de rondo/i)).toBeTruthy());
 
       await vi.advanceTimersByTimeAsync(1500 + 3000 + 6000 + 1000);
@@ -341,7 +343,7 @@ describe('App', () => {
   });
 
   it('shows the offline screen (not the backend-waking-up message) when the device itself is offline, and recovers once back online', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     // Never resolves on its own within this test, so bootPhase stays
     // 'pending' the whole time -- isolates the offline-screen assertions
     // from a race against the boot's own retry/success timing.
@@ -349,7 +351,7 @@ describe('App', () => {
     Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
 
     try {
-      render(<App />);
+      renderWithAuth(<App />);
 
       expect(await screen.findByText(/^sin conexión$/i)).toBeTruthy();
       expect(screen.getByText(/rondo necesita conexión para actualizar partidos, invitaciones y mensajes/i)).toBeTruthy();
@@ -367,9 +369,9 @@ describe('App', () => {
   });
 
   it('shows "Partido en juego" (not "Faltan N jugadores") on Home for an IN_PROGRESS match', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     mockMyMatches.push(fixtureMatch({ status: 'IN_PROGRESS', maxPlayers: 10, participantsCount: 3 }));
-    render(<App />);
+    renderWithAuth(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
     expect(await screen.findByText('Partido en juego')).toBeTruthy();
@@ -377,9 +379,9 @@ describe('App', () => {
   });
 
   it('shows an EXPIRED match under Partidos finalizados, not Próximos partidos', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     mockMyMatches.push(fixtureMatch({ status: 'EXPIRED', maxPlayers: 10, participantsCount: 3 }));
-    render(<App />);
+    renderWithAuth(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
     await screen.findByText(/^partidos finalizados$/i);
@@ -389,9 +391,9 @@ describe('App', () => {
   });
 
   it('shows a CANCELLED match under Partidos finalizados, not Próximos partidos', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     mockMyMatches.push(fixtureMatch({ status: 'CANCELLED', maxPlayers: 10, participantsCount: 3 }));
-    render(<App />);
+    renderWithAuth(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
     await screen.findByText(/^partidos finalizados$/i);
@@ -400,10 +402,10 @@ describe('App', () => {
   });
 
   it('drops a COMPLETED match from Home entirely once it is older than the 24h Partidos finalizados window', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     const staleCompletedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     mockMyMatches.push(fixtureMatch({ status: 'COMPLETED', maxPlayers: 10, participantsCount: 3, statusChangedAt: staleCompletedAt }));
-    render(<App />);
+    renderWithAuth(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
     await screen.findByRole('button', { name: /armar partido/i });
@@ -413,10 +415,10 @@ describe('App', () => {
   });
 
   it('keeps showing a COMPLETED match under Partidos finalizados within the 24h window', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     const recentCompletedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     mockMyMatches.push(fixtureMatch({ status: 'COMPLETED', maxPlayers: 10, participantsCount: 3, statusChangedAt: recentCompletedAt }));
-    render(<App />);
+    renderWithAuth(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
     await screen.findByText(/^partidos finalizados$/i);
@@ -424,9 +426,9 @@ describe('App', () => {
   });
 
   it('shows "Partido finalizado" (not "Faltan N jugadores") on Home for a COMPLETED match', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     mockMyMatches.push(fixtureMatch({ status: 'COMPLETED', maxPlayers: 10, participantsCount: 3 }));
-    render(<App />);
+    renderWithAuth(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
     expect(await screen.findByText('Partido finalizado')).toBeTruthy();
@@ -434,21 +436,21 @@ describe('App', () => {
   });
 
   it('still shows "Faltan N jugadores" for an ORGANIZING match', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     mockMyMatches.push(fixtureMatch({ status: 'ORGANIZING', maxPlayers: 10, participantsCount: 3 }));
-    render(<App />);
+    renderWithAuth(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
     expect(await screen.findByText('Faltan 7 jugadores')).toBeTruthy();
   });
 
   it('an IN_PROGRESS or EXPIRED match never generates a pending action (venue/court/time) on the bell', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     mockMyMatches.push(
       fixtureMatch({ id: 'match-in-progress', status: 'IN_PROGRESS', venueType: 'TO_BE_DEFINED', clubId: null, clubName: null, startsAt: null }),
       fixtureMatch({ id: 'match-expired', status: 'EXPIRED', venueType: 'TO_BE_DEFINED', clubId: null, clubName: null, startsAt: null }),
     );
-    render(<App />);
+    renderWithAuth(<App />);
     await screen.findByRole('heading', { name: /hola, federico/i });
 
     await screen.findByText('Partido en juego');
@@ -461,7 +463,7 @@ describe('App', () => {
     Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { ready: new Promise(() => {}) } });
 
     try {
-      render(<App />);
+      renderWithAuth(<App />);
       expect(screen.queryByText(/activá las notificaciones/i)).toBeFalsy();
     } finally {
       vi.unstubAllGlobals();
@@ -469,7 +471,7 @@ describe('App', () => {
   });
 
   it('shows the push-notifications activation banner once signed in, when the browser supports it', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     // Installing takes priority over activating push (see docs/PWA.md) --
     // mark the install-welcome card already dismissed so it doesn't hide
     // the push banner this test is actually about.
@@ -482,7 +484,7 @@ describe('App', () => {
     });
 
     try {
-      render(<App />);
+      renderWithAuth(<App />);
       await screen.findByRole('heading', { name: /hola, federico/i });
       expect(await screen.findByText(/activá las notificaciones/i)).toBeTruthy();
     } finally {
@@ -497,7 +499,7 @@ describe('App', () => {
     Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { ready: new Promise(() => {}) } });
 
     try {
-      render(<App />);
+      renderWithAuth(<App />);
       expect(screen.queryByText(/bienvenido a rondo/i)).toBeFalsy();
     } finally {
       vi.unstubAllGlobals();
@@ -587,7 +589,7 @@ describe('App', () => {
   });
 
   it('shows the install-welcome card once signed in, when not already installed or dismissed', async () => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
     localStorage.removeItem(INSTALL_WELCOME_DISMISSAL_KEY);
     vi.stubGlobal('PushManager', class {});
     vi.stubGlobal('Notification', { permission: 'default', requestPermission: vi.fn() });
@@ -597,7 +599,7 @@ describe('App', () => {
     });
 
     try {
-      render(<App />);
+      renderWithAuth(<App />);
       await screen.findByRole('heading', { name: /hola, federico/i });
       expect(await screen.findByText(/bienvenido a rondo/i)).toBeTruthy();
       // Priority 1 (install) over priority 2 (push) -- see docs/PWA.md.

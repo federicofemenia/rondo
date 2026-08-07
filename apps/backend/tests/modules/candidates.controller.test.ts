@@ -38,7 +38,7 @@ function isoOnTestDay(hour: number, minute = 0): Date {
 
 async function createCandidateUser(firstName: string, lastName = 'Test'): Promise<User> {
   return prisma.user.create({
-    data: { clerkUserId: `test_candidate_${randomUUID()}`, email: `${randomUUID()}@example.com`, firstName, lastName },
+    data: { username: `test_candidate_${randomUUID()}`, passwordHash: 'TEST_FIXTURE_NO_LOGIN', email: `${randomUUID()}@example.com`, firstName, lastName },
   });
 }
 
@@ -497,10 +497,11 @@ describe('GET /api/v1/matches/:matchId/candidates', () => {
   });
 
   it('shows the real displayName/username for a candidate with no firstName/lastName, not the generic "Jugador" fallback', async () => {
-    // Matches the real beta registration flow (RegisterPage/Clerk sign-up),
-    // which never sets firstName/lastName -- only username + displayName.
+    // Matches the real beta registration flow (RegisterPage/auth.service.ts's
+    // registerUser), which never sets firstName/lastName -- only username +
+    // displayName.
     const beta = await prisma.user.create({
-      data: { clerkUserId: `test_candidate_${randomUUID()}`, username: 'candidato_beta', displayName: 'Candidato Beta' },
+      data: { username: `candidato_beta_${randomUUID()}`, passwordHash: 'TEST_FIXTURE_NO_LOGIN', displayName: 'Candidato Beta' },
     });
     createdUserIds.push(beta.id);
     const profile = await createSportProfile(beta.id, SEED_IDS.sports.football);

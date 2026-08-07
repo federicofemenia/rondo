@@ -28,26 +28,31 @@ function windowAround(startsAt: Date, endsAt: Date): { availabilityStartMinutes:
 export async function runSeed(): Promise<void> {
   const { padel, football, padelDoubles, football5, club, courts } = await runBaseSeed();
 
-  // Demo players used to populate matches, participants and ratings. These are
-  // seed-only bot accounts (never authenticated via Clerk), distinct from real
-  // users who are created lazily on first login.
+  // Demo players used to populate matches, participants and ratings. These
+  // are seed-only bot accounts, distinct from real users who register
+  // themselves through POST /api/v1/auth/register. Their passwordHash is a
+  // fixed, shared, publicly-documented sentinel (hash of the literal string
+  // 'rondo-seed-fixture-not-a-real-password') -- these accounts are never
+  // meant to be logged into for real, only to exist as fixture data.
+  const SEED_FIXTURE_PASSWORD_HASH = '$argon2id$v=19$m=19456,t=2,p=1$hX9qqfk9StB6ODXEtpWWMg$/YUsAGGNLZLaE0tPaqr2TDVdrcjtP+pyxfFh/LUUPgQ';
+
   const demoUsers = [
-    { id: SEED_IDS.users.juan, clerkUserId: 'seed_juan_perez', email: 'juan.perez.seed@rondo.local', firstName: 'Juan', lastName: 'Pérez' },
-    { id: SEED_IDS.users.martin, clerkUserId: 'seed_martin_gomez', email: 'martin.gomez.seed@rondo.local', firstName: 'Martín', lastName: 'Gómez' },
-    { id: SEED_IDS.users.luciano, clerkUserId: 'seed_luciano_diaz', email: 'luciano.diaz.seed@rondo.local', firstName: 'Luciano', lastName: 'Díaz' },
-    { id: SEED_IDS.users.ana, clerkUserId: 'seed_ana_torres', email: 'ana.torres.seed@rondo.local', firstName: 'Ana', lastName: 'Torres' },
-    { id: SEED_IDS.users.sofia, clerkUserId: 'seed_sofia_castro', email: 'sofia.castro.seed@rondo.local', firstName: 'Sofía', lastName: 'Castro' },
-    { id: SEED_IDS.users.camila, clerkUserId: 'seed_camila_ruiz', email: 'camila.ruiz.seed@rondo.local', firstName: 'Camila', lastName: 'Ruiz' },
-    { id: SEED_IDS.users.diego, clerkUserId: 'seed_diego_navarro', email: 'diego.navarro.seed@rondo.local', firstName: 'Diego', lastName: 'Navarro' },
-    { id: SEED_IDS.users.valentina, clerkUserId: 'seed_valentina_ortiz', email: 'valentina.ortiz.seed@rondo.local', firstName: 'Valentina', lastName: 'Ortiz' },
+    { id: SEED_IDS.users.juan, username: 'juan_perez_demo', email: 'juan.perez.seed@rondo.local', firstName: 'Juan', lastName: 'Pérez' },
+    { id: SEED_IDS.users.martin, username: 'martin_gomez_demo', email: 'martin.gomez.seed@rondo.local', firstName: 'Martín', lastName: 'Gómez' },
+    { id: SEED_IDS.users.luciano, username: 'luciano_diaz_demo', email: 'luciano.diaz.seed@rondo.local', firstName: 'Luciano', lastName: 'Díaz' },
+    { id: SEED_IDS.users.ana, username: 'ana_torres_demo', email: 'ana.torres.seed@rondo.local', firstName: 'Ana', lastName: 'Torres' },
+    { id: SEED_IDS.users.sofia, username: 'sofia_castro_demo', email: 'sofia.castro.seed@rondo.local', firstName: 'Sofía', lastName: 'Castro' },
+    { id: SEED_IDS.users.camila, username: 'camila_ruiz_demo', email: 'camila.ruiz.seed@rondo.local', firstName: 'Camila', lastName: 'Ruiz' },
+    { id: SEED_IDS.users.diego, username: 'diego_navarro_demo', email: 'diego.navarro.seed@rondo.local', firstName: 'Diego', lastName: 'Navarro' },
+    { id: SEED_IDS.users.valentina, username: 'valentina_ortiz_demo', email: 'valentina.ortiz.seed@rondo.local', firstName: 'Valentina', lastName: 'Ortiz' },
   ];
 
   const [juan, martin, luciano, ana, sofia, camila, diego, valentina] = await Promise.all(
     demoUsers.map((user) =>
       prisma.user.upsert({
         where: { id: user.id },
-        update: { clerkUserId: user.clerkUserId, email: user.email, firstName: user.firstName, lastName: user.lastName },
-        create: user,
+        update: { username: user.username, email: user.email, firstName: user.firstName, lastName: user.lastName },
+        create: { ...user, passwordHash: SEED_FIXTURE_PASSWORD_HASH },
       }),
     ),
   );

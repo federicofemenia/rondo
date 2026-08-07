@@ -6,11 +6,11 @@ import { SEED_IDS } from '../../src/infrastructure/database/seedIds.js';
 import { createFakeAuthAdapter } from '../support/fakeAuthAdapter.js';
 
 const authAdapter = createFakeAuthAdapter({
-  juan: { clerkUserId: 'seed_juan_perez', email: 'juan.perez.seed@rondo.local', firstName: 'Juan', lastName: 'Pérez', avatarUrl: null },
-  martin: { clerkUserId: 'seed_martin_gomez', email: 'martin.gomez.seed@rondo.local', firstName: 'Martín', lastName: 'Gómez', avatarUrl: null },
-  luciano: { clerkUserId: 'seed_luciano_diaz', email: 'luciano.diaz.seed@rondo.local', firstName: 'Luciano', lastName: 'Díaz', avatarUrl: null },
-  ana: { clerkUserId: 'seed_ana_torres', email: 'ana.torres.seed@rondo.local', firstName: 'Ana', lastName: 'Torres', avatarUrl: null },
-  camila: { clerkUserId: 'seed_camila_ruiz', email: 'camila.ruiz.seed@rondo.local', firstName: 'Camila', lastName: 'Ruiz', avatarUrl: null },
+  juan: { username: 'juan_perez_demo', displayName: 'Juan Pérez' },
+  martin: { username: 'martin_gomez_demo', displayName: 'Martín Gómez' },
+  luciano: { username: 'luciano_diaz_demo', displayName: 'Luciano Díaz' },
+  ana: { username: 'ana_torres_demo', displayName: 'Ana Torres' },
+  camila: { username: 'camila_ruiz_demo', displayName: 'Camila Ruiz' },
 });
 
 // Test-only role/membership fixture, layered on top of the shared seed:

@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MatchSummaryDto } from '@rondo/contracts';
-import { clerkAuthMock, mockMyMatches, mockSingleMatchAccessDeniedIds } from './setup';
+import { mockAuthState, mockMyMatches, mockSingleMatchAccessDeniedIds } from './setup';
 
 /**
  * App.tsx's push-deep-link consumption (see pushNavigation.ts) seeds its
@@ -66,13 +66,24 @@ function setUrl(pathWithQuery: string): void {
 
 async function renderFreshApp() {
   vi.resetModules();
+  // Both imported fresh from the same reset module registry: App.tsx
+  // resolves its own `./AuthProvider` import to whatever instance is
+  // current at the time it's evaluated, so a statically-imported
+  // AuthProvider from before vi.resetModules() would be a *different*
+  // module instance (different React Context object) than the one App
+  // actually reads from -- useContext would silently return null.
   const { default: App } = await import('../src/App');
-  return render(<App />);
+  const { AuthProvider } = await import('../src/AuthProvider');
+  return render(
+    <AuthProvider>
+      <App />
+    </AuthProvider>,
+  );
 }
 
 describe('App push deep linking', () => {
   beforeEach(() => {
-    clerkAuthMock.isSignedIn = true;
+    mockAuthState.authenticated = true;
   });
 
   afterEach(() => {

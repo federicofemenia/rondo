@@ -27,7 +27,7 @@ const TEST_DAY_OF_WEEK = TEST_DAY.getUTCDay();
 
 async function createCandidateUser(firstName: string, lastName = 'Test'): Promise<User> {
   return prisma.user.create({
-    data: { clerkUserId: `test_invitation_${randomUUID()}`, email: `${randomUUID()}@example.com`, firstName, lastName },
+    data: { username: `test_invitation_${randomUUID()}`, passwordHash: 'TEST_FIXTURE_NO_LOGIN', email: `${randomUUID()}@example.com`, firstName, lastName },
   });
 }
 
@@ -73,7 +73,7 @@ async function deleteInvitation(invitationId: string): Promise<void> {
 
 function authAdapterFor(user: User) {
   return createFakeAuthAdapter({
-    candidate: { clerkUserId: user.clerkUserId, email: user.email!, firstName: user.firstName, lastName: user.lastName, avatarUrl: null },
+    candidate: { username: user.username, displayName: `${user.firstName} ${user.lastName}` },
   });
 }
 

@@ -1,11 +1,23 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://rondo-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://rondo-backend.onrender.com/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
+    },
     {
       "source": "/manifest.webmanifest",
       "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }]

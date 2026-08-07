@@ -26,7 +26,7 @@ afterEach(async () => {
 
 async function createBareUser(overrides: Partial<Pick<User, 'biography' | 'avatarUrl' | 'sex' | 'firstName' | 'lastName'>> = {}): Promise<User> {
   const user = await prisma.user.create({
-    data: { clerkUserId: `test_public_profile_${randomUUID()}`, email: `${randomUUID()}@example.com`, ...overrides },
+    data: { username: `test_public_profile_${randomUUID()}`, passwordHash: 'TEST_FIXTURE_NO_LOGIN', email: `${randomUUID()}@example.com`, ...overrides },
   });
   createdUserIds.push(user.id);
   return user;
@@ -129,7 +129,7 @@ describe('GET /api/v1/users/:id/public-profile', () => {
 
     expect(body.data.email).toBeUndefined();
     expect(body.data.username).toBeUndefined();
-    expect(body.data.clerkUserId).toBeUndefined();
+    expect(body.data.passwordHash).toBeUndefined();
 
     await app.close();
   });

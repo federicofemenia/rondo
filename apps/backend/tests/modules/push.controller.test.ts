@@ -34,21 +34,15 @@ import { prisma } from '../../src/infrastructure/database/prisma.js';
 import { runSeed } from '../../src/infrastructure/database/seed.js';
 import { createFakeAuthAdapter } from '../support/fakeAuthAdapter.js';
 
-const OWNER_CLERK_USER_ID = 'test_clerk_user_push_owner';
-const BYSTANDER_CLERK_USER_ID = 'test_clerk_user_push_bystander';
-const ISOLATED_CLERK_USER_ID = 'test_clerk_user_push_isolated';
+const OWNER_USERNAME = 'test_username_push_owner';
+const BYSTANDER_USERNAME = 'test_username_push_bystander';
+const ISOLATED_USERNAME = 'test_username_push_isolated';
 /** Every endpoint fixture in this file uses this prefix, so it doubles as a cleanup key -- see beforeEach below. */
 const TEST_ENDPOINT_PREFIX = 'https://push.example.com/';
 
 const authAdapter = createFakeAuthAdapter({
-  'owner-token': { clerkUserId: OWNER_CLERK_USER_ID, email: 'push.owner@example.com', firstName: 'Push', lastName: 'Owner', avatarUrl: null },
-  'bystander-token': {
-    clerkUserId: BYSTANDER_CLERK_USER_ID,
-    email: 'push.bystander@example.com',
-    firstName: 'Push',
-    lastName: 'Bystander',
-    avatarUrl: null,
-  },
+  'owner-token': { username: OWNER_USERNAME, displayName: 'Push Owner' },
+  'bystander-token': { username: BYSTANDER_USERNAME, displayName: 'Push Bystander' },
 });
 
 const VAPID_ENV = { VAPID_PUBLIC_KEY: 'test-public-key', VAPID_PRIVATE_KEY: 'test-private-key', VAPID_SUBJECT: 'mailto:admin@rondo.app' };
@@ -90,7 +84,7 @@ afterEach(() => {
 afterAll(async () => {
   const testUserIds = (
     await prisma.user.findMany({
-      where: { clerkUserId: { in: [OWNER_CLERK_USER_ID, BYSTANDER_CLERK_USER_ID, ISOLATED_CLERK_USER_ID] } },
+      where: { username: { in: [OWNER_USERNAME, BYSTANDER_USERNAME, ISOLATED_USERNAME] } },
       select: { id: true },
     })
   ).map((user) => user.id);
@@ -293,7 +287,7 @@ describe('POST /api/v1/me/push-subscriptions/test', () => {
     // A brand-new fake user, guaranteed to have zero subscriptions (cleaned
     // up alongside owner/bystander in the shared afterAll below).
     const isolatedAdapter = createFakeAuthAdapter({
-      'isolated-token': { clerkUserId: ISOLATED_CLERK_USER_ID, email: 'push.isolated@example.com', firstName: null, lastName: null, avatarUrl: null },
+      'isolated-token': { username: ISOLATED_USERNAME, displayName: 'Push Isolated' },
     });
     const isolatedApp = await buildServer({ NODE_ENV: 'test', ...VAPID_ENV }, { authAdapter: isolatedAdapter });
 

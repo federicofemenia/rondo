@@ -15,13 +15,13 @@ beforeAll(async () => {
 
 async function createTestUser(firstName: string, lastName = 'Test'): Promise<User> {
   return prisma.user.create({
-    data: { clerkUserId: `test_chat_${randomUUID()}`, email: `${randomUUID()}@example.com`, firstName, lastName },
+    data: { username: `test_chat_${randomUUID()}`, passwordHash: 'TEST_FIXTURE_NO_LOGIN', email: `${randomUUID()}@example.com`, firstName, lastName },
   });
 }
 
 function authAdapterFor(user: User) {
   return createFakeAuthAdapter({
-    acting: { clerkUserId: user.clerkUserId, email: user.email!, firstName: user.firstName, lastName: user.lastName, avatarUrl: null },
+    acting: { username: user.username, displayName: `${user.firstName} ${user.lastName}` },
   });
 }
 

@@ -34,13 +34,27 @@ services:
       # Set these to real values in the Render dashboard — never commit them.
       - key: DATABASE_URL
         sync: false
-      - key: CLERK_SECRET_KEY
-        sync: false
       - key: FRONTEND_URL
         sync: false
-      - key: BOOTSTRAP_ADMIN_CLERK_USER_ID
+      # Native session auth (see docs/AUTHENTICATION.md) — both have safe
+      # defaults (rondo_session / 30) baked into config/env.ts, only set
+      # these if you deliberately want to override them.
+      - key: SESSION_COOKIE_NAME
         sync: false
-      - key: BOOTSTRAP_ADMIN_USERNAME
+      - key: SESSION_TTL_DAYS
+        sync: false
+      # Cloudflare R2 (avatar storage) — optional: omitting all of these
+      # disables avatar upload only (a clear "not available" message is
+      # shown), the rest of the app is unaffected.
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_URL
         sync: false
       - key: VAPID_PUBLIC_KEY
         sync: false

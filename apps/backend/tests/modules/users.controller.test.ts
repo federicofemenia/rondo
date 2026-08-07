@@ -5,42 +5,13 @@ import { runSeed } from '../../src/infrastructure/database/seed.js';
 import { SEED_IDS } from '../../src/infrastructure/database/seedIds.js';
 import { createFakeAuthAdapter } from '../support/fakeAuthAdapter.js';
 
-const TEST_CLERK_USER_ID = 'test_clerk_user_regular';
-const TEST_ADMIN_CLERK_USER_ID = 'test_clerk_user_admin';
-const TEST_USERNAME_ADMIN_CLERK_USER_ID = 'test_clerk_user_username_admin';
-const TEST_NO_EMAIL_CLERK_USER_ID = 'test_clerk_user_no_email';
+const TEST_USERNAME_REGULAR = 'test_username_regular';
+const TEST_USERNAME_SECOND = 'test_username_second';
+const TEST_USERNAME_ORDERING = 'test_username_ordering';
 
 const authAdapter = createFakeAuthAdapter({
-  'regular-user-token': {
-    clerkUserId: TEST_CLERK_USER_ID,
-    email: 'jugador.test@example.com',
-    firstName: 'Jugador',
-    lastName: 'De Prueba',
-    avatarUrl: null,
-  },
-  'admin-user-token': {
-    clerkUserId: TEST_ADMIN_CLERK_USER_ID,
-    email: 'admin.test@example.com',
-    firstName: 'Federico',
-    lastName: 'Femenia',
-    avatarUrl: 'https://example.com/avatar.png',
-  },
-  'username-admin-token': {
-    clerkUserId: TEST_USERNAME_ADMIN_CLERK_USER_ID,
-    username: 'fede',
-    email: null,
-    firstName: null,
-    lastName: null,
-    avatarUrl: null,
-  },
-  'no-email-token': {
-    clerkUserId: TEST_NO_EMAIL_CLERK_USER_ID,
-    username: 'sinmail',
-    email: null,
-    firstName: null,
-    lastName: null,
-    avatarUrl: null,
-  },
+  'regular-user-token': { username: TEST_USERNAME_REGULAR, displayName: 'Jugador De Prueba' },
+  'second-user-token': { username: TEST_USERNAME_SECOND, displayName: 'Federico Femenia', avatarUrl: 'https://example.com/avatar.png' },
 });
 
 beforeAll(async () => {
@@ -50,7 +21,7 @@ beforeAll(async () => {
 afterAll(async () => {
   const testUserIds = (
     await prisma.user.findMany({
-      where: { clerkUserId: { in: [TEST_CLERK_USER_ID, TEST_ADMIN_CLERK_USER_ID, TEST_USERNAME_ADMIN_CLERK_USER_ID, TEST_NO_EMAIL_CLERK_USER_ID] } },
+      where: { username: { in: [TEST_USERNAME_REGULAR, TEST_USERNAME_SECOND, TEST_USERNAME_ORDERING] } },
       select: { id: true },
     })
   ).map((user) => user.id);
@@ -71,14 +42,14 @@ describe('GET /api/v1/me', () => {
     await app.close();
   });
 
-  it('creates the internal user on first login and returns it on subsequent calls', async () => {
+  it('resolves the internal user from a valid session, consistently across calls', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
 
     const first = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
     expect(first.statusCode).toBe(200);
-    const firstBody = first.json() as { data: { id: string; email: string; firstName: string | null } };
-    expect(firstBody.data.email).toBe('jugador.test@example.com');
-    expect(firstBody.data.firstName).toBe('Jugador');
+    const firstBody = first.json() as { data: { id: string; username: string | null; displayName: string } };
+    expect(firstBody.data.username).toBe(TEST_USERNAME_REGULAR);
+    expect(firstBody.data.displayName).toBe('Jugador De Prueba');
 
     const second = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
     const secondBody = second.json() as { data: { id: string } };
@@ -88,42 +59,36 @@ describe('GET /api/v1/me', () => {
     await app.close();
   });
 
-  it('syncs a username-only account with no email at all, without failing', async () => {
+  it('returns null email/firstName/lastName for an account created through native registration (no email/first/last name captured)', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
-    const response = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer no-email-token' } });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
 
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { data: { username: string | null; email: string | null; displayName: string } };
-    expect(body.data.username).toBe('sinmail');
+    const body = response.json() as { data: { email: string | null; firstName: string | null; lastName: string | null } };
     expect(body.data.email).toBeNull();
-    expect(body.data.displayName).toBe('sinmail');
+    expect(body.data.firstName).toBeNull();
+    expect(body.data.lastName).toBeNull();
 
     await app.close();
   });
 
-  it('defaults a new account to available every day, all hours, for every sport', async () => {
+  it('returns the avatarUrl set on the account', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
-    await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer second-user-token' } });
 
-    const response = await app.inject({ method: 'GET', url: '/api/v1/me/sport-profiles', headers: { authorization: 'Bearer regular-user-token' } });
     expect(response.statusCode).toBe(200);
-    const body = response.json() as {
-      data: Array<{ sportId: string; isAvailableForInvitations: boolean; availability: Array<{ dayOfWeek: number; startMinutes: number; endMinutes: number }> }>;
-    };
-
-    expect(body.data.length).toBeGreaterThanOrEqual(2);
-    for (const profile of body.data) {
-      expect(profile.isAvailableForInvitations).toBe(true);
-      expect(profile.availability).toHaveLength(7);
-      expect(profile.availability.map((slot) => slot.dayOfWeek).sort()).toEqual([0, 1, 2, 3, 4, 5, 6]);
-      for (const slot of profile.availability) {
-        expect(slot.startMinutes).toBe(0);
-        expect(slot.endMinutes).toBe(1440);
-      }
-    }
+    const body = response.json() as { data: { avatarUrl: string | null } };
+    expect(body.data.avatarUrl).toBe('https://example.com/avatar.png');
 
     await app.close();
   });
+
+  // Default sport-profile backfill now only happens once, at real
+  // registration time (auth.service.ts's registerUser) -- not as a
+  // side-effect of authenticating, unlike the old Clerk-sync-on-every-request
+  // model. See auth.controller.test.ts's "POST /register" suite for that
+  // coverage; a fake-auth-adapter-resolved test user here (which never goes
+  // through registerUser) has no default profiles.
 });
 
 describe('PUT /api/v1/me/profile', () => {
@@ -208,7 +173,7 @@ describe('PUT /api/v1/me/profile', () => {
     await app.close();
   });
 
-  it('ignores an avatarUrl in the body -- avatar is Clerk-sourced only, never client-supplied', async () => {
+  it('rejects an avatarUrl that was not issued by our own avatar storage for this user', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
     const response = await app.inject({
       method: 'PUT',
@@ -217,9 +182,9 @@ describe('PUT /api/v1/me/profile', () => {
       payload: { sex: null, biography: null, avatarUrl: 'https://evil.example.com/x.png' },
     });
 
-    expect(response.statusCode).toBe(200);
-    const body = response.json() as { data: { avatarUrl: string | null } };
-    expect(body.data.avatarUrl).not.toBe('https://evil.example.com/x.png');
+    // No R2 storage configured in this test server -- any avatarUrl is
+    // rejected outright (see users.controller.ts's AVATAR_STORAGE_NOT_CONFIGURED-adjacent guard).
+    expect(response.statusCode).toBe(400);
 
     await app.close();
   });
@@ -239,7 +204,7 @@ describe('GET /api/v1/me/clubs', () => {
   it('does not include an INACTIVE membership: the user is treated as having no club', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
     await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
-    const user = await prisma.user.findUnique({ where: { clerkUserId: TEST_CLERK_USER_ID } });
+    const user = await prisma.user.findUnique({ where: { username: TEST_USERNAME_REGULAR } });
 
     await prisma.clubMembership.upsert({
       where: { clubId_userId: { clubId: SEED_IDS.club.senorPato, userId: user!.id } },
@@ -258,73 +223,23 @@ describe('GET /api/v1/me/clubs', () => {
     }
   });
 
-  it('does not grant admin membership when no BOOTSTRAP_ADMIN_* is configured', async () => {
-    const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
-    const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ data: [] });
-
-    await app.close();
-  });
-
-  it('auto-grants a CLUB_ADMIN favorite membership at Señor Pato when BOOTSTRAP_ADMIN_CLERK_USER_ID matches', async () => {
-    const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_CLERK_USER_ID: TEST_ADMIN_CLERK_USER_ID }, { authAdapter });
-    const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
-
-    expect(response.statusCode).toBe(200);
-    const body = response.json() as {
-      data: Array<{ id: string; code: string; name: string; role: string; status: string; isFavorite: boolean }>;
-    };
-
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]).toMatchObject({
-      id: SEED_IDS.club.senorPato,
-      code: 'senor-pato',
-      name: 'Señor Pato',
-      role: 'CLUB_ADMIN',
-      status: 'ACTIVE',
-      isFavorite: true,
-    });
-
-    await app.close();
-  });
-
-  it('also grants the global SUPERADMIN role to the bootstrap admin, alongside the Señor Pato membership', async () => {
-    const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_CLERK_USER_ID: TEST_ADMIN_CLERK_USER_ID }, { authAdapter });
-    await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
-
-    const user = await prisma.user.findUnique({ where: { clerkUserId: TEST_ADMIN_CLERK_USER_ID } });
-    expect(user?.role).toBe('SUPERADMIN');
-
-    await app.close();
-  });
-
-  it('never grants SUPERADMIN to a regular, non-bootstrap user', async () => {
+  it('never auto-grants any club membership or SUPERADMIN just from authenticating -- only auth:create-superadmin can promote', async () => {
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter });
     await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer regular-user-token' } });
 
-    const user = await prisma.user.findUnique({ where: { clerkUserId: TEST_CLERK_USER_ID } });
-    expect(user?.role).toBe('USER');
-
-    await app.close();
-  });
-
-  it('auto-grants admin membership when BOOTSTRAP_ADMIN_USERNAME matches (dev-only fallback)', async () => {
-    const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_USERNAME: 'fede' }, { authAdapter });
-    const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer username-admin-token' } });
-
+    const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer regular-user-token' } });
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { data: Array<{ role: string }> };
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]).toMatchObject({ role: 'CLUB_ADMIN' });
+    expect(response.json()).toEqual({ data: [] });
+
+    const user = await prisma.user.findUnique({ where: { username: TEST_USERNAME_REGULAR } });
+    expect(user?.role).toBe('USER');
 
     await app.close();
   });
 
   it('orders clubs by isFavorite first, then by name ascending', async () => {
     const testUser = await prisma.user.create({
-      data: { clerkUserId: 'test_clerk_user_ordering', email: 'ordering.test@example.com' },
+      data: { username: TEST_USERNAME_ORDERING, passwordHash: 'TEST_FIXTURE_NO_LOGIN' },
     });
     const clubZzz = await prisma.club.create({
       data: { code: 'test-zzz-club', name: 'Zzz Club', timezone: 'America/Argentina/Buenos_Aires' },
@@ -346,13 +261,7 @@ describe('GET /api/v1/me/clubs', () => {
       });
 
       const orderingAuthAdapter = createFakeAuthAdapter({
-        'ordering-user-token': {
-          clerkUserId: 'test_clerk_user_ordering',
-          email: 'ordering.test@example.com',
-          firstName: null,
-          lastName: null,
-          avatarUrl: null,
-        },
+        'ordering-user-token': { username: TEST_USERNAME_ORDERING },
       });
       const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: orderingAuthAdapter });
       const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer ordering-user-token' } });
@@ -368,18 +277,5 @@ describe('GET /api/v1/me/clubs', () => {
       await prisma.user.delete({ where: { id: testUser.id } });
       await prisma.club.deleteMany({ where: { id: { in: [clubZzz.id, clubAaa.id, clubFavorite.id] } } });
     }
-  });
-
-  it('is idempotent: logging in twice does not duplicate the membership', async () => {
-    const app = await buildServer({ NODE_ENV: 'test', BOOTSTRAP_ADMIN_CLERK_USER_ID: TEST_ADMIN_CLERK_USER_ID }, { authAdapter });
-    await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer admin-user-token' } });
-    await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: 'Bearer admin-user-token' } });
-
-    const response = await app.inject({ method: 'GET', url: '/api/v1/me/clubs', headers: { authorization: 'Bearer admin-user-token' } });
-    const body = response.json() as { data: unknown[] };
-
-    expect(body.data).toHaveLength(1);
-
-    await app.close();
   });
 });

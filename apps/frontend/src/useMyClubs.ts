@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '@clerk/react';
 import type { UserClubDto } from '@rondo/contracts';
 import { useApi } from './apiClient';
+import { useAuth } from './AuthProvider';
 
 type UseMyClubsResult = {
   clubs: UserClubDto[];
@@ -18,7 +18,8 @@ type UseMyClubsResult = {
  */
 export function useMyClubs(): UseMyClubsResult {
   const api = useApi();
-  const { userId, isSignedIn } = useAuth();
+  const { user, authenticated: isSignedIn } = useAuth();
+  const userId = user?.id;
   const [clubs, setClubs] = useState<UserClubDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);

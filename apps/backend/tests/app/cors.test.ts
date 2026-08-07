@@ -134,7 +134,6 @@ describe('CORS integration on the built server', () => {
   it('in production, does not reflect a localhost origin outside :5173', async () => {
     const app = await buildServer({
       NODE_ENV: 'production',
-      CLERK_SECRET_KEY: 'sk_test_x',
       FRONTEND_URL: 'https://rondo-beta.vercel.app',
     });
     const response = await app.inject({ method: 'GET', url: '/health', headers: { origin: 'http://localhost:5174' } });

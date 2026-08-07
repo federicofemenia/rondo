@@ -44,11 +44,11 @@ function buildTestServer() {
 /** Same seeded profiles as seedAuthAdapter, plus one ad-hoc "other" user -- for tests that need both a seeded actor (juan/martin/luciano/ana) and a freshly-created test user to authenticate in the same test. */
 function buildTestServerWithExtraUser(user: User) {
   const adapter = createFakeAuthAdapter({
-    juan: { clerkUserId: 'seed_juan_perez', email: 'juan.perez.seed@rondo.local', firstName: 'Juan', lastName: 'Pérez', avatarUrl: null },
-    martin: { clerkUserId: 'seed_martin_gomez', email: 'martin.gomez.seed@rondo.local', firstName: 'Martín', lastName: 'Gómez', avatarUrl: null },
-    luciano: { clerkUserId: 'seed_luciano_diaz', email: 'luciano.diaz.seed@rondo.local', firstName: 'Luciano', lastName: 'Díaz', avatarUrl: null },
-    ana: { clerkUserId: 'seed_ana_torres', email: 'ana.torres.seed@rondo.local', firstName: 'Ana', lastName: 'Torres', avatarUrl: null },
-    other: { clerkUserId: user.clerkUserId, email: user.email, firstName: user.firstName, lastName: user.lastName, avatarUrl: null },
+    juan: { username: 'juan_perez_demo', displayName: 'Juan Pérez' },
+    martin: { username: 'martin_gomez_demo', displayName: 'Martín Gómez' },
+    luciano: { username: 'luciano_diaz_demo', displayName: 'Luciano Díaz' },
+    ana: { username: 'ana_torres_demo', displayName: 'Ana Torres' },
+    other: { username: user.username, displayName: `${user.firstName} ${user.lastName}` },
   });
   return buildServer({ NODE_ENV: 'test', ...VAPID_ENV }, { authAdapter: adapter });
 }
@@ -71,7 +71,7 @@ function payloadsSentTo(endpoint: string): Record<string, unknown>[] {
 
 async function createTestUser(firstName: string, lastName = 'Test'): Promise<User> {
   return prisma.user.create({
-    data: { clerkUserId: `test_push_domain_${randomUUID()}`, email: `${randomUUID()}@example.com`, firstName, lastName },
+    data: { username: `test_push_domain_${randomUUID()}`, passwordHash: 'TEST_FIXTURE_NO_LOGIN', email: `${randomUUID()}@example.com`, firstName, lastName },
   });
 }
 

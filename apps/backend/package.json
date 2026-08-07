@@ -16,15 +16,21 @@
     "seed:base": "tsx src/infrastructure/database/seedBase.ts",
     "seed:beta": "tsx src/infrastructure/database/seedBeta.ts",
     "seed:candidates": "tsx src/infrastructure/database/seedTestCandidates.ts",
-    "prisma:seed": "tsx src/infrastructure/database/seed.ts"
+    "prisma:seed": "tsx src/infrastructure/database/seed.ts",
+    "auth:create-superadmin": "tsx src/infrastructure/scripts/createSuperadmin.ts",
+    "beta:reset-user-data": "tsx src/infrastructure/scripts/resetUserData.ts"
   },
   "prisma": {
     "schema": "src/infrastructure/database/schema.prisma",
     "seed": "tsx src/infrastructure/database/seed.ts"
   },
   "dependencies": {
-    "@clerk/backend": "^1.18.0",
+    "@aws-sdk/client-s3": "^3.1104.0",
+    "@aws-sdk/s3-request-presigner": "^3.1104.0",
+    "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^10.0.0",
+    "@fastify/rate-limit": "^11.2.0",
+    "@node-rs/argon2": "^2.0.2",
     "@prisma/client": "^5.11.0",
     "@rondo/contracts": "workspace:*",
     "fastify": "^5.0.0",

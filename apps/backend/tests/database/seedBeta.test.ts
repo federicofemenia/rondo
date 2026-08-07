@@ -40,7 +40,7 @@ describe('seedBeta behavior', () => {
 
   it('attaches a demo football profile to an already-synced user found by username', async () => {
     const username = `tester-${randomUUID()}`;
-    const user = await prisma.user.create({ data: { clerkUserId: `clerk_${randomUUID()}`, username } });
+    const user = await prisma.user.create({ data: { username, passwordHash: 'TEST_FIXTURE_NO_LOGIN' } });
     createdUserIds.push(user.id);
 
     await attachDemoFootballProfile(username);
@@ -54,7 +54,7 @@ describe('seedBeta behavior', () => {
 
   it('is idempotent: running it twice does not duplicate the profile', async () => {
     const username = `tester-${randomUUID()}`;
-    const user = await prisma.user.create({ data: { clerkUserId: `clerk_${randomUUID()}`, username } });
+    const user = await prisma.user.create({ data: { username, passwordHash: 'TEST_FIXTURE_NO_LOGIN' } });
     createdUserIds.push(user.id);
 
     await attachDemoFootballProfile(username);

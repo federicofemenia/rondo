@@ -53,37 +53,42 @@ class InMemoryStorage implements Storage {
 
 Object.defineProperty(globalThis, 'localStorage', { value: new InMemoryStorage(), configurable: true, writable: true });
 
-type MockClerkError = { message: string; longMessage?: string };
-
-export const signInMock = {
-  status: 'complete' as string,
-  password: vi.fn(async (): Promise<{ error: MockClerkError | null }> => ({ error: null })),
-  finalize: vi.fn(async (): Promise<{ error: MockClerkError | null }> => ({ error: null })),
-};
-
-export const signUpMock = {
-  status: 'complete' as string,
-  createdSessionId: 'session_test' as string | null,
-  missingFields: [] as string[],
-  unverifiedFields: [] as string[],
-  password: vi.fn(async (): Promise<{ error: MockClerkError | null }> => ({ error: null })),
-  finalize: vi.fn(async (): Promise<{ error: MockClerkError | null }> => ({ error: null })),
-  verifications: {
-    sendEmailCode: vi.fn(async (): Promise<{ error: MockClerkError | null }> => ({ error: null })),
-    verifyEmailCode: vi.fn(async (): Promise<{ error: MockClerkError | null }> => ({ error: null })),
+/**
+ * AuthProvider itself is never mocked (see AuthProvider.tsx) -- it makes
+ * real fetch calls to /api/v1/auth/*, intercepted below by the same
+ * global.fetch mock every other endpoint in this file uses. mockAuthState
+ * is the single load-bearing toggle tests use to simulate "already signed
+ * in" (equivalent to the old clerkAuthMock.isSignedIn): set
+ * `mockAuthState.authenticated = true` before rendering, or drive it
+ * through the real login()/register() UI, which flips it via the mocked
+ * /auth/login and /auth/register handlers below.
+ */
+export const mockAuthState = {
+  authenticated: false,
+  user: {
+    id: 'user-test',
+    username: 'federico',
+    displayName: 'Federico Femenia',
+    avatarUrl: null as string | null,
+    role: 'USER' as 'USER' | 'SUPERADMIN',
   },
 };
 
-export const clerkAuthMock = {
-  isLoaded: true,
-  isSignedIn: false,
-  userId: 'user_test',
-  getToken: vi.fn(async () => 'test-token'),
+/** Set to a real error to make POST /auth/login or /auth/register fail once (auto-reset every test); null means "succeed unconditionally", mirroring the real backend's happy path. */
+export const mockAuthEndpointState = {
+  loginError: null as { status: number; code: string; message: string } | null,
+  registerError: null as { status: number; code: string; message: string } | null,
 };
 
-export const clerkSignOutMock = vi.fn(async () => {});
+/** Drives POST /api/v1/me/avatar/upload-url and the presigned PUT it points at, for EditProfilePage's avatar-upload tests. */
+export const mockAvatarUploadState = {
+  configured: true,
+  uploadFailing: false,
+  uploadUrl: 'https://r2.test.example/upload-fixture',
+  publicUrl: 'https://r2.test.example/avatars/user-test/fixture.jpg',
+};
 
-/** Mutable GET /api/v1/me fixture; PUT /api/v1/me/profile and the Clerk avatar mock below both write into it. */
+/** Mutable GET /api/v1/me fixture; PUT /api/v1/me/profile writes into it. */
 export const mockMeProfile = {
   id: 'user-test',
   username: 'federico',
@@ -96,72 +101,23 @@ export const mockMeProfile = {
   biography: null as string | null,
 };
 
-/**
- * user.setProfileImage — mirrors the real Clerk flow closely enough for
- * EditProfilePage's tests: it "uploads" by setting a fixed URL, exactly
- * like the real backend would re-sync avatarUrl from Clerk on the next
- * authenticated request.
- */
-export const clerkUserMock = {
-  setProfileImage: vi.fn(async () => {
-    mockMeProfile.avatarUrl = 'https://img.clerk.test/mock-avatar.png';
-    return { id: 'img_test', publicUrl: mockMeProfile.avatarUrl };
-  }),
-};
-
-vi.mock('@clerk/react', () => ({
-  useSignIn: () => ({ signIn: signInMock, errors: null, fetchStatus: 'idle' }),
-  useSignUp: () => ({ signUp: signUpMock, errors: null, fetchStatus: 'idle' }),
-  useAuth: () => clerkAuthMock,
-  useClerk: () => ({ signOut: clerkSignOutMock }),
-  useUser: () => ({ isLoaded: true, isSignedIn: true, user: clerkUserMock }),
-  ClerkProvider: ({ children }: { children: unknown }) => children,
-}));
-
-function resetClerkMocks() {
-  signInMock.status = 'complete';
-  signInMock.password.mockReset().mockResolvedValue({ error: null });
-  // Mirrors the real Clerk behavior: finalize() is what actually activates
-  // the session, which is what flips useAuth()'s isSignedIn -- tests that
-  // drive the real LoginPage UI (as opposed to poking clerkAuthMock
-  // directly) rely on this to reach an authenticated App.tsx.
-  signInMock.finalize.mockReset().mockImplementation(async () => {
-    clerkAuthMock.isSignedIn = true;
-    return { error: null };
-  });
-
-  signUpMock.status = 'complete';
-  signUpMock.createdSessionId = 'session_test';
-  signUpMock.missingFields = [];
-  signUpMock.unverifiedFields = [];
-  signUpMock.password.mockReset().mockResolvedValue({ error: null });
-  // Same rationale as signInMock.finalize above, for the register flow.
-  signUpMock.finalize.mockReset().mockImplementation(async () => {
-    clerkAuthMock.isSignedIn = true;
-    return { error: null };
-  });
-  signUpMock.verifications.sendEmailCode.mockReset().mockResolvedValue({ error: null });
-  signUpMock.verifications.verifyEmailCode.mockReset().mockResolvedValue({ error: null });
-
-  clerkAuthMock.isLoaded = true;
-  clerkAuthMock.isSignedIn = false;
-  clerkAuthMock.getToken.mockReset().mockResolvedValue('test-token');
-
-  // Mirrors real Clerk sign-out flipping isSignedIn back to false, so
-  // App.tsx's own sign-out effect (state cleanup) is exercised the same
-  // way it would be for a real session ending.
-  clerkSignOutMock.mockReset().mockImplementation(async () => {
-    clerkAuthMock.isSignedIn = false;
-  });
+function resetAuthMocks() {
+  mockAuthState.authenticated = false;
+  mockAuthState.user = { id: 'user-test', username: 'federico', displayName: 'Federico Femenia', avatarUrl: null, role: 'USER' };
+  mockAuthEndpointState.loginError = null;
+  mockAuthEndpointState.registerError = null;
+  mockAvatarUploadState.configured = true;
+  mockAvatarUploadState.uploadFailing = false;
+  mockAvatarUploadState.uploadUrl = 'https://r2.test.example/upload-fixture';
+  mockAvatarUploadState.publicUrl = 'https://r2.test.example/avatars/user-test/fixture.jpg';
 
   mockMeProfile.avatarUrl = null;
   mockMeProfile.sex = null;
   mockMeProfile.biography = null;
-  clerkUserMock.setProfileImage.mockClear();
 }
 
 beforeEach(() => {
-  resetClerkMocks();
+  resetAuthMocks();
 });
 
 export const mockSportsCatalog: SportDto[] = [
@@ -312,6 +268,55 @@ beforeEach(() => {
     const url = typeof input === 'string' ? input : input.toString();
     const method = (init?.method ?? 'GET').toUpperCase();
 
+    if (method === 'GET' && url.endsWith('/api/v1/auth/session')) {
+      return json({ data: { authenticated: mockAuthState.authenticated, user: mockAuthState.authenticated ? mockAuthState.user : null } });
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/auth/login')) {
+      if (mockAuthEndpointState.loginError) {
+        const { status, code, message } = mockAuthEndpointState.loginError;
+        return json({ error: { code, message } }, status);
+      }
+      mockAuthState.authenticated = true;
+      return json({ data: { authenticated: true, user: mockAuthState.user } });
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/auth/register')) {
+      if (mockAuthEndpointState.registerError) {
+        const { status, code, message } = mockAuthEndpointState.registerError;
+        return json({ error: { code, message } }, status);
+      }
+      const body = init?.body ? (JSON.parse(init.body as string) as { username?: string; displayName?: string }) : {};
+      mockAuthState.authenticated = true;
+      mockAuthState.user = {
+        ...mockAuthState.user,
+        username: body.username ?? mockAuthState.user.username,
+        displayName: body.displayName ?? mockAuthState.user.displayName,
+      };
+      return json({ data: { authenticated: true, user: mockAuthState.user } }, 201);
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/auth/logout')) {
+      mockAuthState.authenticated = false;
+      return json({ data: { authenticated: false, user: null } });
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/me/avatar/upload-url')) {
+      if (!mockAvatarUploadState.configured) {
+        return json({ error: { code: 'AVATAR_STORAGE_NOT_CONFIGURED', message: 'La carga de avatar no está disponible en este momento.' } }, 503);
+      }
+      return json({ data: { uploadUrl: mockAvatarUploadState.uploadUrl, publicUrl: mockAvatarUploadState.publicUrl } });
+    }
+
+    // The presigned PUT target itself -- a real external URL (R2), not one
+    // of our own API routes, but still intercepted by this same fetch mock.
+    if (method === 'PUT' && url === mockAvatarUploadState.uploadUrl) {
+      if (mockAvatarUploadState.uploadFailing) {
+        return new Response(null, { status: 500 });
+      }
+      return new Response(null, { status: 200 });
+    }
+
     if (url.includes('/api/v1/sports')) {
       return json({ data: mockSportsCatalog });
     }
@@ -322,10 +327,13 @@ beforeEach(() => {
 
     if (method === 'PUT' && url.endsWith('/api/v1/me/profile')) {
       const body = init?.body
-        ? (JSON.parse(init.body as string) as { sex: UserSexDto | null; biography: string | null })
+        ? (JSON.parse(init.body as string) as { sex: UserSexDto | null; biography: string | null; avatarUrl?: string | null })
         : { sex: null, biography: null };
       mockMeProfile.sex = body.sex;
       mockMeProfile.biography = body.biography;
+      if (body.avatarUrl !== undefined) {
+        mockMeProfile.avatarUrl = body.avatarUrl;
+      }
       return json({ data: { ...mockMeProfile, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
     }
 

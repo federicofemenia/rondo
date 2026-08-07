@@ -1,13 +1,14 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminClubSummaryDto } from '@rondo/contracts';
 import AdminDashboardPage from '../src/AdminDashboardPage';
-import { clerkAuthMock, mockAdminClubs } from './setup';
+import { mockAuthState, mockAdminClubs } from './setup';
+import { renderWithAuth } from './testUtils';
 
 // useAdminClubs only fetches while signed in -- this page is only ever
 // reached authenticated in the real app.
 beforeEach(() => {
-  clerkAuthMock.isSignedIn = true;
+  mockAuthState.authenticated = true;
 });
 
 function fixtureClub(overrides: Partial<AdminClubSummaryDto> = {}): AdminClubSummaryDto {
@@ -24,7 +25,7 @@ function fixtureClub(overrides: Partial<AdminClubSummaryDto> = {}): AdminClubSum
 
 describe('AdminDashboardPage', () => {
   it('shows an empty state when the user has no administrable clubs', async () => {
-    render(<AdminDashboardPage />);
+    renderWithAuth(<AdminDashboardPage />);
 
     expect(await screen.findByText(/todavía no administrás ningún club/i)).toBeTruthy();
   });
@@ -32,7 +33,7 @@ describe('AdminDashboardPage', () => {
   it('lists administrable clubs with their status, court count and role', async () => {
     mockAdminClubs.push(fixtureClub());
 
-    render(<AdminDashboardPage />);
+    renderWithAuth(<AdminDashboardPage />);
 
     expect(await screen.findByText('Club Señor Pato')).toBeTruthy();
     expect(screen.getByText('CABA')).toBeTruthy();
@@ -44,7 +45,7 @@ describe('AdminDashboardPage', () => {
   it('shows Crear club for a SUPERADMIN', async () => {
     mockAdminClubs.push(fixtureClub({ myRole: 'SUPERADMIN' }));
 
-    render(<AdminDashboardPage />);
+    renderWithAuth(<AdminDashboardPage />);
 
     await screen.findByText('Club Señor Pato');
     expect(screen.getByRole('button', { name: /crear club/i })).toBeTruthy();
@@ -53,7 +54,7 @@ describe('AdminDashboardPage', () => {
   it('hides Crear club for a CLUB_ADMIN', async () => {
     mockAdminClubs.push(fixtureClub({ myRole: 'CLUB_ADMIN' }));
 
-    render(<AdminDashboardPage />);
+    renderWithAuth(<AdminDashboardPage />);
 
     await screen.findByText('Club Señor Pato');
     expect(screen.queryByRole('button', { name: /crear club/i })).toBeFalsy();
@@ -63,7 +64,7 @@ describe('AdminDashboardPage', () => {
     mockAdminClubs.push(fixtureClub());
     const onOpenClub = vi.fn();
 
-    render(<AdminDashboardPage onOpenClub={onOpenClub} />);
+    renderWithAuth(<AdminDashboardPage onOpenClub={onOpenClub} />);
 
     fireEvent.click(await screen.findByText('Club Señor Pato'));
     expect(onOpenClub).toHaveBeenCalledWith('club-1');
@@ -73,7 +74,7 @@ describe('AdminDashboardPage', () => {
     mockAdminClubs.push(fixtureClub({ myRole: 'SUPERADMIN' }));
     const onOpenClub = vi.fn();
 
-    render(<AdminDashboardPage onOpenClub={onOpenClub} />);
+    renderWithAuth(<AdminDashboardPage onOpenClub={onOpenClub} />);
 
     fireEvent.click(await screen.findByRole('button', { name: /crear club/i }));
     const dialog = screen.getByRole('dialog');
@@ -85,7 +86,7 @@ describe('AdminDashboardPage', () => {
 
   it('calls onBack when the back button is clicked', async () => {
     const onBack = vi.fn();
-    render(<AdminDashboardPage onBack={onBack} />);
+    renderWithAuth(<AdminDashboardPage onBack={onBack} />);
 
     await screen.findByText(/todavía no administrás ningún club/i);
     fireEvent.click(screen.getByLabelText(/volver/i));

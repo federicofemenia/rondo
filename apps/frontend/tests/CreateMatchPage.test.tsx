@@ -1,14 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CreateMatchPage from '../src/CreateMatchPage';
 import { buildDayOptions } from '../src/dateOptions';
-import { clerkAuthMock } from './setup';
+import { mockAuthState } from './setup';
+import { renderWithAuth } from './testUtils';
 
 // CreateMatchPage reads the current user's clubs (useMyClubs) for the venue
 // selector, which only fetches while signed in -- this page is only ever
 // reached authenticated in the real app.
 beforeEach(() => {
-  clerkAuthMock.isSignedIn = true;
+  mockAuthState.authenticated = true;
 });
 
 async function selectFootball() {
@@ -23,7 +24,7 @@ function fillPlayerCounts(min = '4', max = '10') {
 
 describe('CreateMatchPage', () => {
   it('renders the deportiva and logistica blocks, with the sport combo starting unselected', async () => {
-    render(<CreateMatchPage />);
+    renderWithAuth(<CreateMatchPage />);
 
     expect(screen.getByRole('heading', { name: /armar partido/i })).toBeTruthy();
     expect(screen.getByText(/información deportiva/i)).toBeTruthy();
@@ -46,14 +47,14 @@ describe('CreateMatchPage', () => {
   });
 
   it('does not preselect any club', async () => {
-    render(<CreateMatchPage />);
+    renderWithAuth(<CreateMatchPage />);
 
     await screen.findByRole('option', { name: 'Fútbol' });
     expect((screen.getByLabelText(/^sede$/i) as HTMLSelectElement).value).toBe('');
   });
 
   it('shows posiciones requeridas only once fútbol is selected, and hides it again for pádel', async () => {
-    render(<CreateMatchPage />);
+    renderWithAuth(<CreateMatchPage />);
 
     expect(screen.queryByText(/posiciones requeridas/i)).toBeFalsy();
 
@@ -65,7 +66,7 @@ describe('CreateMatchPage', () => {
   });
 
   it('keeps armar partido disabled until sport, jugadores mínimo, jugadores máximo and horario exacto are all answered', async () => {
-    render(<CreateMatchPage />);
+    renderWithAuth(<CreateMatchPage />);
     await screen.findByRole('option', { name: 'Fútbol' });
 
     expect(screen.getByRole('button', { name: /^armar partido$/i })).toHaveProperty('disabled', true);
@@ -85,7 +86,7 @@ describe('CreateMatchPage', () => {
 
   it('submits the match draft with venueType TO_BE_DEFINED by default, the modality duration, and no exact time when "No" is chosen', async () => {
     const onCreateMatch = vi.fn();
-    render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
+    renderWithAuth(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
     await selectFootball();
     fillPlayerCounts();
@@ -117,7 +118,7 @@ describe('CreateMatchPage', () => {
 
   it('includes venueType CLUB and the club when one is selected, and the exact start time when "Sí" is chosen', async () => {
     const onCreateMatch = vi.fn();
-    render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
+    renderWithAuth(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
     await selectFootball();
     fillPlayerCounts();
@@ -145,7 +146,7 @@ describe('CreateMatchPage', () => {
 
   it('lets the user pick Otro and type a free-text venue name, sent as venueType CUSTOM', async () => {
     const onCreateMatch = vi.fn();
-    render(<CreateMatchPage onCreateMatch={onCreateMatch} />);
+    renderWithAuth(<CreateMatchPage onCreateMatch={onCreateMatch} />);
 
     await selectFootball();
     fillPlayerCounts();
@@ -166,7 +167,7 @@ describe('CreateMatchPage', () => {
   });
 
   it('disables submit until a free-text venue name is entered when Otro is selected', async () => {
-    render(<CreateMatchPage />);
+    renderWithAuth(<CreateMatchPage />);
 
     await selectFootball();
     fillPlayerCounts();
@@ -180,7 +181,7 @@ describe('CreateMatchPage', () => {
   });
 
   it('hides both the franja slider and the exact-time selector until the horario exacto question is answered', async () => {
-    render(<CreateMatchPage />);
+    renderWithAuth(<CreateMatchPage />);
 
     await screen.findByRole('option', { name: 'Fútbol' });
 
@@ -191,7 +192,7 @@ describe('CreateMatchPage', () => {
   });
 
   it('shows only the franja slider when "No" is chosen, and only the exact-time selector when "Sí" is chosen', async () => {
-    render(<CreateMatchPage />);
+    renderWithAuth(<CreateMatchPage />);
 
     await screen.findByRole('option', { name: 'Fútbol' });
 
@@ -206,7 +207,7 @@ describe('CreateMatchPage', () => {
   });
 
   it('pre-fills the duration from the selected modality, and disables submit for an out-of-bounds duration', async () => {
-    render(<CreateMatchPage />);
+    renderWithAuth(<CreateMatchPage />);
 
     await selectFootball();
     fillPlayerCounts();

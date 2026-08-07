@@ -87,7 +87,7 @@ describe('match editability -- only ORGANIZING/FULL, only before start/expiry', 
     const match = await createTestMatch({ organizerUserId: SEED_IDS.users.juan, status });
     createdMatchIds.push(match.id);
     const candidate = await prisma.user.create({
-      data: { clerkUserId: `test_editability_${match.id}`, email: `${match.id}@example.com`, firstName: 'Cande', lastName: 'Test' },
+      data: { username: `test_editability_${match.id}`, passwordHash: 'TEST_FIXTURE_NO_LOGIN', email: `${match.id}@example.com`, firstName: 'Cande', lastName: 'Test' },
     });
 
     const app = await buildServer({ NODE_ENV: 'test' }, { authAdapter: seedAuthAdapter });

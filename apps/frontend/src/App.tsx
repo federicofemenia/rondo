@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { HealthResponse, MatchInvitationDto, MatchStatusDto, MatchSummaryDto, PendingTaskDto, UserDto } from '@rondo/contracts';
-import { useAuth, useClerk } from '@clerk/react';
+import { useAuth } from './AuthProvider';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
@@ -86,8 +86,8 @@ function describeError(error: unknown, fallback: string): string {
 }
 
 function App() {
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
-  const { signOut } = useClerk();
+  const { loading: authLoading, authenticated: isSignedIn, logout } = useAuth();
+  const authLoaded = !authLoading;
   const api = useApi();
   const isOnline = useOnlineStatus();
   const { clubs: myClubs } = useMyClubs();
@@ -510,7 +510,7 @@ function App() {
   const handleLogout = async () => {
     setCurrentView('login');
     resetUserScopedState();
-    await signOut();
+    await logout();
   };
 
   const goToPreviousStep = () => {
