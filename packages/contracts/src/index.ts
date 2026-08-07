@@ -27,16 +27,112 @@ const userSexSchema = z.enum(['MALE', 'FEMALE']);
 const MAX_BIOGRAPHY_LENGTH = 300;
 
 /**
- * PUT semantics: both fields are always required, null clears them. The
- * user resource itself is always the authenticated caller (never taken from
- * this body) -- see users.controller.ts's requireAuth-scoped handler.
+ * PUT semantics: sex/biography are always required, null clears them.
+ * avatarUrl is optional (omit to leave untouched) since it's set through a
+ * separate upload flow (see AvatarUploadUrlRequestDto), not typed by hand.
+ * The user resource itself is always the authenticated caller (never taken
+ * from this body) -- see users.controller.ts's requireAuth-scoped handler.
  */
 export const updateProfileInputSchema = z.object({
   sex: userSexSchema.nullable(),
   biography: z.string().trim().max(MAX_BIOGRAPHY_LENGTH).nullable(),
+  avatarUrl: z.string().url().nullable().optional(),
 });
 
 export type UpdateProfileInputDto = z.infer<typeof updateProfileInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Native authentication (username + password + session cookie)
+// ---------------------------------------------------------------------------
+
+const USERNAME_MIN_LENGTH = 3;
+const USERNAME_MAX_LENGTH = 30;
+/** Letters, digits, dot, hyphen, underscore -- no spaces. Case is accepted here; the backend normalizes to lowercase before storing/comparing. */
+const USERNAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
+const usernameSchema = z.string().trim().min(USERNAME_MIN_LENGTH).max(USERNAME_MAX_LENGTH).regex(USERNAME_PATTERN);
+
+const PASSWORD_MIN_LENGTH = 8;
+/** Generous but bounded -- Argon2id's cost scales with input size, so an unbounded password is a cheap DoS vector. */
+const PASSWORD_MAX_LENGTH = 72;
+const passwordSchema = z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH);
+
+const DISPLAY_NAME_MAX_LENGTH = 60;
+const displayNameSchema = z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH);
+
+/**
+ * confirmPassword is validated here (must match password) but is never
+ * itself persisted or forwarded anywhere past the request handler --
+ * auth.service.ts's registerUser only ever reads `password`.
+ */
+export const registerInputSchema = z
+  .object({
+    displayName: displayNameSchema,
+    username: usernameSchema,
+    password: passwordSchema,
+    confirmPassword: z.string(),
+  })
+  .refine((input) => input.password === input.confirmPassword, {
+    message: 'Las contraseñas no coinciden.',
+    path: ['confirmPassword'],
+  });
+
+export type RegisterInputDto = z.infer<typeof registerInputSchema>;
+
+export const loginInputSchema = z.object({
+  username: usernameSchema,
+  password: z.string().min(1),
+});
+
+export type LoginInputDto = z.infer<typeof loginInputSchema>;
+
+export const changePasswordInputSchema = z
+  .object({
+    currentPassword: z.string().min(1),
+    newPassword: passwordSchema,
+    confirmNewPassword: z.string(),
+  })
+  .refine((input) => input.newPassword === input.confirmNewPassword, {
+    message: 'Las contraseñas no coinciden.',
+    path: ['confirmNewPassword'],
+  });
+
+export type ChangePasswordInputDto = z.infer<typeof changePasswordInputSchema>;
+
+/** The authenticated user's own view of themselves -- never includes passwordHash, tokens, or other users' data. */
+export interface AuthUserDto {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  role: UserRoleDto;
+}
+
+/** GET /api/v1/auth/session's shape, and the body of register/login's success response. */
+export interface AuthSessionDto {
+  authenticated: boolean;
+  user: AuthUserDto | null;
+}
+
+export const logoutInputSchema = z.object({
+  /** The current device's push endpoint, if any -- lets logout detach it server-side so a shared device never keeps receiving the previous user's pushes. Optional: a logout without an active push subscription is still valid. */
+  pushEndpoint: z.string().url().optional(),
+});
+
+export type LogoutInputDto = z.infer<typeof logoutInputSchema>;
+
+const AVATAR_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
+export const avatarUploadUrlRequestSchema = z.object({
+  contentType: z.enum(AVATAR_CONTENT_TYPES),
+});
+
+export type AvatarUploadUrlRequestDto = z.infer<typeof avatarUploadUrlRequestSchema>;
+
+/** uploadUrl is a short-lived presigned PUT URL (the browser uploads the file directly to it); publicUrl is the resulting permanent avatar URL to save via PUT /api/v1/me/profile once the upload succeeds. */
+export interface AvatarUploadUrlResponseDto {
+  uploadUrl: string;
+  publicUrl: string;
+}
 
 export type ClubMembershipRoleDto = 'MEMBER' | 'CLUB_ADMIN';
 export type ClubMembershipStatusDto = 'ACTIVE' | 'INACTIVE';

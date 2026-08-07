@@ -1,11 +1,12 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import LoginPage from '../src/LoginPage';
-import { signInMock } from './setup';
+import { mockAuthEndpointState, mockAuthState } from './setup';
+import { renderWithAuth } from './testUtils';
 
 describe('LoginPage', () => {
   it('renders the login form with Usuario and Contraseña, no Email field', () => {
-    render(<LoginPage />);
+    renderWithAuth(<LoginPage />);
 
     expect(screen.getByAltText(/rondo/i)).toBeTruthy();
     expect(screen.getByLabelText(/^usuario$/i)).toBeTruthy();
@@ -14,34 +15,34 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeTruthy();
   });
 
-  it('calls onLogin once Clerk confirms the sign-in, submitting the identifier as-typed (username or email)', async () => {
+  it('calls onLogin once the backend confirms the session, submitting the typed username and password', async () => {
     const onLogin = vi.fn();
-    render(<LoginPage onLogin={onLogin} />);
+    renderWithAuth(<LoginPage onLogin={onLogin} />);
 
     fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'fede' } });
     fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'super-secreta' } });
     fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     await waitFor(() => expect(onLogin).toHaveBeenCalled());
-    expect(signInMock.password).toHaveBeenCalledWith({ identifier: 'fede', password: 'super-secreta' });
-    expect(signInMock.finalize).toHaveBeenCalled();
+    expect(mockAuthState.authenticated).toBe(true);
   });
 
-  it('shows the Clerk error message and does not call onLogin when sign-in fails', async () => {
-    signInMock.password.mockResolvedValueOnce({ error: { message: 'Credenciales inválidas.' } });
+  it('shows the real backend error message and does not call onLogin when login fails', async () => {
+    mockAuthEndpointState.loginError = { status: 401, code: 'INVALID_CREDENTIALS', message: 'Usuario o contraseña incorrectos.' };
     const onLogin = vi.fn();
-    render(<LoginPage onLogin={onLogin} />);
+    renderWithAuth(<LoginPage onLogin={onLogin} />);
 
     fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'fede' } });
     fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'mal' } });
     fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
-    await waitFor(() => expect(screen.getByText('Credenciales inválidas.')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Usuario o contraseña incorrectos.')).toBeTruthy());
     expect(onLogin).not.toHaveBeenCalled();
+    expect(mockAuthState.authenticated).toBe(false);
   });
 
   it('hides the register link and shows a closed-beta message when signUpEnabled is false', () => {
-    render(<LoginPage signUpEnabled={false} />);
+    renderWithAuth(<LoginPage signUpEnabled={false} />);
 
     expect(screen.queryByText(/registrate gratis/i)).toBeFalsy();
     expect(screen.getByText(/esta beta requiere una cuenta asignada/i)).toBeTruthy();
@@ -49,7 +50,7 @@ describe('LoginPage', () => {
 
   it('shows the register link and calls onNavigateToRegister when signUpEnabled is true', () => {
     const onNavigateToRegister = vi.fn();
-    render(<LoginPage signUpEnabled onNavigateToRegister={onNavigateToRegister} />);
+    renderWithAuth(<LoginPage signUpEnabled onNavigateToRegister={onNavigateToRegister} />);
 
     expect(screen.queryByText(/esta beta requiere una cuenta asignada/i)).toBeFalsy();
     fireEvent.click(screen.getByText(/registrate gratis/i));

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import EditProfilePage from '../src/EditProfilePage';
-import { clerkUserMock, mockMeProfile, mockMeState } from './setup';
+import { mockAvatarUploadState, mockMeProfile, mockMeState } from './setup';
 
 function buildFile(name: string, type: string, sizeBytes: number): File {
   return new File([new Uint8Array(sizeBytes)], name, { type });
@@ -53,7 +53,7 @@ describe('EditProfilePage', () => {
     await waitFor(() => expect(mockMeProfile.biography).toBe('Hola'));
   });
 
-  it('uploads a valid avatar through Clerk and refreshes the preview without logging out', async () => {
+  it('uploads a valid avatar via a presigned R2 URL and refreshes the preview without logging out', async () => {
     render(<EditProfilePage />);
     await screen.findByRole('radio', { name: /masculino/i });
 
@@ -61,8 +61,33 @@ describe('EditProfilePage', () => {
     const file = buildFile('avatar.png', 'image/png', 1024);
     fireEvent.change(input, { target: { files: [file] } });
 
-    await waitFor(() => expect(clerkUserMock.setProfileImage).toHaveBeenCalledWith({ file }));
-    await waitFor(() => expect(screen.getByRole('img')).toHaveProperty('src', 'https://img.clerk.test/mock-avatar.png'));
+    await waitFor(() => expect(screen.getByRole('img')).toHaveProperty('src', mockAvatarUploadState.publicUrl));
+    expect(mockMeProfile.avatarUrl).toBe(mockAvatarUploadState.publicUrl);
+  });
+
+  it('shows a clear error when avatar storage is not configured on the backend', async () => {
+    mockAvatarUploadState.configured = false;
+    render(<EditProfilePage />);
+    await screen.findByRole('radio', { name: /masculino/i });
+
+    const input = screen.getByLabelText(/cambiar foto de perfil/i).querySelector('input')!;
+    const file = buildFile('avatar.png', 'image/png', 1024);
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByText(/no está disponible en este momento/i)).toBeTruthy();
+  });
+
+  it('shows an error and does not update the avatar when the upload to storage itself fails', async () => {
+    mockAvatarUploadState.uploadFailing = true;
+    render(<EditProfilePage />);
+    await screen.findByRole('radio', { name: /masculino/i });
+
+    const input = screen.getByLabelText(/cambiar foto de perfil/i).querySelector('input')!;
+    const file = buildFile('avatar.png', 'image/png', 1024);
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByText(/no pudimos actualizar tu foto/i)).toBeTruthy();
+    expect(mockMeProfile.avatarUrl).toBeNull();
   });
 
   it('falls back to the user initials when there is no avatar yet', async () => {
@@ -73,7 +98,7 @@ describe('EditProfilePage', () => {
     expect(screen.queryByRole('img')).toBeFalsy();
   });
 
-  it('rejects an avatar with an unsupported file type without calling Clerk', async () => {
+  it('rejects an avatar with an unsupported file type without calling the backend', async () => {
     render(<EditProfilePage />);
     await screen.findByRole('radio', { name: /masculino/i });
 
@@ -82,10 +107,10 @@ describe('EditProfilePage', () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     expect(await screen.findByText(/debe ser jpg, png o webp/i)).toBeTruthy();
-    expect(clerkUserMock.setProfileImage).not.toHaveBeenCalled();
+    expect(mockMeProfile.avatarUrl).toBeNull();
   });
 
-  it('rejects an avatar larger than 5 MB without calling Clerk', async () => {
+  it('rejects an avatar larger than 5 MB without calling the backend', async () => {
     render(<EditProfilePage />);
     await screen.findByRole('radio', { name: /masculino/i });
 
@@ -94,7 +119,7 @@ describe('EditProfilePage', () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     expect(await screen.findByText(/no puede superar los 5 mb/i)).toBeTruthy();
-    expect(clerkUserMock.setProfileImage).not.toHaveBeenCalled();
+    expect(mockMeProfile.avatarUrl).toBeNull();
   });
 
   it('shows the Notificaciones section (push settings) below the profile form', async () => {

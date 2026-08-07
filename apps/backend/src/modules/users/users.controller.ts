@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Club, ClubMembership, User } from '@prisma/client';
 import type { UserClubDto, UserDto } from '@rondo/contracts';
-import { sportIdQuerySchema, updateProfileInputSchema } from '@rondo/contracts';
+import { avatarUploadUrlRequestSchema, sportIdQuerySchema, updateProfileInputSchema } from '@rondo/contracts';
+import type { AvatarStorage } from '../../infrastructure/storage/avatarStorage.js';
 import { MatchServiceError } from '../matches/errors.js';
 import { getRatingComments } from '../matches/ratings.service.js';
 import { getPublicProfile } from './publicProfile.service.js';
@@ -41,7 +42,7 @@ function toUserClubDto(membership: ClubMembership & { club: Club }): UserClubDto
   };
 }
 
-export function registerUserRoutes(app: FastifyInstance): void {
+export function registerUserRoutes(app: FastifyInstance, avatarStorage: AvatarStorage | null): void {
   app.get('/api/v1/me', { preHandler: app.requireAuth }, async (request, reply) => {
     if (!request.currentUser) {
       return reply;
@@ -71,10 +72,39 @@ export function registerUserRoutes(app: FastifyInstance): void {
       });
     }
 
+    // avatarUrl must have actually been issued by our own storage for this
+    // exact user -- otherwise this field would let any authenticated user
+    // set an arbitrary URL (including another user's avatar) as their own.
+    if (parsed.data.avatarUrl != null) {
+      if (!avatarStorage || !avatarStorage.isOwnAvatarUrl(request.currentUser.id, parsed.data.avatarUrl)) {
+        return reply.code(400).send({ error: { code: 'INVALID_AVATAR_URL', message: 'La URL de avatar no es válida.' } });
+      }
+    }
+
     // The user being updated is always the authenticated caller (request.currentUser),
     // never something the client could point at via the request body.
     const user = await updateProfile(request.currentUser.id, parsed.data);
     return { data: toUserDto(user) };
+  });
+
+  app.post<{ Body: unknown }>('/api/v1/me/avatar/upload-url', { preHandler: app.requireAuth }, async (request, reply) => {
+    if (!request.currentUser) {
+      return reply;
+    }
+
+    if (!avatarStorage) {
+      return reply.code(503).send({ error: { code: 'AVATAR_STORAGE_NOT_CONFIGURED', message: 'La carga de avatar no está disponible en este momento.' } });
+    }
+
+    const parsed = avatarUploadUrlRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: { code: 'INVALID_INPUT', message: 'Tipo de archivo inválido. Usá JPG, PNG o WEBP.', details: parsed.error.issues },
+      });
+    }
+
+    const result = await avatarStorage.createUploadUrl(request.currentUser.id, parsed.data.contentType);
+    return { data: result };
   });
 
   app.get<{ Params: { id: string }; Querystring: { sportId?: string } }>(

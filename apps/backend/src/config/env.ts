@@ -6,16 +6,18 @@ const envSchema = z
     PORT: z.coerce.number().default(3000),
     HOST: z.string().default('0.0.0.0'),
     DATABASE_URL: z.string().url().optional(),
-    CLERK_SECRET_KEY: z.string().optional(),
-    // Read by the frontend build, not the backend; kept here only so
-    // .env.example documents every variable a deployment needs to set.
-    CLERK_PUBLISHABLE_KEY: z.string().optional(),
     FRONTEND_URL: z.string().url().optional(),
-    // Primary bootstrap source for the initial Señor Pato admin: stable and
-    // unique regardless of auth strategy. See users.service.ts.
-    BOOTSTRAP_ADMIN_CLERK_USER_ID: z.string().optional(),
-    // Dev-only convenience fallback; never the source of truth in beta/production.
-    BOOTSTRAP_ADMIN_USERNAME: z.string().optional(),
+    // Native session auth (see infrastructure/auth/*). No pepper var here by
+    // design -- see sessionTokens.ts's doc comment for why one wouldn't add
+    // meaningful defense-in-depth for a random, already-hashed session token.
+    SESSION_COOKIE_NAME: z.string().default('rondo_session'),
+    SESSION_TTL_DAYS: z.coerce.number().default(30),
+    // Cloudflare R2 (S3-compatible) avatar storage -- see infrastructure/storage/r2AvatarStorage.ts.
+    R2_ACCOUNT_ID: z.string().optional(),
+    R2_ACCESS_KEY_ID: z.string().optional(),
+    R2_SECRET_ACCESS_KEY: z.string().optional(),
+    R2_BUCKET_NAME: z.string().optional(),
+    R2_PUBLIC_URL: z.string().url().optional(),
     // Web Push (VAPID). Public key is also read by the frontend build
     // (VITE_VAPID_PUBLIC_KEY, a copy of the same value) -- see docs/WEB_PUSH.md
     // for how to generate this pair. Never rotate these without also
@@ -34,9 +36,6 @@ const envSchema = z
     }
     if (!data.DATABASE_URL) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'DATABASE_URL es obligatorio en producción.', path: ['DATABASE_URL'] });
-    }
-    if (!data.CLERK_SECRET_KEY) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'CLERK_SECRET_KEY es obligatorio en producción.', path: ['CLERK_SECRET_KEY'] });
     }
     if (!data.FRONTEND_URL) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FRONTEND_URL es obligatorio en producción.', path: ['FRONTEND_URL'] });

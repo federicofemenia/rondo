@@ -30,12 +30,25 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       injectManifest: {
         // App shell only: precache the build's own JS/CSS/HTML/icons/fonts.
-        // No entry here ever matches /api/v1/* (a different origin in every
-        // real deployment anyway) or Clerk's domain, so neither is cached.
+        // /api/v1/* is same-origin now (see server.proxy below and
+        // vercel.json in prod) but is still never precached -- it's
+        // excluded explicitly in sw.ts's navigateFallbackDenylist, which
+        // matters more than this glob ever did.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
       },
     }),
   ],
+  server: {
+    // Same-origin API access in dev too, mirroring the Vercel rewrite used
+    // in beta/production (see vercel.json) -- the httpOnly session cookie
+    // is what actually requires this: browsers only send cookies
+    // same-origin by default, so http://localhost:5173/api/... proxied to
+    // the real backend is what makes native auth work locally at all.
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:3000', changeOrigin: true },
+      '/health': { target: 'http://127.0.0.1:3000', changeOrigin: true },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

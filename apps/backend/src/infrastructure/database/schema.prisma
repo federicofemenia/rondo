@@ -78,19 +78,19 @@ enum MatchVenueType {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  clerkUserId String   @unique @map("clerk_user_id")
-  username    String?  @unique
-  email       String?  @unique
-  firstName   String?  @map("first_name")
-  lastName    String?  @map("last_name")
-  displayName String?  @map("display_name")
-  avatarUrl   String?  @map("avatar_url")
-  sex         UserSex?
-  biography   String?
-  role        UserRole @default(USER)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  email        String?  @unique
+  firstName    String?  @map("first_name")
+  lastName     String?  @map("last_name")
+  displayName  String?  @map("display_name")
+  avatarUrl    String?  @map("avatar_url")
+  sex          UserSex?
+  biography    String?
+  role         UserRole @default(USER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   memberships         ClubMembership[]
   organizedMatches    Match[]            @relation("MatchOrganizer")
@@ -103,8 +103,33 @@ model User {
   invitationsSent     MatchInvitation[]  @relation("InvitationInvitedBy")
   chatMessages        MatchChatMessage[]
   pushSubscriptions   PushSubscription[]
+  sessions            Session[]
 
   @@map("users")
+}
+
+/// A single active or historical login session, backing the rondo_session
+/// httpOnly cookie. `tokenHash` (sha256 of the random cookie value) is the
+/// only thing ever stored -- the raw token exists only in the cookie itself,
+/// never in the database or logs. See infrastructure/auth/sessionTokens.ts
+/// for why sha256 (not Argon2) is the correct hash here: the token is
+/// already a high-entropy random value, not a guessable secret like a
+/// password, so a fast deterministic hash for O(1) lookup is what's needed.
+model Session {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime  @default(now()) @map("last_used_at")
+  userAgent  String?   @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
 }
 
 model Club {

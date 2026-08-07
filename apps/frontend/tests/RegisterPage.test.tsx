@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import RegisterPage from '../src/RegisterPage';
-import { clerkAuthMock, signUpMock } from './setup';
+import { mockAuthEndpointState, mockAuthState } from './setup';
+import { renderWithAuth } from './testUtils';
 
 function fillAndSubmit(overrides: { displayName?: string; username?: string; password?: string; confirmPassword?: string } = {}) {
   const { displayName = 'Fede', username = 'fede', password = 'unaClave123', confirmPassword = password } = overrides;
@@ -18,7 +19,7 @@ function fillAndSubmit(overrides: { displayName?: string; username?: string; pas
 
 describe('RegisterPage', () => {
   it('renders only Nombre visible, Usuario, Contraseña and Confirmar contraseña', () => {
-    render(<RegisterPage />);
+    renderWithAuth(<RegisterPage />);
 
     expect(screen.getByRole('heading', { name: /creá tu cuenta/i })).toBeTruthy();
     expect(screen.getByLabelText(/nombre visible/i)).toBeTruthy();
@@ -35,7 +36,7 @@ describe('RegisterPage', () => {
   });
 
   it('requires accepting the terms before submitting', () => {
-    render(<RegisterPage />);
+    renderWithAuth(<RegisterPage />);
 
     fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'unaClave123' } });
     expect(screen.getByRole('button', { name: /crear cuenta/i })).toHaveProperty('disabled', true);
@@ -46,7 +47,7 @@ describe('RegisterPage', () => {
   });
 
   it('requires a password of at least 8 characters before submitting, and shows the hint', () => {
-    render(<RegisterPage />);
+    renderWithAuth(<RegisterPage />);
 
     expect(screen.getByText(/mínimo 8 caracteres/i)).toBeTruthy();
 
@@ -61,143 +62,66 @@ describe('RegisterPage', () => {
     expect(screen.getByRole('button', { name: /crear cuenta/i })).toHaveProperty('disabled', false);
   });
 
-  it('rejects mismatched passwords without calling Clerk', async () => {
-    render(<RegisterPage />);
+  it('rejects mismatched passwords without calling the backend', async () => {
+    renderWithAuth(<RegisterPage />);
 
-    fireEvent.change(screen.getByLabelText(/nombre visible/i), { target: { value: 'Fede' } });
-    fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'fede' } });
-    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'unaClave123' } });
-    fireEvent.change(screen.getByLabelText(/confirmar contraseña/i), { target: { value: 'otraClave456' } });
-    fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
+    fillAndSubmit({ password: 'unaClave123', confirmPassword: 'otraClave456' });
 
     expect(await screen.findByText(/las contraseñas no coinciden/i)).toBeTruthy();
-    expect(signUpMock.password).not.toHaveBeenCalled();
+    expect(mockAuthState.authenticated).toBe(false);
   });
 
-  it('calls onRegister once Clerk completes the sign-up in one step, sending username + displayName metadata', async () => {
+  it('calls onRegister once the backend confirms registration, and the session is authenticated immediately (no second login step)', async () => {
     const onRegister = vi.fn();
-    render(<RegisterPage onRegister={onRegister} />);
+    renderWithAuth(<RegisterPage onRegister={onRegister} />);
 
-    fireEvent.change(screen.getByLabelText(/nombre visible/i), { target: { value: 'Fede' } });
-    fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'fede' } });
-    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'unaClave123' } });
-    fireEvent.change(screen.getByLabelText(/confirmar contraseña/i), { target: { value: 'unaClave123' } });
-    fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
+    fillAndSubmit({ displayName: 'Fede', username: 'fede' });
 
     await waitFor(() => expect(onRegister).toHaveBeenCalled());
-    expect(signUpMock.password).toHaveBeenCalledWith({
-      username: 'fede',
-      password: 'unaClave123',
-      unsafeMetadata: { displayName: 'Fede' },
-    });
-    expect(signUpMock.finalize).toHaveBeenCalled();
+    expect(mockAuthState.authenticated).toBe(true);
+    expect(mockAuthState.user.username).toBe('fede');
+    expect(mockAuthState.user.displayName).toBe('Fede');
   });
 
-  it('shows the Clerk error message when sign-up fails', async () => {
-    signUpMock.password.mockResolvedValueOnce({ error: { message: 'El usuario ya está en uso.' } });
-    render(<RegisterPage />);
+  it('shows the real backend error message when registration fails (e.g. username taken)', async () => {
+    mockAuthEndpointState.registerError = { status: 409, code: 'USERNAME_TAKEN', message: 'Ese usuario ya está en uso.' };
+    renderWithAuth(<RegisterPage />);
 
-    fireEvent.change(screen.getByLabelText(/nombre visible/i), { target: { value: 'Fede' } });
-    fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'fede' } });
-    fireEvent.change(screen.getByLabelText(/^contraseña$/i), { target: { value: 'unaClave123' } });
-    fireEvent.change(screen.getByLabelText(/confirmar contraseña/i), { target: { value: 'unaClave123' } });
-    fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /crear cuenta/i }));
+    fillAndSubmit();
 
-    expect(await screen.findByText(/el usuario ya está en uso/i)).toBeTruthy();
+    expect(await screen.findByText(/ese usuario ya está en uso/i)).toBeTruthy();
+    expect(mockAuthState.authenticated).toBe(false);
   });
 
   it('calls onNavigateToLogin when the login link is clicked', () => {
     const onNavigateToLogin = vi.fn();
-    render(<RegisterPage onNavigateToLogin={onNavigateToLogin} />);
+    renderWithAuth(<RegisterPage onNavigateToLogin={onNavigateToLogin} />);
 
     fireEvent.click(screen.getByText(/iniciar sesión/i));
 
     expect(onNavigateToLogin).toHaveBeenCalled();
   });
 
-  it('only calls finalize (session activation) once status is complete and a session was actually created', async () => {
+  it('never calls onRegister when registration fails', async () => {
+    mockAuthEndpointState.registerError = { status: 400, code: 'INVALID_INPUT', message: 'Datos de registro inválidos.' };
     const onRegister = vi.fn();
-    render(<RegisterPage onRegister={onRegister} />);
+    renderWithAuth(<RegisterPage onRegister={onRegister} />);
 
     fillAndSubmit();
 
-    await waitFor(() => expect(signUpMock.finalize).toHaveBeenCalled());
-    expect(onRegister).toHaveBeenCalled();
-  });
-
-  it('never calls onRegister (and never enters Home) before finalize actually resolves', async () => {
-    const onRegister = vi.fn();
-    let resolveFinalize!: (value: { error: null }) => void;
-    signUpMock.finalize.mockReset().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveFinalize = resolve;
-        }),
-    );
-    render(<RegisterPage onRegister={onRegister} />);
-
-    fillAndSubmit();
-
-    // password() has resolved (status is 'complete' with a session id in
-    // the mock) but finalize() is still pending -- onRegister must not
-    // have fired yet.
-    await waitFor(() => expect(signUpMock.finalize).toHaveBeenCalled());
-    expect(onRegister).not.toHaveBeenCalled();
-    expect(clerkAuthMock.isSignedIn).toBe(false);
-
-    resolveFinalize({ error: null });
-    await waitFor(() => expect(onRegister).toHaveBeenCalled());
-  });
-
-  it('does not navigate and shows a real message when status never reaches complete (e.g. missing requirements)', async () => {
-    signUpMock.status = 'missing_requirements';
-    signUpMock.createdSessionId = null;
-    signUpMock.missingFields = ['password'];
-    const onRegister = vi.fn();
-    render(<RegisterPage onRegister={onRegister} />);
-
-    fillAndSubmit();
-
-    expect(await screen.findByText(/todavía falta completar/i)).toBeTruthy();
-    expect(onRegister).not.toHaveBeenCalled();
-    expect(signUpMock.finalize).not.toHaveBeenCalled();
-  });
-
-  it('does not navigate when status is complete but Clerk never attached a session (defensive createdSessionId check)', async () => {
-    signUpMock.status = 'complete';
-    signUpMock.createdSessionId = null;
-    const onRegister = vi.fn();
-    render(<RegisterPage onRegister={onRegister} />);
-
-    fillAndSubmit();
-
-    expect(await screen.findByText(/no pudimos completar el registro/i)).toBeTruthy();
-    expect(onRegister).not.toHaveBeenCalled();
-    expect(signUpMock.finalize).not.toHaveBeenCalled();
-  });
-
-  it('shows the real Clerk error and does not navigate when finalize() itself fails', async () => {
-    signUpMock.finalize.mockReset().mockResolvedValueOnce({ error: { message: 'No pudimos activar tu sesión.' } });
-    const onRegister = vi.fn();
-    render(<RegisterPage onRegister={onRegister} />);
-
-    fillAndSubmit();
-
-    expect(await screen.findByText(/no pudimos activar tu sesión/i)).toBeTruthy();
+    await screen.findByText(/datos de registro inválidos/i);
     expect(onRegister).not.toHaveBeenCalled();
   });
 
   it('clears a previous error as soon as a new submit attempt starts', async () => {
-    signUpMock.password.mockResolvedValueOnce({ error: { message: 'El usuario ya está en uso.' } });
-    render(<RegisterPage />);
+    mockAuthEndpointState.registerError = { status: 409, code: 'USERNAME_TAKEN', message: 'Ese usuario ya está en uso.' };
+    renderWithAuth(<RegisterPage />);
 
     fillAndSubmit();
-    expect(await screen.findByText(/el usuario ya está en uso/i)).toBeTruthy();
+    expect(await screen.findByText(/ese usuario ya está en uso/i)).toBeTruthy();
 
+    mockAuthEndpointState.registerError = null;
     fillAndSubmit();
-    await waitFor(() => expect(screen.queryByText(/el usuario ya está en uso/i)).toBeFalsy());
+    await waitFor(() => expect(screen.queryByText(/ese usuario ya está en uso/i)).toBeFalsy());
   });
 });

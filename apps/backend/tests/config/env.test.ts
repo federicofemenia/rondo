@@ -6,11 +6,14 @@ const ENV_KEYS = [
   'PORT',
   'HOST',
   'DATABASE_URL',
-  'CLERK_SECRET_KEY',
-  'CLERK_PUBLISHABLE_KEY',
   'FRONTEND_URL',
-  'BOOTSTRAP_ADMIN_CLERK_USER_ID',
-  'BOOTSTRAP_ADMIN_USERNAME',
+  'SESSION_COOKIE_NAME',
+  'SESSION_TTL_DAYS',
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET_NAME',
+  'R2_PUBLIC_URL',
   'VAPID_PUBLIC_KEY',
   'VAPID_PRIVATE_KEY',
   'VAPID_SUBJECT',
@@ -43,7 +46,22 @@ describe('loadEnv', () => {
     expect(env.HOST).toBe('0.0.0.0');
   });
 
-  it('does not require DATABASE_URL, CLERK_SECRET_KEY or FRONTEND_URL outside production', () => {
+  it('defaults SESSION_COOKIE_NAME to rondo_session and SESSION_TTL_DAYS to 30', () => {
+    const env = loadEnv();
+    expect(env.SESSION_COOKIE_NAME).toBe('rondo_session');
+    expect(env.SESSION_TTL_DAYS).toBe(30);
+  });
+
+  it('reads SESSION_COOKIE_NAME and SESSION_TTL_DAYS when set', () => {
+    process.env.SESSION_COOKIE_NAME = 'custom_session';
+    process.env.SESSION_TTL_DAYS = '7';
+
+    const env = loadEnv();
+    expect(env.SESSION_COOKIE_NAME).toBe('custom_session');
+    expect(env.SESSION_TTL_DAYS).toBe(7);
+  });
+
+  it('does not require DATABASE_URL or FRONTEND_URL outside production', () => {
     process.env.NODE_ENV = 'development';
     expect(() => loadEnv()).not.toThrow();
 
@@ -53,24 +71,14 @@ describe('loadEnv', () => {
 
   it('throws in production when DATABASE_URL is missing', () => {
     process.env.NODE_ENV = 'production';
-    process.env.CLERK_SECRET_KEY = 'sk_test_x';
     process.env.FRONTEND_URL = 'https://rondo-beta.vercel.app';
 
     expect(() => loadEnv()).toThrow(/DATABASE_URL/);
   });
 
-  it('throws in production when CLERK_SECRET_KEY is missing', () => {
-    process.env.NODE_ENV = 'production';
-    process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
-    process.env.FRONTEND_URL = 'https://rondo-beta.vercel.app';
-
-    expect(() => loadEnv()).toThrow(/CLERK_SECRET_KEY/);
-  });
-
   it('throws in production when FRONTEND_URL is missing', () => {
     process.env.NODE_ENV = 'production';
     process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
-    process.env.CLERK_SECRET_KEY = 'sk_test_x';
 
     expect(() => loadEnv()).toThrow(/FRONTEND_URL/);
   });
@@ -78,7 +86,6 @@ describe('loadEnv', () => {
   it('throws in production when VAPID_PUBLIC_KEY is missing', () => {
     process.env.NODE_ENV = 'production';
     process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
-    process.env.CLERK_SECRET_KEY = 'sk_test_x';
     process.env.FRONTEND_URL = 'https://rondo-beta.vercel.app';
     process.env.VAPID_PRIVATE_KEY = 'priv';
     process.env.VAPID_SUBJECT = 'mailto:admin@rondo.app';
@@ -89,7 +96,6 @@ describe('loadEnv', () => {
   it('throws in production when VAPID_PRIVATE_KEY is missing', () => {
     process.env.NODE_ENV = 'production';
     process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
-    process.env.CLERK_SECRET_KEY = 'sk_test_x';
     process.env.FRONTEND_URL = 'https://rondo-beta.vercel.app';
     process.env.VAPID_PUBLIC_KEY = 'pub';
     process.env.VAPID_SUBJECT = 'mailto:admin@rondo.app';
@@ -100,7 +106,6 @@ describe('loadEnv', () => {
   it('throws in production when VAPID_SUBJECT is missing', () => {
     process.env.NODE_ENV = 'production';
     process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
-    process.env.CLERK_SECRET_KEY = 'sk_test_x';
     process.env.FRONTEND_URL = 'https://rondo-beta.vercel.app';
     process.env.VAPID_PUBLIC_KEY = 'pub';
     process.env.VAPID_PRIVATE_KEY = 'priv';
@@ -108,10 +113,9 @@ describe('loadEnv', () => {
     expect(() => loadEnv()).toThrow(/VAPID_SUBJECT/);
   });
 
-  it('succeeds in production when DATABASE_URL, CLERK_SECRET_KEY, FRONTEND_URL and the VAPID trio are all set', () => {
+  it('succeeds in production when DATABASE_URL, FRONTEND_URL and the VAPID trio are all set', () => {
     process.env.NODE_ENV = 'production';
     process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
-    process.env.CLERK_SECRET_KEY = 'sk_test_x';
     process.env.FRONTEND_URL = 'https://rondo-beta.vercel.app';
     process.env.VAPID_PUBLIC_KEY = 'pub';
     process.env.VAPID_PRIVATE_KEY = 'priv';
@@ -121,12 +125,17 @@ describe('loadEnv', () => {
     expect(env.NODE_ENV).toBe('production');
   });
 
-  it('reads BOOTSTRAP_ADMIN_CLERK_USER_ID and BOOTSTRAP_ADMIN_USERNAME when set', () => {
-    process.env.BOOTSTRAP_ADMIN_CLERK_USER_ID = 'user_abc123';
-    process.env.BOOTSTRAP_ADMIN_USERNAME = 'fede';
+  it('reads R2 storage variables when set, and leaves them undefined otherwise', () => {
+    expect(loadEnv().R2_BUCKET_NAME).toBeUndefined();
+
+    process.env.R2_ACCOUNT_ID = 'acct123';
+    process.env.R2_ACCESS_KEY_ID = 'key123';
+    process.env.R2_SECRET_ACCESS_KEY = 'secret123';
+    process.env.R2_BUCKET_NAME = 'rondo-avatars';
+    process.env.R2_PUBLIC_URL = 'https://avatars.rondo.app';
 
     const env = loadEnv();
-    expect(env.BOOTSTRAP_ADMIN_CLERK_USER_ID).toBe('user_abc123');
-    expect(env.BOOTSTRAP_ADMIN_USERNAME).toBe('fede');
+    expect(env.R2_BUCKET_NAME).toBe('rondo-avatars');
+    expect(env.R2_PUBLIC_URL).toBe('https://avatars.rondo.app');
   });
 });

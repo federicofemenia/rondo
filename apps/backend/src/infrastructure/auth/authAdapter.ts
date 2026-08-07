@@ -1,16 +1,12 @@
-export interface AuthenticatedClerkProfile {
-  clerkUserId: string;
-  /** Optional: the beta authenticates via username, so an account may have no email at all. */
-  email?: string | null;
-  /** Set only if the Clerk instance has username enabled. */
-  username?: string | null;
-  /** From Clerk's unsafeMetadata, set at sign-up when the app collects a single "visible name" field. */
-  displayName?: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  avatarUrl: string | null;
+import type { FastifyRequest } from 'fastify';
+import type { User } from '@prisma/client';
+
+export interface AuthResult {
+  user: User;
+  /** The Session row's id -- needed by change-password to revoke every OTHER session without invalidating the one making the request. */
+  sessionId: string;
 }
 
 export interface AuthAdapter {
-  authenticate(authorizationHeader: string | undefined): Promise<AuthenticatedClerkProfile | null>;
+  authenticate(request: FastifyRequest): Promise<AuthResult | null>;
 }

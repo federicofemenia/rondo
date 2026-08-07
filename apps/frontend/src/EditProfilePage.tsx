@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { useUser } from '@clerk/react';
-import type { UserDto, UserSexDto } from '@rondo/contracts';
+import type { AvatarUploadUrlResponseDto, UserDto, UserSexDto } from '@rondo/contracts';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
@@ -28,7 +27,13 @@ type EditProfilePageProps = {
 
 const MAX_BIOGRAPHY_LENGTH = 300;
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
-const ACCEPTED_AVATAR_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+/** 'image/jpg' isn't a real MIME type but some browsers/OSes report it for .jpg files -- accepted client-side, normalized to 'image/jpeg' before asking the backend for an upload URL. */
+const ACCEPTED_AVATAR_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/webp'> = {
+  'image/jpeg': 'image/jpeg',
+  'image/jpg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+};
 
 function describeError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
@@ -36,7 +41,6 @@ function describeError(error: unknown, fallback: string): string {
 
 function EditProfilePage({ onBack }: EditProfilePageProps) {
   const api = useApi();
-  const { user: clerkUser } = useUser();
 
   const [profile, setProfile] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,13 +91,14 @@ function EditProfilePage({ onBack }: EditProfilePageProps) {
   const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file || !clerkUser) {
+    if (!file) {
       return;
     }
 
     setAvatarError(null);
 
-    if (!ACCEPTED_AVATAR_TYPES.includes(file.type)) {
+    const contentType = ACCEPTED_AVATAR_TYPES[file.type];
+    if (!contentType) {
       setAvatarError('La imagen debe ser JPG, PNG o WEBP.');
       return;
     }
@@ -104,15 +109,24 @@ function EditProfilePage({ onBack }: EditProfilePageProps) {
 
     setAvatarUploading(true);
     try {
-      await clerkUser.setProfileImage({ file });
-      // Clerk stays the source of truth for the image itself: every
-      // authenticated request re-syncs avatarUrl from Clerk (see
-      // clerkAuthAdapter.ts), so refetching /api/v1/me right after the
-      // upload reflects the new photo immediately, with no logout needed.
-      const response = await api.get<{ data: UserDto }>('/api/v1/me');
+      // 1) ask the backend for a short-lived presigned upload URL (Cloudflare
+      // R2); 2) upload the file directly to R2, bypassing our own backend
+      // entirely for the (potentially large) file bytes; 3) persist the
+      // resulting public URL via the same profile PUT used for sex/biography
+      // -- the backend independently verifies this exact URL was actually
+      // issued for this user before accepting it (see users.controller.ts).
+      const { uploadUrl, publicUrl } = await api.post<{ data: AvatarUploadUrlResponseDto }>('/api/v1/me/avatar/upload-url', { contentType }).then((r) => r.data);
+
+      const uploadResponse = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+      if (!uploadResponse.ok) {
+        throw new Error('upload failed');
+      }
+
+      const response = await api.put<{ data: UserDto }>('/api/v1/me/profile', { sex, biography: biography.trim() || null, avatarUrl: publicUrl });
+      setProfile(response.data);
       setAvatarUrl(response.data.avatarUrl);
-    } catch {
-      setAvatarError('No pudimos actualizar tu foto. Reintentá.');
+    } catch (caught) {
+      setAvatarError(describeError(caught, 'No pudimos actualizar tu foto. Reintentá.'));
     } finally {
       setAvatarUploading(false);
     }

@@ -24,10 +24,22 @@ export function buildAllowedOrigins(frontendUrl: string | undefined): string[] {
 
 type CorsOriginCallback = (error: Error | null, allow: boolean) => void;
 
-type CorsOriginValidatorOptions = {
+export type OriginAllowlistOptions = {
   /** Dev/test only: accept any localhost/127.0.0.1 origin regardless of port. Never set in production. */
   allowAnyLocalPort?: boolean;
 };
+
+/**
+ * Shared allowlist check, reused by both @fastify/cors (below) and the CSRF
+ * Origin guard (app/csrf.ts) — one definition of "what counts as our
+ * frontend" for both concerns.
+ */
+export function isOriginAllowed(origin: string, allowedOrigins: string[], options: OriginAllowlistOptions = {}): boolean {
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+  return Boolean(options.allowAnyLocalPort) && ANY_LOCAL_PORT_PATTERN.test(origin);
+}
 
 /**
  * @fastify/cors origin validator backed by an explicit allowlist — never
@@ -35,13 +47,9 @@ type CorsOriginValidatorOptions = {
  * curl, the health check) are always allowed since there is no browser
  * same-origin policy to enforce for them.
  */
-export function createCorsOriginValidator(allowedOrigins: string[], options: CorsOriginValidatorOptions = {}) {
+export function createCorsOriginValidator(allowedOrigins: string[], options: OriginAllowlistOptions = {}) {
   return (origin: string | undefined, callback: CorsOriginCallback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-    if (options.allowAnyLocalPort && ANY_LOCAL_PORT_PATTERN.test(origin)) {
+    if (!origin || isOriginAllowed(origin, allowedOrigins, options)) {
       callback(null, true);
       return;
     }
