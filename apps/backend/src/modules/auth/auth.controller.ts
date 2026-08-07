@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { AuthSessionDto, AuthUserDto } from '@rondo/contracts';
-import { changePasswordInputSchema, loginInputSchema, registerInputSchema } from '@rondo/contracts';
+import { changePasswordInputSchema, loginInputSchema, logoutInputSchema, registerInputSchema } from '@rondo/contracts';
 import type { User } from '@prisma/client';
 import { MatchServiceError } from '../matches/errors.js';
+import { deleteSubscription } from '../push/push.service.js';
 import type { SessionCookieEnv } from '../../infrastructure/auth/sessionCookie.js';
 import { clearedSessionCookieOptions, sessionCookieOptions } from '../../infrastructure/auth/sessionCookie.js';
 import { changePassword, loginUser, logoutSession, registerUser } from './auth.service.js';
@@ -75,6 +76,9 @@ export function registerAuthRoutes(app: FastifyInstance, env: SessionCookieEnv):
   });
 
   app.post<{ Body: unknown }>('/api/v1/auth/logout', async (request, reply) => {
+    const parsed = logoutInputSchema.safeParse(request.body ?? {});
+    const pushEndpoint = parsed.success ? parsed.data.pushEndpoint : undefined;
+
     // Soft lookup, not requireAuth: logout must respond 200 even when the
     // cookie is missing, expired, or already revoked -- there is no
     // "wrong" state to log out from.
@@ -82,6 +86,17 @@ export function registerAuthRoutes(app: FastifyInstance, env: SessionCookieEnv):
 
     if (result) {
       await logoutSession(result.sessionId);
+      if (pushEndpoint) {
+        // Best-effort: a shared device's push subscription must never keep
+        // pointing at a user who just logged out, but a failure here (e.g.
+        // the endpoint was already removed) must never block the logout
+        // itself from completing.
+        try {
+          await deleteSubscription(result.user.id, pushEndpoint);
+        } catch {
+          // swallowed deliberately -- see comment above.
+        }
+      }
     }
 
     reply.clearCookie(env.SESSION_COOKIE_NAME, clearedSessionCookieOptions(env));

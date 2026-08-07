@@ -86,7 +86,7 @@ function describeError(error: unknown, fallback: string): string {
 }
 
 function App() {
-  const { loading: authLoading, authenticated: isSignedIn, logout } = useAuth();
+  const { loading: authLoading, authenticated: isSignedIn, user: authUser, logout } = useAuth();
   const authLoaded = !authLoading;
   const api = useApi();
   const isOnline = useOnlineStatus();
@@ -904,7 +904,12 @@ function App() {
       ) : null}
       {renderView()}
       {isSignedIn ? <InstallWelcomeDialog /> : null}
-      {isSignedIn ? <PushNotificationsBanner /> : null}
+      {/* key={authUser?.id} forces a remount (and therefore a fresh
+          usePushNotifications() reconcile()) on every identity change --
+          otherwise a logout+login on the same tab wouldn't re-run the
+          reconciliation that reassigns this device's push subscription to
+          the new account (see docs/WEB_PUSH.md). */}
+      {isSignedIn ? <PushNotificationsBanner key={authUser?.id} /> : null}
       <Snackbar open={globalError !== null} autoHideDuration={5000} onClose={() => setGlobalError(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="error" onClose={() => setGlobalError(null)} sx={{ width: '100%' }}>
           {globalError}

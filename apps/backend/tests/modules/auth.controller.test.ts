@@ -321,6 +321,62 @@ describe('POST /api/v1/auth/logout', () => {
 
     await app.close();
   });
+
+  it('detaches the current device push subscription so a shared device never keeps receiving the previous user\'s pushes', async () => {
+    const app = await buildApp();
+    const username = uniqueUsername('logout_push');
+    const registerResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { displayName: 'Test', username, password: 'unaClave123', confirmPassword: 'unaClave123' },
+    });
+    const cookie = sessionCookieFrom(registerResponse)!;
+    const endpoint = `https://push.example.com/logout-detach-${randomUUID()}`;
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/me/push-subscriptions',
+      cookies: { rondo_session: cookie },
+      payload: { endpoint, keys: { p256dh: 'p256dh-value', auth: 'auth-value' } },
+    });
+
+    const before = await prisma.pushSubscription.findUnique({ where: { endpoint } });
+    expect(before).not.toBeNull();
+
+    const logoutResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      cookies: { rondo_session: cookie },
+      payload: { pushEndpoint: endpoint },
+    });
+    expect(logoutResponse.statusCode).toBe(200);
+
+    const after = await prisma.pushSubscription.findUnique({ where: { endpoint } });
+    expect(after).toBeNull();
+
+    await app.close();
+  });
+
+  it('continues (still 200, still revokes) even if the given pushEndpoint does not exist', async () => {
+    const app = await buildApp();
+    const username = uniqueUsername('logout_push_missing');
+    const registerResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { displayName: 'Test', username, password: 'unaClave123', confirmPassword: 'unaClave123' },
+    });
+    const cookie = sessionCookieFrom(registerResponse)!;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      cookies: { rondo_session: cookie },
+      payload: { pushEndpoint: 'https://push.example.com/never-existed' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    await app.close();
+  });
 });
 
 describe('POST /api/v1/auth/change-password', () => {

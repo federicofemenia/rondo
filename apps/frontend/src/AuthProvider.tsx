@@ -16,6 +16,28 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * Best-effort: detaches the current device's push subscription from the
+ * account that's logging out, so a shared device never keeps receiving
+ * that person's pushes after someone else signs in on the same browser.
+ * Never throws -- a missing/unsupported service worker or a subscription
+ * that was never enabled are both completely normal, and a failure here
+ * must never block logout from completing (see App.tsx's usePushNotifications
+ * for the enable/disable-time counterpart of this same rule).
+ */
+async function currentPushEndpoint(): Promise<string | undefined> {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return undefined;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    return subscription?.endpoint;
+  } catch {
+    return undefined;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const [user, setUser] = useState<AuthUserDto | null>(null);
@@ -69,8 +91,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    const pushEndpoint = await currentPushEndpoint();
     try {
-      await api.post('/api/v1/auth/logout');
+      await api.post('/api/v1/auth/logout', pushEndpoint ? { pushEndpoint } : undefined);
     } catch {
       // Logout must clear local state regardless of whether the backend
       // call itself succeeded -- see AuthProvider's own contract.
